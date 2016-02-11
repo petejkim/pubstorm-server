@@ -7,38 +7,42 @@ import (
 	"testing"
 
 	"github.com/petejkim/rise-server/server"
+
+	. "github.com/onsi/ginkgo"
+	. "github.com/onsi/gomega"
 )
 
-var s *httptest.Server
-
-func setUp() {
-	s = httptest.NewServer(server.New())
-}
-
-func tearDown() {
-	s.Close()
-}
-
 func TestPing(t *testing.T) {
-	setUp()
-	defer tearDown()
-
-	res, err := http.Get(s.URL + "/ping")
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer res.Body.Close()
-
-	var j map[string]string
-	if err := json.NewDecoder(res.Body).Decode(&j); err != nil {
-		t.Fatal(err)
-	}
-
-	if res.StatusCode != 200 {
-		t.Fatal("Expected status code to be 200 OK")
-	}
-
-	if j["message"] != "pong" {
-		t.Fatal("Expected JSON message to contain pong, got %s", j["message"])
-	}
+	RegisterFailHandler(Fail)
+	RunSpecs(t, "Ping Suite")
 }
+
+var _ = Describe("Ping", func() {
+	var (
+		s   *httptest.Server
+		res *http.Response
+		err error
+	)
+
+	BeforeEach(func() {
+		s = httptest.NewServer(server.New())
+		res, err = http.Get(s.URL + "/ping")
+		Expect(err).To(BeNil())
+	})
+
+	AfterEach(func() {
+		if res != nil {
+			res.Body.Close()
+		}
+		s.Close()
+	})
+
+	It("returns 200 OK and a json message containing pong", func() {
+		var j map[string]string
+		err = json.NewDecoder(res.Body).Decode(&j)
+		Expect(err).To(BeNil())
+
+		Expect(res.StatusCode).To(Equal(http.StatusOK))
+		Expect(j["message"]).To(Equal("pong"))
+	})
+})
