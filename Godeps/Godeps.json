@@ -1,6 +1,14 @@
 {
 	"ImportPath": "github.com/petejkim/rise-server",
 	"GoVersion": "go1.6",
+	"Packages": [
+		"github.com/petejkim/rise-server",
+		"github.com/petejkim/rise-server/config",
+		"github.com/petejkim/rise-server/controllers/ping",
+		"github.com/petejkim/rise-server/controllers/users",
+		"github.com/petejkim/rise-server/models",
+		"github.com/petejkim/rise-server/server"
+	],
 	"Deps": [
 		{
 			"ImportPath": "github.com/gin-gonic/gin",
@@ -12,8 +20,31 @@
 			"Rev": "b982704f8bb716bb608144408cff30e15fbde841"
 		},
 		{
+			"ImportPath": "github.com/jinzhu/gorm",
+			"Rev": "aa45da15421ddb1549a7060e5c189f8350a29166"
+		},
+		{
+			"ImportPath": "github.com/jinzhu/inflection",
+			"Rev": "3272df6c21d04180007eb3349844c89a3856bc25"
+		},
+		{
+			"ImportPath": "github.com/lib/pq",
+			"Comment": "go1.0-cutoff-81-g69552e5",
+			"Rev": "69552e54d2a9d4c6a2438926a774930f7bc398ec"
+		},
+		{
 			"ImportPath": "github.com/manucorporat/sse",
 			"Rev": "ee05b128a739a0fb76c7ebd3ae4810c1de808d6d"
+		},
+		{
+			"ImportPath": "github.com/onsi/ginkgo",
+			"Comment": "v1.2.0-42-g07d85e6",
+			"Rev": "07d85e6b10c4289c7d612f9b13f45ba36f66d55b"
+		},
+		{
+			"ImportPath": "github.com/onsi/gomega",
+			"Comment": "v1.0-83-gc72df92",
+			"Rev": "c72df929b80ef4930aaa75d5e486887ff2f3e06a"
 		},
 		{
 			"ImportPath": "golang.org/x/net/context",

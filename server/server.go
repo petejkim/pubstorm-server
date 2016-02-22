@@ -1,12 +1,15 @@
 package server
 
-import "github.com/gin-gonic/gin"
+import (
+	"github.com/gin-gonic/gin"
+	"github.com/petejkim/rise-server/config"
+)
 
 func New() *gin.Engine {
 	r := gin.New()
 
-	configureMiddleware(r)
-	configureRoutes(r)
+	config.Middleware(r)
+	config.Routes(r)
 
 	return r
 }

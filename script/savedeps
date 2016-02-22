@@ -1,0 +1,7 @@
+#!/bin/bash
+DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
+cd $DIR/..
+
+export GO15VENDOREXPERIMENT=1
+
+godep save $(go list ./... | grep -v /vendor/)

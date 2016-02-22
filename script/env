@@ -1,0 +1,7 @@
+#!/bin/bash
+
+export RISE_ENV=${RISE_ENV:-"development"}
+export POSTGRES_URL=${POSTGRES_URL:-"postgres:///rise_$RISE_ENV?host=/var/run/postgresql"}
+echo "RISE_ENV is \"$RISE_ENV\""
+
+$(eval echo "$@")
