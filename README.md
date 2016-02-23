@@ -28,8 +28,13 @@ sudo apt-get install redis-server
 ```shell
 # Install migrate
 go get -u github.com/mattes/migrate
+
 # Run migrations
-script/migrate
+script/migrate up
+
+# WARNING: Doing script/migrate down will undo all migrations!
+# Use script/migrate migrate instead!
+
 # Creating a new migration
 script/migrate-new 'create_animals'
 ```
@@ -40,9 +45,11 @@ script/migrate-new 'create_animals'
 # Install Ginkgo/Gomega
 go get -u github.com/onsi/ginkgo/ginkgo
 go get -u github.com/onsi/gomega
+
 # Prepare test DB
 script/migrate # Make sure dev DB is up to date
 script/prepare-test-db # Copy dev DB's schema to test DB
+
 # Run tests
 script/test
 ```
