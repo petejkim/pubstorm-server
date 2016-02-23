@@ -2,6 +2,7 @@ package config
 
 import (
 	"github.com/gin-gonic/gin"
+	"github.com/nitrous-io/rise-server/controllers/oauth"
 	"github.com/nitrous-io/rise-server/controllers/ping"
 	"github.com/nitrous-io/rise-server/controllers/users"
 )
@@ -9,4 +10,5 @@ import (
 func Routes(r *gin.Engine) {
 	r.GET("/ping", ping.Ping)
 	r.POST("/users", users.Create)
+	r.POST("/oauth/token", oauth.CreateToken)
 }

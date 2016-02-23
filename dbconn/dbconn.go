@@ -22,6 +22,9 @@ func DB() (*gorm.DB, error) {
 		if err != nil {
 			return nil, err
 		}
+		if os.Getenv("RISE_ENV") == "test" {
+			d.LogMode(false)
+		}
 		db = &d
 	}
 	return db, nil

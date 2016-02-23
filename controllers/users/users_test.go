@@ -80,7 +80,8 @@ var _ = Describe("Users", func() {
 				Expect(u.Email).To(Equal("foo@example.com"))
 
 				var pwHashed bool
-				db.Table("users").Where("id = ? AND encrypted_password = crypt('foobar', encrypted_password)", u.ID).Count(&pwHashed)
+				err = db.Table("users").Where("id = ? AND encrypted_password = crypt('foobar', encrypted_password)", u.ID).Count(&pwHashed).Error
+				Expect(err).To(BeNil())
 
 				Expect(pwHashed).To(BeTrue())
 			})

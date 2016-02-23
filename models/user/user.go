@@ -4,6 +4,7 @@ import (
 	"regexp"
 
 	"github.com/jinzhu/gorm"
+	"github.com/nitrous-io/rise-server/dbconn"
 )
 
 var emailRe = regexp.MustCompile(`\A[^@\s]+@([^@\s]+\.)+[^@\s]+\z`)
@@ -53,4 +54,41 @@ func (u *User) Validate() map[string]string {
 		return nil
 	}
 	return errors
+}
+
+// Inserts the record into the DB, encrypting the Password field
+func (u *User) Insert() error {
+	db, err := dbconn.DB()
+	if err != nil {
+		return err
+	}
+
+	return db.Table("users").Raw(`INSERT INTO users (
+		email,
+		encrypted_password
+	) VALUES (
+		?,
+		crypt(?, gen_salt('bf'))
+	) RETURNING *;`, u.Email, u.Password).Scan(u).Error
+}
+
+// Checks email and password and return user if credentials are valid
+func Authenticate(email, password string) (u *User, err error) {
+	db, err := dbconn.DB()
+	if err != nil {
+		return nil, err
+	}
+
+	u = &User{}
+	if err = db.Where(
+		"email = ? AND encrypted_password = crypt(?, encrypted_password)",
+		email, password).First(u).Error; err != nil {
+		// don't treat record not found as error
+		if err == gorm.RecordNotFound {
+			return nil, nil
+		}
+		return nil, err
+	}
+
+	return u, err
 }
