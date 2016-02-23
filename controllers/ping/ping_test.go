@@ -12,9 +12,9 @@ import (
 	. "github.com/onsi/gomega"
 )
 
-func TestPing(t *testing.T) {
+func Test(t *testing.T) {
 	RegisterFailHandler(Fail)
-	RunSpecs(t, "Ping Suite")
+	RunSpecs(t, "Ping")
 }
 
 var _ = Describe("Ping", func() {

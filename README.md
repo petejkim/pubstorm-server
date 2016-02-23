@@ -11,7 +11,7 @@ sudo bash -c 'echo "deb http://apt.postgresql.org/pub/repos/apt/ trusty-pgdg mai
 wget --quiet -O - https://www.postgresql.org/media/keys/ACCC4CF8.asc | sudo apt-key add -
 sudo apt-get update
 sudo apt-get install postgresql-9.4 libpq-dev postgresql-contrib-9.4
-sudo su postgres -c 'createuser --superuser nitrous && createdb rise_development && createdb rise_test'
+sudo su postgres -c 'createuser --superuser nitrous && createdb rise_development'
 ```
 
 ### Redis
@@ -40,6 +40,9 @@ script/migrate-new 'create_animals'
 # Install Ginkgo/Gomega
 go get -u github.com/onsi/ginkgo/ginkgo
 go get -u github.com/onsi/gomega
+# Prepare test DB
+script/migrate # Make sure dev DB is up to date
+script/prepare-test-db # Copy dev DB's schema to test DB
 # Run tests
 script/test
 ```

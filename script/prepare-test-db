@@ -1,0 +1,4 @@
+#!/bin/bash
+
+dropdb --if-exists rise_test
+createdb -T rise_development rise_test

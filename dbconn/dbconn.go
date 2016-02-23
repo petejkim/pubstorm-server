@@ -1,4 +1,4 @@
-package config
+package dbconn
 
 import (
 	"os"
@@ -13,6 +13,7 @@ var (
 	dbLock sync.Mutex
 )
 
+// DB returns gorm DB handle
 func DB() (*gorm.DB, error) {
 	dbLock.Lock()
 	defer dbLock.Unlock()
