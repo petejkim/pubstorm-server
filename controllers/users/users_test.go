@@ -19,7 +19,7 @@ import (
 
 func Test(t *testing.T) {
 	RegisterFailHandler(Fail)
-	RunSpecs(t, "Users")
+	RunSpecs(t, "users")
 }
 
 var _ = Describe("Users", func() {
@@ -49,60 +49,6 @@ var _ = Describe("Users", func() {
 			res, err = http.PostForm(s.URL+"/users", params)
 			Expect(err).To(BeNil())
 		}
-
-		Context("when email field is missing", func() {
-			BeforeEach(func() {
-				doRequest(url.Values{
-					"password": {"foobar"},
-				})
-			})
-
-			It("returns 422 unprocessable entity", func() {
-				b := &bytes.Buffer{}
-				_, err := b.ReadFrom(res.Body)
-				Expect(err).To(BeNil())
-
-				Expect(res.StatusCode).To(Equal(422))
-				Expect(b.String()).To(MatchJSON(`{
-					"errors": {
-						"email": "is required"
-					}
-				}`))
-			})
-
-			It("does not create a user record in the DB", func() {
-				userCount := 0
-				db.Table("users").Count(&userCount)
-				Expect(userCount).To(BeZero())
-			})
-		})
-
-		Context("when password field is missing", func() {
-			BeforeEach(func() {
-				doRequest(url.Values{
-					"email": {"foo@example.com"},
-				})
-			})
-
-			It("returns 422 unprocessable entity", func() {
-				b := &bytes.Buffer{}
-				_, err := b.ReadFrom(res.Body)
-				Expect(err).To(BeNil())
-
-				Expect(res.StatusCode).To(Equal(422))
-				Expect(b.String()).To(MatchJSON(`{
-					"errors": {
-						"password": "is required"
-					}
-				}`))
-			})
-
-			It("does not create a user record in the DB", func() {
-				userCount := 0
-				db.Table("users").Count(&userCount)
-				Expect(userCount).To(BeZero())
-			})
-		})
 
 		Context("when all required fields are present", func() {
 			BeforeEach(func() {
@@ -140,6 +86,62 @@ var _ = Describe("Users", func() {
 			})
 		})
 
+		Context("when email field is missing", func() {
+			BeforeEach(func() {
+				doRequest(url.Values{
+					"password": {"foobar"},
+				})
+			})
+
+			It("returns 422 unprocessable entity", func() {
+				b := &bytes.Buffer{}
+				_, err := b.ReadFrom(res.Body)
+				Expect(err).To(BeNil())
+
+				Expect(res.StatusCode).To(Equal(422))
+				Expect(b.String()).To(MatchJSON(`{
+					"error": "invalid_params",
+					"errors": {
+						"email": "is required"
+					}
+				}`))
+			})
+
+			It("does not create a user record in the DB", func() {
+				userCount := 0
+				db.Table("users").Count(&userCount)
+				Expect(userCount).To(BeZero())
+			})
+		})
+
+		Context("when password field is missing", func() {
+			BeforeEach(func() {
+				doRequest(url.Values{
+					"email": {"foo@example.com"},
+				})
+			})
+
+			It("returns 422 unprocessable entity", func() {
+				b := &bytes.Buffer{}
+				_, err := b.ReadFrom(res.Body)
+				Expect(err).To(BeNil())
+
+				Expect(res.StatusCode).To(Equal(422))
+				Expect(b.String()).To(MatchJSON(`{
+					"error": "invalid_params",
+					"errors": {
+						"password": "is required"
+					}
+				}`))
+			})
+
+			It("does not create a user record in the DB", func() {
+				userCount := 0
+				db.Table("users").Count(&userCount)
+				Expect(userCount).To(BeZero())
+			})
+		})
+
 		Context("when a field is invalid", func() {
 			BeforeEach(func() {
 				doRequest(url.Values{
@@ -155,6 +157,7 @@ var _ = Describe("Users", func() {
 
 				Expect(res.StatusCode).To(Equal(422))
 				Expect(b.String()).To(MatchJSON(`{
+					"error": "invalid_params",
 					"errors": {
 						"email": "is invalid"
 					}

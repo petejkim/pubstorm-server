@@ -14,7 +14,7 @@ import (
 
 func Test(t *testing.T) {
 	RegisterFailHandler(Fail)
-	RunSpecs(t, "Ping")
+	RunSpecs(t, "ping")
 }
 
 var _ = Describe("Ping", func() {

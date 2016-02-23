@@ -24,6 +24,7 @@ func Create(c *gin.Context) {
 
 	if errs := u.Validate(); errs != nil {
 		c.JSON(422, gin.H{
+			"error":  "invalid_params",
 			"errors": errs,
 		})
 		return

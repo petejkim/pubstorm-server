@@ -12,7 +12,7 @@ import (
 
 func Test(t *testing.T) {
 	RegisterFailHandler(Fail)
-	RunSpecs(t, "User")
+	RunSpecs(t, "user")
 }
 
 var _ = Describe("User", func() {
