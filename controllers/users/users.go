@@ -4,8 +4,8 @@ import (
 	"net/http"
 
 	"github.com/gin-gonic/gin"
-	"github.com/petejkim/rise-server/dbconn"
-	"github.com/petejkim/rise-server/models/user"
+	"github.com/nitrous-io/rise-server/dbconn"
+	"github.com/nitrous-io/rise-server/models/user"
 )
 
 func Create(c *gin.Context) {

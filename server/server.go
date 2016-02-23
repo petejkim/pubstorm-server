@@ -2,7 +2,7 @@ package server
 
 import (
 	"github.com/gin-gonic/gin"
-	"github.com/petejkim/rise-server/config"
+	"github.com/nitrous-io/rise-server/config"
 )
 
 func New() *gin.Engine {

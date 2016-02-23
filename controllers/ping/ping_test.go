@@ -6,7 +6,7 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	"github.com/petejkim/rise-server/server"
+	"github.com/nitrous-io/rise-server/server"
 
 	. "github.com/onsi/ginkgo"
 	. "github.com/onsi/gomega"

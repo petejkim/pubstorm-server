@@ -4,7 +4,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/petejkim/rise-server/models/user"
+	"github.com/nitrous-io/rise-server/models/user"
 
 	. "github.com/onsi/ginkgo"
 	. "github.com/onsi/gomega"

@@ -8,10 +8,10 @@ import (
 	"testing"
 
 	"github.com/jinzhu/gorm"
-	"github.com/petejkim/rise-server/dbconn"
-	"github.com/petejkim/rise-server/models/user"
-	"github.com/petejkim/rise-server/server"
-	"github.com/petejkim/rise-server/testhelper"
+	"github.com/nitrous-io/rise-server/dbconn"
+	"github.com/nitrous-io/rise-server/models/user"
+	"github.com/nitrous-io/rise-server/server"
+	"github.com/nitrous-io/rise-server/testhelper"
 
 	. "github.com/onsi/ginkgo"
 	. "github.com/onsi/gomega"

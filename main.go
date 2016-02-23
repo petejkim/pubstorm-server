@@ -1,6 +1,6 @@
 package main
 
-import "github.com/petejkim/rise-server/server"
+import "github.com/nitrous-io/rise-server/server"
 
 func main() {
 	r := server.New()

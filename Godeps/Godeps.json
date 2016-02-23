@@ -1,13 +1,15 @@
 {
-	"ImportPath": "github.com/petejkim/rise-server",
+	"ImportPath": "github.com/nitrous-io/rise-server",
 	"GoVersion": "go1.6",
 	"Packages": [
-		"github.com/petejkim/rise-server",
-		"github.com/petejkim/rise-server/config",
-		"github.com/petejkim/rise-server/controllers/ping",
-		"github.com/petejkim/rise-server/controllers/users",
-		"github.com/petejkim/rise-server/models",
-		"github.com/petejkim/rise-server/server"
+		"github.com/nitrous-io/rise-server",
+		"github.com/nitrous-io/rise-server/config",
+		"github.com/nitrous-io/rise-server/controllers/ping",
+		"github.com/nitrous-io/rise-server/controllers/users",
+		"github.com/nitrous-io/rise-server/dbconn",
+		"github.com/nitrous-io/rise-server/models/user",
+		"github.com/nitrous-io/rise-server/server",
+		"github.com/nitrous-io/rise-server/testhelper"
 	],
 	"Deps": [
 		{

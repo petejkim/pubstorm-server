@@ -2,8 +2,8 @@ package config
 
 import (
 	"github.com/gin-gonic/gin"
-	"github.com/petejkim/rise-server/controllers/ping"
-	"github.com/petejkim/rise-server/controllers/users"
+	"github.com/nitrous-io/rise-server/controllers/ping"
+	"github.com/nitrous-io/rise-server/controllers/users"
 )
 
 func Routes(r *gin.Engine) {
