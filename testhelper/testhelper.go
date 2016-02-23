@@ -3,6 +3,9 @@ package testhelper
 import (
 	"database/sql"
 	"fmt"
+	"net/http"
+	"net/url"
+	"strings"
 )
 
 var tables []string
@@ -57,4 +60,43 @@ func getTables(db *sql.DB) ([]string, error) {
 		tbls = append(tbls, tablename)
 	}
 	return tbls, nil
+}
+
+// Do it all http request method
+func MakeRequest(method, url string, data url.Values, headers http.Header, username, password string) (resp *http.Response, err error) {
+	var (
+		req    *http.Request
+		isForm = method == "POST" || method == "PUT" || method == "PATCH"
+	)
+
+	if data == nil {
+		req, err = http.NewRequest(method, url, nil)
+	} else if isForm {
+		r := strings.NewReader(data.Encode())
+		req, err = http.NewRequest(method, url, r)
+	} else {
+		req, err = http.NewRequest(method, url+"?"+data.Encode(), nil)
+	}
+
+	if err != nil {
+		return nil, err
+	}
+
+	if username != "" || password != "" {
+		req.SetBasicAuth(username, password)
+	}
+
+	if isForm {
+		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	}
+
+	if headers != nil {
+		for k, v := range headers {
+			for _, h := range v {
+				req.Header.Add(k, h)
+			}
+		}
+	}
+
+	return http.DefaultClient.Do(req)
 }
