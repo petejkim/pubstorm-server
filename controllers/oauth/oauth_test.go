@@ -46,6 +46,14 @@ var _ = Describe("OAuth", func() {
 		Expect(err).To(BeNil())
 		Expect(u.ID).NotTo(BeZero())
 
+		err = db.Table("users").Raw(`
+			UPDATE users
+			SET confirmed_at = now()
+			WHERE id = ?
+			RETURNING *;
+		`, u.ID).Scan(u).Error
+		Expect(err).To(BeNil())
+
 		var queryRes = struct {
 			ID           uint
 			ClientID     string
@@ -106,6 +114,10 @@ var _ = Describe("OAuth", func() {
 					"error": "unsupported_grant_type",
 					"error_description": "grant type \"login_token\" is not supported"
 				}`))
+
+				tok := &oauthtoken.OauthToken{}
+				err = db.Last(&tok).Error
+				Expect(err).To(Equal(gorm.RecordNotFound))
 			})
 		})
 
@@ -129,6 +141,10 @@ var _ = Describe("OAuth", func() {
 						"error": "invalid_request",
 						"error_description": "\"` + param + `\" is required"
 					}`))
+
+					tok := &oauthtoken.OauthToken{}
+					err = db.Last(&tok).Error
+					Expect(err).To(Equal(gorm.RecordNotFound))
 				},
 				Entry("grant_type is required", "grant_type"),
 				Entry("username is required", "username"),
@@ -156,10 +172,48 @@ var _ = Describe("OAuth", func() {
 						"error": "invalid_grant",
 						"error_description": "user credentials are invalid"
 					}`))
+
+					tok := &oauthtoken.OauthToken{}
+					err = db.Last(&tok).Error
+					Expect(err).To(Equal(gorm.RecordNotFound))
 				},
 				Entry("username should be valid", "username"),
 				Entry("password should be valid", "password"),
 			)
+		})
+
+		Context("when the user hasn't confirmed email", func() {
+			BeforeEach(func() {
+				err = db.Table("users").Raw(`
+					UPDATE users
+					SET confirmed_at = NULL
+					WHERE id = ?
+					RETURNING *;
+				`, u.ID).Scan(u).Error
+				Expect(err).To(BeNil())
+
+				doRequest(url.Values{
+					"grant_type": {"password"},
+					"username":   {"foo@example.com"},
+					"password":   {"foobar"},
+				}, nil, clientID, clientSecret)
+			})
+
+			It("returns 400 with 'invalid_grant' error", func() {
+				b := &bytes.Buffer{}
+				_, err := b.ReadFrom(res.Body)
+				Expect(err).To(BeNil())
+
+				Expect(res.StatusCode).To(Equal(http.StatusBadRequest))
+				Expect(b.String()).To(MatchJSON(`{
+					"error": "invalid_grant",
+					"error_description": "user has not confirmed email address"
+				}`))
+
+				tok := &oauthtoken.OauthToken{}
+				err = db.Last(&tok).Error
+				Expect(err).To(Equal(gorm.RecordNotFound))
+			})
 		})
 
 		Context("when the client credentials are invalid", func() {
@@ -182,6 +236,10 @@ var _ = Describe("OAuth", func() {
 						"error": "invalid_client",
 						"error_description": "client credentials are invalid"
 					}`))
+
+					tok := &oauthtoken.OauthToken{}
+					err = db.Last(&tok).Error
+					Expect(err).To(Equal(gorm.RecordNotFound))
 				},
 				Entry("client id should be valid", func() {
 					doRequest(params, nil, "InvalidClientID", clientSecret)

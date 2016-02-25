@@ -51,6 +51,14 @@ func CreateToken(c *gin.Context) {
 		return
 	}
 
+	if !u.ConfirmedAt.Valid {
+		c.JSON(400, gin.H{
+			"error":             "invalid_grant",
+			"error_description": "user has not confirmed email address",
+		})
+		return
+	}
+
 	var clientID, clientSecret string
 
 	authHeader := strings.TrimPrefix(c.Request.Header.Get("Authorization"), "Basic ")
