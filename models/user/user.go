@@ -4,6 +4,7 @@ import (
 	"regexp"
 
 	"github.com/jinzhu/gorm"
+	"github.com/lib/pq"
 	"github.com/nitrous-io/rise-server/dbconn"
 )
 
@@ -16,6 +17,9 @@ type User struct {
 	Password     string `sql:"-"`
 	Name         string
 	Organization string
+
+	ConfirmationCode string `sql:"default:lpad((floor(random() * 999999) + 1)::text, 6, '0')"`
+	ConfirmedAt      pq.NullTime
 }
 
 // Returns a struct that can be converted to JSON

@@ -3,13 +3,18 @@
 	"GoVersion": "go1.6",
 	"Packages": [
 		"github.com/nitrous-io/rise-server",
-		"github.com/nitrous-io/rise-server/config",
+		"github.com/nitrous-io/rise-server/controllers/oauth",
 		"github.com/nitrous-io/rise-server/controllers/ping",
 		"github.com/nitrous-io/rise-server/controllers/users",
 		"github.com/nitrous-io/rise-server/dbconn",
+		"github.com/nitrous-io/rise-server/models/oauthclient",
+		"github.com/nitrous-io/rise-server/models/oauthtoken",
 		"github.com/nitrous-io/rise-server/models/user",
+		"github.com/nitrous-io/rise-server/pkg/mailer",
+		"github.com/nitrous-io/rise-server/routes",
 		"github.com/nitrous-io/rise-server/server",
-		"github.com/nitrous-io/rise-server/testhelper"
+		"github.com/nitrous-io/rise-server/testhelper",
+		"github.com/nitrous-io/rise-server/testhelper/fake"
 	],
 	"Deps": [
 		{
@@ -47,6 +52,16 @@
 			"ImportPath": "github.com/onsi/gomega",
 			"Comment": "v1.0-83-gc72df92",
 			"Rev": "c72df929b80ef4930aaa75d5e486887ff2f3e06a"
+		},
+		{
+			"ImportPath": "github.com/sendgrid/sendgrid-go",
+			"Comment": "v2.0.0-18-g618ae01",
+			"Rev": "618ae01fc450f11509a8dee37756036780338593"
+		},
+		{
+			"ImportPath": "github.com/sendgrid/smtpapi-go",
+			"Comment": "v0.4.0",
+			"Rev": "08102729bcf72bfe74dde6c0da8e0423e94090ca"
 		},
 		{
 			"ImportPath": "golang.org/x/net/context",

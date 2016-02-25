@@ -8,10 +8,13 @@ import (
 	"testing"
 
 	"github.com/jinzhu/gorm"
+	"github.com/nitrous-io/rise-server/common"
 	"github.com/nitrous-io/rise-server/dbconn"
 	"github.com/nitrous-io/rise-server/models/user"
+	"github.com/nitrous-io/rise-server/pkg/mailer"
 	"github.com/nitrous-io/rise-server/server"
 	"github.com/nitrous-io/rise-server/testhelper"
+	"github.com/nitrous-io/rise-server/testhelper/fake"
 
 	. "github.com/onsi/ginkgo"
 	. "github.com/onsi/gomega"
@@ -44,6 +47,21 @@ var _ = Describe("Users", func() {
 	})
 
 	Describe("POST /users", func() {
+		var (
+			fakeMailer *fake.Mailer
+			origMailer mailer.Mailer
+		)
+
+		BeforeEach(func() {
+			origMailer = common.Mailer
+			fakeMailer = &fake.Mailer{}
+			common.Mailer = fakeMailer
+		})
+
+		AfterEach(func() {
+			common.Mailer = origMailer
+		})
+
 		doRequest := func(params url.Values) {
 			s = httptest.NewServer(server.New())
 			res, err = http.PostForm(s.URL+"/users", params)
@@ -51,11 +69,15 @@ var _ = Describe("Users", func() {
 		}
 
 		Context("when all required fields are present", func() {
+			var u *user.User
+
 			BeforeEach(func() {
 				doRequest(url.Values{
 					"email":    {"foo@example.com"},
 					"password": {"foobar"},
 				})
+				u = &user.User{}
+				db.Last(u)
 			})
 
 			It("returns 201 created", func() {
@@ -74,16 +96,26 @@ var _ = Describe("Users", func() {
 			})
 
 			It("creates a user record in the DB", func() {
-				u := &user.User{}
-				db.Last(u)
-
 				Expect(u.Email).To(Equal("foo@example.com"))
+				Expect(u.ConfirmedAt.Valid).To(BeFalse())
+				Expect(u.ConfirmationCode).NotTo(HaveLen(0))
 
 				var pwHashed bool
 				err = db.Table("users").Where("id = ? AND encrypted_password = crypt('foobar', encrypted_password)", u.ID).Count(&pwHashed).Error
 				Expect(err).To(BeNil())
 
 				Expect(pwHashed).To(BeTrue())
+			})
+
+			It("sends an email with confirmation code to user", func() {
+				Expect(fakeMailer.SendMailCalled).To(BeTrue())
+				Expect(fakeMailer.From).To(Equal(common.MailerEmail))
+				Expect(fakeMailer.Tos).To(Equal([]string{"foo@example.com"}))
+				Expect(fakeMailer.ReplyTo).To(Equal(common.MailerEmail))
+
+				Expect(fakeMailer.Subject).To(ContainSubstring("Please confirm"))
+				Expect(fakeMailer.Body).To(ContainSubstring(u.ConfirmationCode))
+				Expect(fakeMailer.HTML).To(ContainSubstring(u.ConfirmationCode))
 			})
 		})
 

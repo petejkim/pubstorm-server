@@ -1,4 +1,4 @@
-package config
+package routes
 
 import (
 	"github.com/gin-gonic/gin"
@@ -7,7 +7,7 @@ import (
 	"github.com/nitrous-io/rise-server/controllers/users"
 )
 
-func Routes(r *gin.Engine) {
+func Draw(r *gin.Engine) {
 	r.GET("/ping", ping.Ping)
 	r.POST("/users", users.Create)
 	r.POST("/oauth/token", oauth.CreateToken)

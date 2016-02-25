@@ -2,14 +2,14 @@ package server
 
 import (
 	"github.com/gin-gonic/gin"
-	"github.com/nitrous-io/rise-server/config"
+	"github.com/nitrous-io/rise-server/routes"
 )
 
 func New() *gin.Engine {
 	r := gin.New()
 
-	config.Middleware(r)
-	config.Routes(r)
+	configMiddleware(r)
+	routes.Draw(r)
 
 	return r
 }
