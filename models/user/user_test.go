@@ -126,4 +126,44 @@ var _ = Describe("User", func() {
 			})
 		})
 	})
+
+	Describe("Confirm()", func() {
+		var u *user.User
+
+		BeforeEach(func() {
+			u = &user.User{
+				Email:    "harry.potter@gmail.com",
+				Password: "123456",
+			}
+			err = u.Insert()
+			Expect(err).To(BeNil())
+		})
+
+		Context("when the email and confirmation code are valid", func() {
+			It("returns true and confirms user", func() {
+				confirmed, err := user.Confirm(u.Email, u.ConfirmationCode)
+				Expect(confirmed).To(BeTrue())
+				Expect(err).To(BeNil())
+
+				err = db.Where("id = ?", u.ID).First(u).Error
+				Expect(err).To(BeNil())
+
+				Expect(u.ConfirmedAt.Valid).To(BeTrue())
+				Expect(u.ConfirmedAt.Time.Unix()).NotTo(BeZero())
+			})
+		})
+
+		Context("when the email or confirmation code is invalid", func() {
+			It("returns false and does not confirm user", func() {
+				confirmed, err := user.Confirm(u.Email, u.ConfirmationCode+"x")
+				Expect(confirmed).To(BeFalse())
+				Expect(err).To(BeNil())
+
+				err = db.Where("id = ?", u.ID).First(u).Error
+				Expect(err).To(BeNil())
+
+				Expect(u.ConfirmedAt.Valid).To(BeFalse())
+			})
+		})
+	})
 })

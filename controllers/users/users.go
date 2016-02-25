@@ -60,3 +60,37 @@ func Create(c *gin.Context) {
 		"user": u.AsJSON(),
 	})
 }
+
+func Confirm(c *gin.Context) {
+	for _, k := range []string{"email", "confirmation_code"} {
+		if c.PostForm(k) == "" {
+			c.JSON(422, gin.H{
+				"error":             "invalid_params",
+				"error_description": k + " is required",
+				"confirmed":         false,
+			})
+			return
+		}
+	}
+
+	confirmed, err := user.Confirm(c.PostForm("email"), c.PostForm("confirmation_code"))
+	if err != nil {
+		c.JSON(500, gin.H{
+			"error": "internal_server_error",
+		})
+		return
+	}
+
+	if !confirmed {
+		c.JSON(422, gin.H{
+			"error":             "invalid_params",
+			"error_description": "invalid email or confirmation_code",
+			"confirmed":         false,
+		})
+		return
+	}
+
+	c.JSON(200, gin.H{
+		"confirmed": true,
+	})
+}

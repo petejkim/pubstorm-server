@@ -96,3 +96,24 @@ func Authenticate(email, password string) (u *User, err error) {
 
 	return u, err
 }
+
+// Finds user by email and confirmation code and confirms user if found
+func Confirm(email, confirmationCode string) (confirmed bool, err error) {
+	db, err := dbconn.DB()
+	if err != nil {
+		return false, err
+	}
+
+	q := db.Table("users").Where(
+		"email = ? AND confirmation_code = ?", email, confirmationCode,
+	).Update("confirmed_at", gorm.Expr("now()"))
+	if err = q.Error; err != nil {
+		return false, err
+	}
+
+	if q.RowsAffected == 0 {
+		return false, nil
+	}
+
+	return true, nil
+}

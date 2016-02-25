@@ -17,6 +17,7 @@ import (
 	"github.com/nitrous-io/rise-server/testhelper/fake"
 
 	. "github.com/onsi/ginkgo"
+	. "github.com/onsi/ginkgo/extensions/table"
 	. "github.com/onsi/gomega"
 )
 
@@ -201,6 +202,96 @@ var _ = Describe("Users", func() {
 				userCount := 0
 				db.Table("users").Count(&userCount)
 				Expect(userCount).To(BeZero())
+			})
+		})
+	})
+
+	Describe("POST /user/confirm", func() {
+		var u *user.User
+		var params url.Values
+
+		BeforeEach(func() {
+			db, err = dbconn.DB()
+			Expect(err).To(BeNil())
+			testhelper.TruncateTables(db.DB())
+
+			u = &user.User{Email: "foo@example.com", Password: "foobar"}
+			err = u.Insert()
+			Expect(err).To(BeNil())
+			Expect(u.ID).NotTo(BeZero())
+			Expect(u.ConfirmedAt.Valid).To(BeFalse())
+
+			params = url.Values{
+				"email":             {u.Email},
+				"confirmation_code": {u.ConfirmationCode},
+			}
+		})
+
+		doRequest := func() {
+			s = httptest.NewServer(server.New())
+			res, err = http.PostForm(s.URL+"/user/confirm", params)
+			Expect(err).To(BeNil())
+		}
+
+		Context("when invalid params are provided", func() {
+			DescribeTable("it returns 422 and does not mark user as confirmed",
+				func(setUp func(), message string) {
+					setUp()
+					doRequest()
+
+					b := &bytes.Buffer{}
+					_, err := b.ReadFrom(res.Body)
+					Expect(err).To(BeNil())
+
+					Expect(res.StatusCode).To(Equal(422))
+					Expect(b.String()).To(MatchJSON(`{
+						"error": "invalid_params",
+						"confirmed": false,
+						"error_description": "` + message + `"
+					}`))
+
+					err = db.Where("id = ?", u.ID).First(u).Error
+					Expect(err).To(BeNil())
+
+					Expect(u.ConfirmedAt.Valid).To(BeFalse())
+				},
+
+				Entry("require email", func() {
+					params.Del("email")
+				}, "email is required"),
+
+				Entry("require confirmation code", func() {
+					params.Del("confirmation_code")
+				}, "confirmation_code is required"),
+
+				Entry("validate presence of email", func() {
+					params.Set("email", u.Email+"x")
+				}, "invalid email or confirmation_code"),
+
+				Entry("validate confirmation code", func() {
+					params.Set("confirmation_code", u.ConfirmationCode+"x")
+				}, "invalid email or confirmation_code"),
+			)
+		})
+
+		Context("when the correct confirmation code is provided", func() {
+			It("returns 200 and marks user as confirmd", func() {
+				doRequest()
+
+				b := &bytes.Buffer{}
+				_, err := b.ReadFrom(res.Body)
+				Expect(err).To(BeNil())
+
+				Expect(res.StatusCode).To(Equal(http.StatusOK))
+				Expect(b.String()).To(MatchJSON(`{
+					"confirmed": true
+				}`))
+
+				err = db.Where("id = ?", u.ID).First(u).Error
+				Expect(err).To(BeNil())
+
+				Expect(u.ConfirmedAt.Valid).To(BeTrue())
+				Expect(u.ConfirmedAt.Time.Unix()).NotTo(BeZero())
 			})
 		})
 	})

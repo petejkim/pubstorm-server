@@ -37,3 +37,36 @@ POST /users
     }
   }
   ```
+
+## Confirming user's email address
+
+```
+POST /user/confirm
+```
+
+**POST Form Params**
+
+| Key                | Type   | Required? | Description       |
+| ------------------ | ------ | --------- | ----------------- |
+| email              | string | Required  | Email address     |
+| confirmation\_code | string | Required  | Confirmation Code |
+
+**Possible responses**
+
+* **200** - Confirmed
+  Example:
+  ```json
+  {
+    "confirmed": true
+  }
+  ```
+
+* **422** - Invalid params
+  Example:
+  ```json
+  {
+    "confirmed": false,
+    "error": "invalid_params",
+    "error_description": "invalid email or confirmation_code"
+  }
+  ```

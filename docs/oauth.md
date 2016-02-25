@@ -37,6 +37,13 @@ POST /oauth/token
   }
   ```
 
+  ```json
+  {
+    "error": "invalid_grant",
+    "error_description": "user has not confirmed email address"
+  }
+  ```
+
 * **401** - Invalid Authorize header
   Example:
   ```json

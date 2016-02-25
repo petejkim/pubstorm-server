@@ -10,5 +10,6 @@ import (
 func Draw(r *gin.Engine) {
 	r.GET("/ping", ping.Ping)
 	r.POST("/users", users.Create)
+	r.POST("/user/confirm", users.Confirm)
 	r.POST("/oauth/token", oauth.CreateToken)
 }
