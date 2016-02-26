@@ -10,7 +10,7 @@ var MailerEmail = os.Getenv("MAILER_EMAIL")
 
 func init() {
 	if MailerEmail == "" {
-		MailerEmail = "support@rise.sh"
+		MailerEmail = "Rise.sh <support@rise.sh>"
 	}
 }
 

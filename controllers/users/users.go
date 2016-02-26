@@ -33,13 +33,13 @@ func Create(c *gin.Context) {
 		subject := "Please confirm your Rise account email address"
 
 		txt := "Welcome to Rise!\n\n" +
-			"To complete sign up, please confirm your email address by entering the following confirmation code when prompted by Rise CLI:\n\n" +
+			"To complete sign up, please confirm your email address by entering the following confirmation code when logging in for the first time:\n\n" +
 			u.ConfirmationCode + "\n\n" +
 			"Thanks,\n" +
 			"Rise"
 
 		html := "<p>Welcome to Rise!</p>" +
-			"<p>To complete sign up, please confirm your email address by entering the following confirmation code when prompted by Rise CLI:</p>" +
+			"<p>To complete sign up, please confirm your email address by entering the following confirmation code when logging in for the first time:</p>" +
 			"<p><strong>" + u.ConfirmationCode + "</strong></p>" +
 			"<p>Thanks,<br />" +
 			"Rise</p>"
