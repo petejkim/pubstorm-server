@@ -165,5 +165,26 @@ var _ = Describe("User", func() {
 				Expect(u.ConfirmedAt.Valid).To(BeFalse())
 			})
 		})
+
+		Context("when user is already confirmed", func() {
+			It("returns false and does not re-confirm user", func() {
+				confirmed, err := user.Confirm(u.Email, u.ConfirmationCode)
+				Expect(confirmed).To(BeTrue())
+				Expect(err).To(BeNil())
+
+				err = db.Where("id = ?", u.ID).First(u).Error
+				Expect(err).To(BeNil())
+				prevConfirmedAt := u.ConfirmedAt
+
+				confirmed, err = user.Confirm(u.Email, u.ConfirmationCode)
+				Expect(confirmed).To(BeFalse())
+				Expect(err).To(BeNil())
+
+				err = db.Where("id = ?", u.ID).First(u).Error
+				Expect(err).To(BeNil())
+
+				Expect(u.ConfirmedAt.Time.Unix()).To(Equal(prevConfirmedAt.Time.Unix()))
+			})
+		})
 	})
 })

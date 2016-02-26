@@ -105,7 +105,7 @@ func Confirm(email, confirmationCode string) (confirmed bool, err error) {
 	}
 
 	q := db.Table("users").Where(
-		"email = ? AND confirmation_code = ?", email, confirmationCode,
+		"email = ? AND confirmation_code = ? AND confirmed_at IS NULL", email, confirmationCode,
 	).Update("confirmed_at", gorm.Expr("now()"))
 	if err = q.Error; err != nil {
 		return false, err
