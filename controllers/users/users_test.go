@@ -205,6 +205,38 @@ var _ = Describe("Users", func() {
 				Expect(userCount).To(BeZero())
 			})
 		})
+
+		Context("when email is taken", func() {
+			BeforeEach(func() {
+				db, err = dbconn.DB()
+				Expect(err).To(BeNil())
+				testhelper.TruncateTables(db.DB())
+
+				u := &user.User{Email: "foo@example.com", Password: "foobar"}
+				err = u.Insert(db)
+				Expect(err).To(BeNil())
+
+				doRequest(url.Values{
+					"email":    {"foo@example.com"},
+					"password": {"foobar"},
+				})
+			})
+
+			It("returns 422", func() {
+				Expect(res.StatusCode).To(Equal(422))
+
+				b := &bytes.Buffer{}
+				_, err := b.ReadFrom(res.Body)
+				Expect(err).To(BeNil())
+
+				Expect(b.String()).To(MatchJSON(`{
+					"error": "invalid_params",
+					"errors": {
+						"email": "is taken"
+					}
+				}`))
+			})
+		})
 	})
 
 	Describe("POST /user/confirm", func() {

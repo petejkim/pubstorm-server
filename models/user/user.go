@@ -1,6 +1,7 @@
 package user
 
 import (
+	"errors"
 	"regexp"
 
 	"github.com/jinzhu/gorm"
@@ -8,7 +9,11 @@ import (
 	"github.com/nitrous-io/rise-server/dbconn"
 )
 
-var emailRe = regexp.MustCompile(`\A[^@\s]+@([^@\s]+\.)+[^@\s]+\z`)
+var (
+	emailRe = regexp.MustCompile(`\A[^@\s]+@([^@\s]+\.)+[^@\s]+\z`)
+
+	ErrEmailTaken = errors.New("email is taken")
+)
 
 type User struct {
 	gorm.Model
@@ -62,13 +67,18 @@ func (u *User) Validate() map[string]string {
 
 // Inserts the record into the DB, encrypting the Password field
 func (u *User) Insert(db *gorm.DB) error {
-	return db.Table("users").Raw(`INSERT INTO users (
+	err := db.Table("users").Raw(`INSERT INTO users (
 		email,
 		encrypted_password
 	) VALUES (
 		?,
 		crypt(?, gen_salt('bf'))
 	) RETURNING *;`, u.Email, u.Password).Scan(u).Error
+
+	if e, ok := err.(*pq.Error); ok && e.Code.Name() == "unique_violation" && e.Constraint == "index_users_on_email" {
+		return ErrEmailTaken
+	}
+	return err
 }
 
 // Checks email and password and return user if credentials are valid

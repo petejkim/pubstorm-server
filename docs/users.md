@@ -38,6 +38,15 @@ POST /users
   }
   ```
 
+  ```json
+  {
+    "error": "invalid_params",
+    "errors": {
+      "email": "is taken"
+    }
+  }
+  ```
+
 ## Confirming user's email address
 
 ```

@@ -37,6 +37,15 @@ func Create(c *gin.Context) {
 	defer tx.Rollback()
 
 	if err := u.Insert(tx); err != nil {
+		if err == user.ErrEmailTaken {
+			c.JSON(422, gin.H{
+				"error": "invalid_params",
+				"errors": map[string]string{
+					"email": "is taken",
+				},
+			})
+			return
+		}
 		common.InternalServerError(c, err)
 		return
 	}

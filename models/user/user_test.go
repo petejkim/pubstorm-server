@@ -90,8 +90,7 @@ var _ = Describe("User", func() {
 		Context("when the record already exists in the DB", func() {
 			It("returns an error", func() {
 				err = u.Insert(db) // attempt to save one more time
-				Expect(err).NotTo(BeNil())
-				Expect(err.Error()).To(ContainSubstring("duplicate key value violates unique constraint"))
+				Expect(err).To(Equal(user.ErrEmailTaken))
 			})
 		})
 	})
