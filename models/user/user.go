@@ -61,12 +61,7 @@ func (u *User) Validate() map[string]string {
 }
 
 // Inserts the record into the DB, encrypting the Password field
-func (u *User) Insert() error {
-	db, err := dbconn.DB()
-	if err != nil {
-		return err
-	}
-
+func (u *User) Insert(db *gorm.DB) error {
 	return db.Table("users").Raw(`INSERT INTO users (
 		email,
 		encrypted_password
@@ -116,4 +111,24 @@ func Confirm(email, confirmationCode string) (confirmed bool, err error) {
 	}
 
 	return true, nil
+}
+
+// Finds user by email
+func FindByEmail(email string) (u *User, err error) {
+	db, err := dbconn.DB()
+	if err != nil {
+		return nil, err
+	}
+
+	u = &User{}
+	q := db.Table("users").Where("email = ?", email).First(u)
+	if err = q.Error; err != nil {
+		// don't treat record not found as error
+		if err == gorm.RecordNotFound {
+			return nil, nil
+		}
+		return nil, err
+	}
+
+	return u, nil
 }

@@ -5,6 +5,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/nitrous-io/rise-server/common"
+	"github.com/nitrous-io/rise-server/dbconn"
 	"github.com/nitrous-io/rise-server/models/user"
 )
 
@@ -22,39 +23,33 @@ func Create(c *gin.Context) {
 		return
 	}
 
-	if err := u.Insert(); err != nil {
-		c.JSON(500, gin.H{
-			"error": "internal_server_error",
-		})
+	db, err := dbconn.DB()
+	if err != nil {
+		common.InternalServerError(c, err)
 		return
 	}
 
-	go func() {
-		subject := "Please confirm your Rise account email address"
+	tx := db.Begin()
+	if err := tx.Error; err != nil {
+		common.InternalServerError(c, err)
+		return
+	}
+	defer tx.Rollback()
 
-		txt := "Welcome to Rise!\n\n" +
-			"To complete sign up, please confirm your email address by entering the following confirmation code when logging in for the first time:\n\n" +
-			u.ConfirmationCode + "\n\n" +
-			"Thanks,\n" +
-			"Rise"
+	if err := u.Insert(tx); err != nil {
+		common.InternalServerError(c, err)
+		return
+	}
 
-		html := "<p>Welcome to Rise!</p>" +
-			"<p>To complete sign up, please confirm your email address by entering the following confirmation code when logging in for the first time:</p>" +
-			"<p><strong>" + u.ConfirmationCode + "</strong></p>" +
-			"<p>Thanks,<br />" +
-			"Rise</p>"
+	if err := sendConfirmationEmail(u); err != nil {
+		common.InternalServerError(c, err)
+		return
+	}
 
-		if err := common.SendMail(
-			[]string{u.Email}, // tos
-			nil,               // ccs
-			nil,               // bccs
-			subject,           // subject
-			txt,               // text body
-			html,              // html body
-		); err != nil {
-			// TODO: log error
-		}
-	}()
+	if err := tx.Commit().Error; err != nil {
+		common.InternalServerError(c, err)
+		return
+	}
 
 	c.JSON(http.StatusCreated, gin.H{
 		"user": u.AsJSON(),
@@ -75,9 +70,7 @@ func Confirm(c *gin.Context) {
 
 	confirmed, err := user.Confirm(c.PostForm("email"), c.PostForm("confirmation_code"))
 	if err != nil {
-		c.JSON(500, gin.H{
-			"error": "internal_server_error",
-		})
+		common.InternalServerError(c, err)
 		return
 	}
 
@@ -93,4 +86,65 @@ func Confirm(c *gin.Context) {
 	c.JSON(200, gin.H{
 		"confirmed": true,
 	})
+}
+
+func ResendConfirmationCode(c *gin.Context) {
+	email := c.PostForm("email")
+	if email == "" {
+		c.JSON(422, gin.H{
+			"error":             "invalid_params",
+			"error_description": "email is required",
+			"sent":              false,
+		})
+		return
+	}
+
+	u, err := user.FindByEmail(email)
+	if err != nil {
+		common.InternalServerError(c, err)
+		return
+	}
+
+	if u == nil || u.ConfirmedAt.Valid {
+		c.JSON(422, gin.H{
+			"error":             "invalid_params",
+			"error_description": "email is not found or already confirmed",
+			"sent":              false,
+		})
+		return
+	}
+
+	if err = sendConfirmationEmail(u); err != nil {
+		common.InternalServerError(c, err)
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"sent": true,
+	})
+}
+
+func sendConfirmationEmail(u *user.User) error {
+	subject := "Please confirm your Rise account email address"
+
+	txt := "Welcome to Rise!\n\n" +
+		"To complete sign up, please confirm your email address by entering the following confirmation code when logging in for the first time:\n\n" +
+		u.ConfirmationCode + "\n\n" +
+		"Thanks,\n" +
+		"Rise"
+
+	html := "<p>Welcome to Rise!</p>" +
+		"<p>To complete sign up, please confirm your email address by entering the following confirmation code when logging in for the first time:</p>" +
+		"<p><strong>" + u.ConfirmationCode + "</strong></p>" +
+		"<p>Thanks,<br />" +
+		"Rise</p>"
+
+	return common.SendMail(
+		[]string{u.Email}, // tos
+		nil,               // ccs
+		nil,               // bccs
+		subject,           // subject
+		txt,               // text body
+		html,              // html body
+	)
 }

@@ -1,8 +1,10 @@
 package common
 
 import (
+	"net/http"
 	"os"
 
+	"github.com/gin-gonic/gin"
 	"github.com/nitrous-io/rise-server/pkg/mailer"
 )
 
@@ -18,4 +20,10 @@ var Mailer mailer.Mailer = mailer.NewSendGridMailer(os.Getenv("SENDGRID_USERNAME
 
 func SendMail(tos, ccs, bccs []string, subject, body, htmltext string) error {
 	return Mailer.SendMail(MailerEmail, tos, ccs, bccs, MailerEmail, subject, body, htmltext)
+}
+
+func InternalServerError(c *gin.Context, err error) {
+	c.JSON(http.StatusInternalServerError, gin.H{
+		"error": "internal_server_error",
+	})
 }

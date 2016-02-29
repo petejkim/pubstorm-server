@@ -70,3 +70,35 @@ POST /user/confirm
     "error_description": "invalid email or confirmation_code"
   }
   ```
+
+## Resending user's confirmation code
+
+```
+POST /user/confirm/resend
+```
+
+**POST Form Params**
+
+| Key                | Type   | Required? | Description       |
+| ------------------ | ------ | --------- | ----------------- |
+| email              | string | Required  | Email address     |
+
+**Possible responses**
+
+* **200** - Sent
+  Example:
+  ```json
+  {
+    "sent": true
+  }
+  ```
+
+* **422** - Invalid params
+  Example:
+  ```json
+  {
+    "error": "invalid_params",
+    "error_description": "email is not found or already confirmed",
+    "sent": false
+  }
+  ```

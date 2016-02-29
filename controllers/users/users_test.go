@@ -110,6 +110,7 @@ var _ = Describe("Users", func() {
 
 			It("sends an email with confirmation code to user", func() {
 				Expect(fakeMailer.SendMailCalled).To(BeTrue())
+
 				Expect(fakeMailer.From).To(Equal(common.MailerEmail))
 				Expect(fakeMailer.Tos).To(Equal([]string{"foo@example.com"}))
 				Expect(fakeMailer.ReplyTo).To(Equal(common.MailerEmail))
@@ -211,12 +212,8 @@ var _ = Describe("Users", func() {
 		var params url.Values
 
 		BeforeEach(func() {
-			db, err = dbconn.DB()
-			Expect(err).To(BeNil())
-			testhelper.TruncateTables(db.DB())
-
 			u = &user.User{Email: "foo@example.com", Password: "foobar"}
-			err = u.Insert()
+			err = u.Insert(db)
 			Expect(err).To(BeNil())
 			Expect(u.ID).NotTo(BeZero())
 			Expect(u.ConfirmedAt.Valid).To(BeFalse())
@@ -292,6 +289,150 @@ var _ = Describe("Users", func() {
 
 				Expect(u.ConfirmedAt.Valid).To(BeTrue())
 				Expect(u.ConfirmedAt.Time.Unix()).NotTo(BeZero())
+			})
+		})
+	})
+
+	Describe("POST /user/confirm/resend", func() {
+		var (
+			fakeMailer *fake.Mailer
+			origMailer mailer.Mailer
+		)
+
+		BeforeEach(func() {
+			origMailer = common.Mailer
+			fakeMailer = &fake.Mailer{}
+			common.Mailer = fakeMailer
+		})
+
+		AfterEach(func() {
+			common.Mailer = origMailer
+		})
+
+		doRequest := func(params url.Values) {
+			s = httptest.NewServer(server.New())
+			res, err = http.PostForm(s.URL+"/user/confirm/resend", params)
+			Expect(err).To(BeNil())
+		}
+
+		Context("when email address is not provided", func() {
+			var u *user.User
+
+			BeforeEach(func() {
+				u = &user.User{Email: "foo@example.com", Password: "foobar"}
+				err = u.Insert(db)
+				Expect(err).To(BeNil())
+				Expect(u.ID).NotTo(BeZero())
+				Expect(u.ConfirmedAt.Valid).To(BeFalse())
+
+				doRequest(url.Values{})
+			})
+
+			It("returns 422 and does not send confirmation code via email", func() {
+				b := &bytes.Buffer{}
+				_, err := b.ReadFrom(res.Body)
+				Expect(err).To(BeNil())
+
+				Expect(res.StatusCode).To(Equal(422))
+				Expect(b.String()).To(MatchJSON(`{
+					"error":             "invalid_params",
+					"error_description": "email is required",
+					"sent": false
+				}`))
+
+				Expect(fakeMailer.SendMailCalled).To(BeFalse())
+			})
+		})
+
+		Context("when email address is provided", func() {
+			var (
+				u      *user.User
+				params url.Values
+			)
+
+			BeforeEach(func() {
+				params = url.Values{
+					"email": {"foo@example.com"},
+				}
+			})
+
+			Context("when user exists", func() {
+				BeforeEach(func() {
+					u = &user.User{Email: "foo@example.com", Password: "foobar"}
+					err = u.Insert(db)
+					Expect(err).To(BeNil())
+					Expect(u.ID).NotTo(BeZero())
+					Expect(u.ConfirmedAt.Valid).To(BeFalse())
+				})
+
+				It("returns 200 OK", func() {
+					doRequest(params)
+					b := &bytes.Buffer{}
+					_, err := b.ReadFrom(res.Body)
+					Expect(err).To(BeNil())
+
+					Expect(res.StatusCode).To(Equal(http.StatusOK))
+					Expect(b.String()).To(MatchJSON(`{
+						"sent": true
+					}`))
+				})
+
+				It("sends an email with confirmation code to user", func() {
+					doRequest(params)
+					Expect(fakeMailer.SendMailCalled).To(BeTrue())
+
+					Expect(fakeMailer.From).To(Equal(common.MailerEmail))
+					Expect(fakeMailer.Tos).To(Equal([]string{"foo@example.com"}))
+					Expect(fakeMailer.ReplyTo).To(Equal(common.MailerEmail))
+
+					Expect(fakeMailer.Subject).To(ContainSubstring("Please confirm"))
+					Expect(fakeMailer.Body).To(ContainSubstring(u.ConfirmationCode))
+					Expect(fakeMailer.HTML).To(ContainSubstring(u.ConfirmationCode))
+				})
+
+				Context("the user is already confirmed", func() {
+					BeforeEach(func() {
+						confirmed, err := user.Confirm(u.Email, u.ConfirmationCode)
+						Expect(confirmed).To(BeTrue())
+						Expect(err).To(BeNil())
+					})
+
+					It("return 422 and does not send an email", func() {
+						doRequest(params)
+						b := &bytes.Buffer{}
+						_, err := b.ReadFrom(res.Body)
+						Expect(err).To(BeNil())
+
+						Expect(res.StatusCode).To(Equal(422))
+						Expect(b.String()).To(MatchJSON(`{
+							"error": "invalid_params",
+							"error_description": "email is not found or already confirmed",
+							"sent": false
+						}`))
+						Expect(fakeMailer.SendMailCalled).To(BeFalse())
+					})
+				})
+			})
+
+			Context("when user does not exist", func() {
+				BeforeEach(func() {
+					doRequest(params)
+				})
+
+				It("returns 422 and does not send confirmation code via email", func() {
+					b := &bytes.Buffer{}
+					_, err := b.ReadFrom(res.Body)
+					Expect(err).To(BeNil())
+
+					Expect(res.StatusCode).To(Equal(422))
+					Expect(b.String()).To(MatchJSON(`{
+						"error": "invalid_params",
+						"error_description": "email is not found or already confirmed",
+						"sent": false
+					}`))
+
+					Expect(fakeMailer.SendMailCalled).To(BeFalse())
+				})
 			})
 		})
 	})

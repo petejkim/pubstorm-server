@@ -42,7 +42,7 @@ var _ = Describe("OAuth", func() {
 		testhelper.TruncateTables(db.DB())
 
 		u = &user.User{Email: "foo@example.com", Password: "foobar"}
-		err = u.Insert()
+		err = u.Insert(db)
 		Expect(err).To(BeNil())
 		Expect(u.ID).NotTo(BeZero())
 

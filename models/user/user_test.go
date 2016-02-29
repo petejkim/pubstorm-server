@@ -76,7 +76,7 @@ var _ = Describe("User", func() {
 				Email:    "harry.potter@gmail.com",
 				Password: "123456",
 			}
-			err = u.Insert()
+			err = u.Insert(db)
 			Expect(err).To(BeNil())
 		})
 
@@ -89,7 +89,7 @@ var _ = Describe("User", func() {
 
 		Context("when the record already exists in the DB", func() {
 			It("returns an error", func() {
-				err = u.Insert() // attempt to save one more time
+				err = u.Insert(db) // attempt to save one more time
 				Expect(err).NotTo(BeNil())
 				Expect(err.Error()).To(ContainSubstring("duplicate key value violates unique constraint"))
 			})
@@ -104,7 +104,7 @@ var _ = Describe("User", func() {
 				Email:    "harry.potter@gmail.com",
 				Password: "123456",
 			}
-			err = u.Insert()
+			err = u.Insert(db)
 			Expect(err).To(BeNil())
 		})
 
@@ -135,7 +135,7 @@ var _ = Describe("User", func() {
 				Email:    "harry.potter@gmail.com",
 				Password: "123456",
 			}
-			err = u.Insert()
+			err = u.Insert(db)
 			Expect(err).To(BeNil())
 		})
 
@@ -184,6 +184,38 @@ var _ = Describe("User", func() {
 				Expect(err).To(BeNil())
 
 				Expect(u.ConfirmedAt.Time.Unix()).To(Equal(prevConfirmedAt.Time.Unix()))
+			})
+		})
+	})
+
+	Describe("FindByEmail()", func() {
+		var u *user.User
+
+		Context("the user exists", func() {
+			BeforeEach(func() {
+				u = &user.User{
+					Email:    "harry.potter@gmail.com",
+					Password: "123456",
+				}
+				err = u.Insert(db)
+				Expect(err).To(BeNil())
+			})
+
+			Context("when the email is valid", func() {
+				It("returns user", func() {
+					u1, err := user.FindByEmail(u.Email)
+					Expect(err).To(BeNil())
+					Expect(u1.ID).To(Equal(u.ID))
+					Expect(u1.Email).To(Equal(u.Email))
+				})
+			})
+		})
+
+		Context("the user does not exist", func() {
+			It("returns nil", func() {
+				u1, err := user.FindByEmail(u.Email)
+				Expect(u1).To(BeNil())
+				Expect(err).To(BeNil())
 			})
 		})
 	})
