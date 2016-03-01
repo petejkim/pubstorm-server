@@ -3,6 +3,7 @@
 	"GoVersion": "go1.6",
 	"Packages": [
 		"github.com/nitrous-io/rise-server",
+		"github.com/nitrous-io/rise-server/common",
 		"github.com/nitrous-io/rise-server/controllers/oauth",
 		"github.com/nitrous-io/rise-server/controllers/ping",
 		"github.com/nitrous-io/rise-server/controllers/users",
@@ -17,6 +18,11 @@
 		"github.com/nitrous-io/rise-server/testhelper/fake"
 	],
 	"Deps": [
+		{
+			"ImportPath": "github.com/Sirupsen/logrus",
+			"Comment": "v0.9.0-15-g219c8cb",
+			"Rev": "219c8cb75c258c552e999735be6df753ffc7afdc"
+		},
 		{
 			"ImportPath": "github.com/gin-gonic/gin",
 			"Comment": "v1.0rc1-221-g27f912f",
@@ -66,6 +72,10 @@
 		{
 			"ImportPath": "golang.org/x/net/context",
 			"Rev": "7f88271ea9913b72aca44fa7fc8af919eacc17ce"
+		},
+		{
+			"ImportPath": "golang.org/x/sys/unix",
+			"Rev": "5eaf0df67e70d6997a9fe0ed24383fa1b01638d3"
 		},
 		{
 			"ImportPath": "gopkg.in/go-playground/validator.v8",
