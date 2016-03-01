@@ -2,10 +2,10 @@ package oauth
 
 import (
 	"encoding/base64"
-	"fmt"
 	"strings"
 
 	"github.com/gin-gonic/gin"
+	"github.com/nitrous-io/rise-server/common"
 	"github.com/nitrous-io/rise-server/dbconn"
 	"github.com/nitrous-io/rise-server/models/oauthclient"
 	"github.com/nitrous-io/rise-server/models/oauthtoken"
@@ -37,9 +37,7 @@ func CreateToken(c *gin.Context) {
 
 	u, err := user.Authenticate(email, password)
 	if err != nil {
-		c.JSON(500, gin.H{
-			"error": "internal_server_error",
-		})
+		common.InternalServerError(c, err)
 		return
 	}
 
@@ -66,9 +64,7 @@ func CreateToken(c *gin.Context) {
 
 		authBytes, err := base64.StdEncoding.DecodeString(authHeader)
 		if err != nil {
-			c.JSON(500, gin.H{
-				"error": "internal_server_error",
-			})
+			common.InternalServerError(c, err)
 			return
 		}
 
@@ -82,9 +78,7 @@ func CreateToken(c *gin.Context) {
 
 	client, err := oauthclient.Authenticate(clientID, clientSecret)
 	if err != nil {
-		c.JSON(500, gin.H{
-			"error": "internal_server_error",
-		})
+		common.InternalServerError(c, err)
 		return
 	}
 
@@ -99,9 +93,7 @@ func CreateToken(c *gin.Context) {
 
 	db, err := dbconn.DB()
 	if err != nil {
-		c.JSON(500, gin.H{
-			"error": "internal_server_error",
-		})
+		common.InternalServerError(c, err)
 		return
 	}
 
@@ -111,10 +103,7 @@ func CreateToken(c *gin.Context) {
 	}
 
 	if err := db.Create(token).Error; err != nil {
-		fmt.Println(err)
-		c.JSON(500, gin.H{
-			"error": "internal_server_error",
-		})
+		common.InternalServerError(c, err)
 		return
 	}
 
