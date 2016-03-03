@@ -63,7 +63,7 @@ func getTables(db *sql.DB) ([]string, error) {
 }
 
 // Do it all http request method
-func MakeRequest(method, url string, data url.Values, headers http.Header, username, password string) (resp *http.Response, err error) {
+func MakeRequest(method, url string, data url.Values, headers http.Header, reqFn func(*http.Request)) (resp *http.Response, err error) {
 	var (
 		req    *http.Request
 		isForm = method == "POST" || method == "PUT" || method == "PATCH"
@@ -82,10 +82,6 @@ func MakeRequest(method, url string, data url.Values, headers http.Header, usern
 		return nil, err
 	}
 
-	if username != "" || password != "" {
-		req.SetBasicAuth(username, password)
-	}
-
 	if isForm {
 		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 	}
@@ -96,6 +92,10 @@ func MakeRequest(method, url string, data url.Values, headers http.Header, usern
 				req.Header.Add(k, h)
 			}
 		}
+	}
+
+	if reqFn != nil {
+		reqFn(req)
 	}
 
 	return http.DefaultClient.Do(req)

@@ -37,6 +37,8 @@ script/migrate up
 
 # Creating a new migration
 script/migrate-new 'create_animals'
+
+# Please try doing script/migrate redo to make sure both up/down work
 ```
 
 ## Test

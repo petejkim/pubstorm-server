@@ -13,4 +13,5 @@ func Draw(r *gin.Engine) {
 	r.POST("/user/confirm", users.Confirm)
 	r.POST("/user/confirm/resend", users.ResendConfirmationCode)
 	r.POST("/oauth/token", oauth.CreateToken)
+	r.DELETE("/oauth/token", oauth.DestroyToken)
 }

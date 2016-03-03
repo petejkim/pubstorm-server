@@ -91,7 +91,9 @@ var _ = Describe("OAuth", func() {
 	Describe("POST /oauth/token", func() {
 		doRequest := func(params url.Values, headers http.Header, clientID string, clientSecret string) {
 			s = httptest.NewServer(server.New())
-			res, err = testhelper.MakeRequest("POST", s.URL+"/oauth/token", params, headers, clientID, clientSecret)
+			res, err = testhelper.MakeRequest("POST", s.URL+"/oauth/token", params, headers, func(req *http.Request) {
+				req.SetBasicAuth(clientID, clientSecret)
+			})
 			Expect(err).To(BeNil())
 		}
 
@@ -277,6 +279,90 @@ var _ = Describe("OAuth", func() {
 					"token_type": "bearer",
 					"client_id": "` + clientID + `"
 				}`))
+			})
+		})
+	})
+
+	Describe("DELETE /oauth/token", func() {
+		var token *oauthtoken.OauthToken
+
+		doRequest := func(params url.Values, headers http.Header) {
+			s = httptest.NewServer(server.New())
+			res, err = testhelper.MakeRequest("DELETE", s.URL+"/oauth/token", params, headers, nil)
+			Expect(err).To(BeNil())
+		}
+
+		BeforeEach(func() {
+			token = &oauthtoken.OauthToken{
+				UserID:        u.ID,
+				OauthClientID: clientDBID,
+			}
+
+			err = db.Create(token).Error
+			Expect(err).To(BeNil())
+		})
+
+		Context("when the Authorization header is missing", func() {
+			BeforeEach(func() {
+				doRequest(nil, nil)
+			})
+
+			It("returns 401 unauthorized", func() {
+				b := &bytes.Buffer{}
+				_, err := b.ReadFrom(res.Body)
+				Expect(err).To(BeNil())
+
+				Expect(res.StatusCode).To(Equal(http.StatusUnauthorized))
+				Expect(b.String()).To(MatchJSON(`{
+					"invalidated": false,
+					"error": "invalid_token",
+					"error_description": "access token is required"
+				}`))
+			})
+		})
+
+		Context("when a non-existent token is given", func() {
+			BeforeEach(func() {
+				doRequest(nil, http.Header{
+					"Authorization": {"Bearer " + token.Token + "xxx"},
+				})
+			})
+
+			It("returns 401 unauthorized", func() {
+				b := &bytes.Buffer{}
+				_, err := b.ReadFrom(res.Body)
+				Expect(err).To(BeNil())
+
+				Expect(res.StatusCode).To(Equal(http.StatusUnauthorized))
+				Expect(b.String()).To(MatchJSON(`{
+					"invalidated": false,
+					"error": "invalid_token",
+					"error_description": "access token is invalid"
+				}`))
+			})
+		})
+
+		Context("when a valid token is given", func() {
+			BeforeEach(func() {
+				doRequest(nil, http.Header{
+					"Authorization": {"Bearer " + token.Token},
+				})
+			})
+
+			It("returns 200 OK and soft-deletes the token", func() {
+				b := &bytes.Buffer{}
+				_, err := b.ReadFrom(res.Body)
+				Expect(err).To(BeNil())
+
+				Expect(res.StatusCode).To(Equal(http.StatusOK))
+				Expect(b.String()).To(MatchJSON(`{
+					"invalidated": true
+				}`))
+
+				var count int
+				err = db.Model(oauthtoken.OauthToken{}).Where("token = ?", token.Token).Count(&count).Error
+				Expect(err).To(BeNil())
+				Expect(count).To(BeZero())
 			})
 		})
 	})

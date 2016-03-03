@@ -1,6 +1,6 @@
 # OAuth
 
-## Obtaining Access Token
+## Obtaining Access Token (Login)
 
 ### Resource Owner Password Credentials Grant
 
@@ -50,5 +50,35 @@ POST /oauth/token
   {
     "error": "invalid_client",
     "error_description": "client credentials are invalid"
+  }
+  ```
+
+## Invalidating Access Token (Logout)
+
+```
+DELETE /oauth/token
+```
+
+**Headers**
+
+| Key           | Value        | Description               |
+| ------------- | ------------ | ------------------------- |
+| Authorization | Bearer TOKEN | TOKEN is the access token |
+
+**Possible responses**
+
+* **200** - Token invalidated
+  ```json
+  {
+    "invalidated": true
+  }
+  ```
+
+* **401** - Invalid token
+  ```json
+  {
+    "invalidated": false,
+    "error": "invalid_token",
+    "error_description": "access token is invalid"
   }
   ```
