@@ -82,7 +82,7 @@ var _ = Describe("User", func() {
 
 		It("saves the record with the password encrypted", func() {
 			var pwHashed bool
-			db.Table("users").Where("email = ? AND encrypted_password = crypt(?, encrypted_password)", u.Email, u.Password).Count(&pwHashed)
+			db.Model(user.User{}).Where("email = ? AND encrypted_password = crypt(?, encrypted_password)", u.Email, u.Password).Count(&pwHashed)
 
 			Expect(pwHashed).To(BeTrue())
 		})

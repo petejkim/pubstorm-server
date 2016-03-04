@@ -102,7 +102,7 @@ var _ = Describe("Users", func() {
 				Expect(u.ConfirmationCode).NotTo(HaveLen(0))
 
 				var pwHashed bool
-				err = db.Table("users").Where("id = ? AND encrypted_password = crypt('foobar', encrypted_password)", u.ID).Count(&pwHashed).Error
+				err = db.Model(user.User{}).Where("id = ? AND encrypted_password = crypt('foobar', encrypted_password)", u.ID).Count(&pwHashed).Error
 				Expect(err).To(BeNil())
 
 				Expect(pwHashed).To(BeTrue())
@@ -144,7 +144,7 @@ var _ = Describe("Users", func() {
 
 			It("does not create a user record in the DB", func() {
 				userCount := 0
-				db.Table("users").Count(&userCount)
+				db.Model(user.User{}).Count(&userCount)
 				Expect(userCount).To(BeZero())
 			})
 		})
@@ -172,7 +172,7 @@ var _ = Describe("Users", func() {
 
 			It("does not create a user record in the DB", func() {
 				userCount := 0
-				db.Table("users").Count(&userCount)
+				db.Model(user.User{}).Count(&userCount)
 				Expect(userCount).To(BeZero())
 			})
 		})
@@ -201,7 +201,7 @@ var _ = Describe("Users", func() {
 
 			It("does not create a user record in the DB", func() {
 				userCount := 0
-				db.Table("users").Count(&userCount)
+				db.Model(user.User{}).Count(&userCount)
 				Expect(userCount).To(BeZero())
 			})
 		})

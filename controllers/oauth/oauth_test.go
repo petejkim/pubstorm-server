@@ -9,6 +9,7 @@ import (
 
 	"github.com/jinzhu/gorm"
 	"github.com/nitrous-io/rise-server/dbconn"
+	"github.com/nitrous-io/rise-server/models/oauthclient"
 	"github.com/nitrous-io/rise-server/models/oauthtoken"
 	"github.com/nitrous-io/rise-server/models/user"
 	"github.com/nitrous-io/rise-server/server"
@@ -30,10 +31,8 @@ var _ = Describe("OAuth", func() {
 		res *http.Response
 		err error
 
-		u            *user.User
-		clientDBID   uint
-		clientID     string
-		clientSecret string
+		u  *user.User
+		oc *oauthclient.OauthClient
 	)
 
 	BeforeEach(func() {
@@ -46,39 +45,20 @@ var _ = Describe("OAuth", func() {
 		Expect(err).To(BeNil())
 		Expect(u.ID).NotTo(BeZero())
 
-		err = db.Table("users").Raw(`
-			UPDATE users
-			SET confirmed_at = now()
-			WHERE id = ?
-			RETURNING *;
-		`, u.ID).Scan(u).Error
+		err = db.Model(&u).Update("confirmed_at", gorm.Expr("now()")).Error
 		Expect(err).To(BeNil())
 
-		var queryRes = struct {
-			ID           uint
-			ClientID     string
-			ClientSecret string
-		}{}
-
-		err = db.Table("oauth_clients").Raw(`
-			INSERT INTO oauth_clients (
-				email,
-				name,
-				organization
-			) VALUES (
-				'foo@example.com',
-				'Foo CLI',
-				'FooCorp'
-			) RETURNING id, client_id, client_secret;
-		`).Scan(&queryRes).Error
+		oc = &oauthclient.OauthClient{
+			Email:        "foo@example.com",
+			Name:         "Foo CLI",
+			Organization: "FooCorp",
+		}
+		err := db.Create(oc).Error
 		Expect(err).To(BeNil())
 
-		clientDBID = queryRes.ID
-		clientID = queryRes.ClientID
-		clientSecret = queryRes.ClientSecret
-		Expect(clientDBID).NotTo(BeZero())
-		Expect(clientID).NotTo(HaveLen(0))
-		Expect(clientSecret).NotTo(HaveLen(0))
+		Expect(oc.ID).NotTo(BeZero())
+		Expect(oc.ClientID).NotTo(HaveLen(0))
+		Expect(oc.ClientSecret).NotTo(HaveLen(0))
 	})
 
 	AfterEach(func() {
@@ -103,7 +83,7 @@ var _ = Describe("OAuth", func() {
 					"grant_type": {"login_token"},
 					"username":   {"foo@example.com"},
 					"password":   {"foobar"},
-				}, nil, clientID, clientSecret)
+				}, nil, oc.ClientID, oc.ClientSecret)
 			})
 
 			It("returns 400 with 'unsupported_grant_type' error", func() {
@@ -132,7 +112,7 @@ var _ = Describe("OAuth", func() {
 						"password":   {"foobar"},
 					}
 					params.Del(param)
-					doRequest(params, nil, clientID, clientSecret)
+					doRequest(params, nil, oc.ClientID, oc.ClientSecret)
 
 					b := &bytes.Buffer{}
 					_, err := b.ReadFrom(res.Body)
@@ -163,7 +143,7 @@ var _ = Describe("OAuth", func() {
 						"password":   {"foobar"},
 					}
 					params.Set(param, params.Get(param)+"x") // make entry invalid
-					doRequest(params, nil, clientID, clientSecret)
+					doRequest(params, nil, oc.ClientID, oc.ClientSecret)
 
 					b := &bytes.Buffer{}
 					_, err := b.ReadFrom(res.Body)
@@ -186,19 +166,14 @@ var _ = Describe("OAuth", func() {
 
 		Context("when the user hasn't confirmed email", func() {
 			BeforeEach(func() {
-				err = db.Table("users").Raw(`
-					UPDATE users
-					SET confirmed_at = NULL
-					WHERE id = ?
-					RETURNING *;
-				`, u.ID).Scan(u).Error
+				err = db.Model(&u).Update("confirmed_at", nil).Error
 				Expect(err).To(BeNil())
 
 				doRequest(url.Values{
 					"grant_type": {"password"},
 					"username":   {"foo@example.com"},
 					"password":   {"foobar"},
-				}, nil, clientID, clientSecret)
+				}, nil, oc.ClientID, oc.ClientSecret)
 			})
 
 			It("returns 400 with 'invalid_grant' error", func() {
@@ -244,10 +219,10 @@ var _ = Describe("OAuth", func() {
 					Expect(err).To(Equal(gorm.RecordNotFound))
 				},
 				Entry("client id should be valid", func() {
-					doRequest(params, nil, "InvalidClientID", clientSecret)
+					doRequest(params, nil, "InvalidClientID", oc.ClientSecret)
 				}),
 				Entry("client secret should be valid", func() {
-					doRequest(params, nil, clientID, "InvalidClientSecret")
+					doRequest(params, nil, oc.ClientID, "InvalidClientSecret")
 				}),
 			)
 		})
@@ -258,7 +233,7 @@ var _ = Describe("OAuth", func() {
 					"grant_type": {"password"},
 					"username":   {"foo@example.com"},
 					"password":   {"foobar"},
-				}, nil, clientID, clientSecret)
+				}, nil, oc.ClientID, oc.ClientSecret)
 			})
 
 			It("returns 200 with new access token", func() {
@@ -271,13 +246,13 @@ var _ = Describe("OAuth", func() {
 				Expect(err).To(BeNil())
 
 				Expect(tok.UserID).To(Equal(u.ID))
-				Expect(tok.OauthClientID).To(Equal(clientDBID))
+				Expect(tok.OauthClientID).To(Equal(oc.ID))
 
 				Expect(res.StatusCode).To(Equal(http.StatusOK))
 				Expect(b.String()).To(MatchJSON(`{
 					"access_token": "` + tok.Token + `",
 					"token_type": "bearer",
-					"client_id": "` + clientID + `"
+					"client_id": "` + oc.ClientID + `"
 				}`))
 			})
 		})
@@ -295,7 +270,7 @@ var _ = Describe("OAuth", func() {
 		BeforeEach(func() {
 			token = &oauthtoken.OauthToken{
 				UserID:        u.ID,
-				OauthClientID: clientDBID,
+				OauthClientID: oc.ID,
 			}
 
 			err = db.Create(token).Error

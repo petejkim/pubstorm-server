@@ -2,6 +2,7 @@ package user
 
 import (
 	"errors"
+	"os/user"
 	"regexp"
 
 	"github.com/jinzhu/gorm"
@@ -67,7 +68,7 @@ func (u *User) Validate() map[string]string {
 
 // Inserts the record into the DB, encrypting the Password field
 func (u *User) Insert(db *gorm.DB) error {
-	err := db.Table("users").Raw(`INSERT INTO users (
+	err := db.Raw(`INSERT INTO users (
 		email,
 		encrypted_password
 	) VALUES (
@@ -109,7 +110,7 @@ func Confirm(email, confirmationCode string) (confirmed bool, err error) {
 		return false, err
 	}
 
-	q := db.Table("users").Where(
+	q := db.Model(user.User{}).Where(
 		"email = ? AND confirmation_code = ? AND confirmed_at IS NULL", email, confirmationCode,
 	).Update("confirmed_at", gorm.Expr("now()"))
 	if err = q.Error; err != nil {
