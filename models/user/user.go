@@ -131,7 +131,7 @@ func FindByEmail(email string) (u *User, err error) {
 	}
 
 	u = &User{}
-	q := db.Table("users").Where("email = ?", email).First(u)
+	q := db.Where("email = ?", email).First(u)
 	if err = q.Error; err != nil {
 		// don't treat record not found as error
 		if err == gorm.RecordNotFound {

@@ -7,9 +7,6 @@ import (
 
 func New() *gin.Engine {
 	r := gin.New()
-
-	configMiddleware(r)
 	routes.Draw(r)
-
 	return r
 }

@@ -188,8 +188,6 @@ var _ = Describe("User", func() {
 	})
 
 	Describe("FindByEmail()", func() {
-		var u *user.User
-
 		Context("the user exists", func() {
 			BeforeEach(func() {
 				u = &user.User{
@@ -208,13 +206,13 @@ var _ = Describe("User", func() {
 					Expect(u1.Email).To(Equal(u.Email))
 				})
 			})
-		})
 
-		Context("the user does not exist", func() {
-			It("returns nil", func() {
-				u1, err := user.FindByEmail(u.Email)
-				Expect(u1).To(BeNil())
-				Expect(err).To(BeNil())
+			Context("the user does not exist", func() {
+				It("returns nil", func() {
+					u1, err := user.FindByEmail(u.Email + "xx")
+					Expect(u1).To(BeNil())
+					Expect(err).To(BeNil())
+				})
 			})
 		})
 	})

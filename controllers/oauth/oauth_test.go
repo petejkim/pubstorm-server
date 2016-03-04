@@ -314,7 +314,6 @@ var _ = Describe("OAuth", func() {
 
 				Expect(res.StatusCode).To(Equal(http.StatusUnauthorized))
 				Expect(b.String()).To(MatchJSON(`{
-					"invalidated": false,
 					"error": "invalid_token",
 					"error_description": "access token is required"
 				}`))
@@ -335,7 +334,6 @@ var _ = Describe("OAuth", func() {
 
 				Expect(res.StatusCode).To(Equal(http.StatusUnauthorized))
 				Expect(b.String()).To(MatchJSON(`{
-					"invalidated": false,
 					"error": "invalid_token",
 					"error_description": "access token is invalid"
 				}`))

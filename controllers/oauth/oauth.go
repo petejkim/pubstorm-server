@@ -2,18 +2,16 @@ package oauth
 
 import (
 	"encoding/base64"
-	"regexp"
 	"strings"
 
 	"github.com/gin-gonic/gin"
 	"github.com/nitrous-io/rise-server/common"
+	"github.com/nitrous-io/rise-server/controllers"
 	"github.com/nitrous-io/rise-server/dbconn"
 	"github.com/nitrous-io/rise-server/models/oauthclient"
 	"github.com/nitrous-io/rise-server/models/oauthtoken"
 	"github.com/nitrous-io/rise-server/models/user"
 )
-
-var bearerTokenAuthHeaderRe = regexp.MustCompile(`\A\s*Bearer\s+([\S]+)\s*\z`)
 
 func CreateToken(c *gin.Context) {
 	for _, p := range []string{"grant_type", "username", "password"} {
@@ -118,37 +116,21 @@ func CreateToken(c *gin.Context) {
 }
 
 func DestroyToken(c *gin.Context) {
-	authHeader := c.Request.Header.Get("Authorization")
-	match := bearerTokenAuthHeaderRe.FindStringSubmatch(authHeader)
-	if match == nil || len(match) < 1 {
-		c.Header("WWW-Authenticate", `Bearer realm="rise-user"`)
-		c.JSON(401, gin.H{
-			"invalidated":       false,
-			"error":             "invalid_token",
-			"error_description": "access token is required",
-		})
-		return
-	}
-
 	db, err := dbconn.DB()
 	if err != nil {
 		common.InternalServerError(c, err)
 		return
 	}
 
-	delQuery := db.Where("token = ?", match[1]).Delete(oauthtoken.OauthToken{})
-	if err := delQuery.Error; err != nil {
+	t := controllers.CurrentToken(c)
+	if t == nil {
 		common.InternalServerError(c, err)
 		return
 	}
 
-	if delQuery.RowsAffected == 0 {
-		c.Header("WWW-Authenticate", `Bearer realm="rise-user"`)
-		c.JSON(401, gin.H{
-			"invalidated":       false,
-			"error":             "invalid_token",
-			"error_description": "access token is invalid",
-		})
+	delQuery := db.Where("token = ?", t.Token).Delete(oauthtoken.OauthToken{})
+	if err := delQuery.Error; err != nil {
+		common.InternalServerError(c, err)
 		return
 	}
 
