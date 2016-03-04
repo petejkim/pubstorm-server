@@ -14,6 +14,7 @@ import (
 	"github.com/nitrous-io/rise-server/models/user"
 	"github.com/nitrous-io/rise-server/server"
 	"github.com/nitrous-io/rise-server/testhelper"
+	"github.com/nitrous-io/rise-server/testhelper/factories"
 	. "github.com/onsi/ginkgo"
 	. "github.com/onsi/ginkgo/extensions/table"
 	. "github.com/onsi/gomega"
@@ -40,25 +41,7 @@ var _ = Describe("OAuth", func() {
 		Expect(err).To(BeNil())
 		testhelper.TruncateTables(db.DB())
 
-		u = &user.User{Email: "foo@example.com", Password: "foobar"}
-		err = u.Insert(db)
-		Expect(err).To(BeNil())
-		Expect(u.ID).NotTo(BeZero())
-
-		err = db.Model(&u).Update("confirmed_at", gorm.Expr("now()")).Error
-		Expect(err).To(BeNil())
-
-		oc = &oauthclient.OauthClient{
-			Email:        "foo@example.com",
-			Name:         "Foo CLI",
-			Organization: "FooCorp",
-		}
-		err := db.Create(oc).Error
-		Expect(err).To(BeNil())
-
-		Expect(oc.ID).NotTo(BeZero())
-		Expect(oc.ClientID).NotTo(HaveLen(0))
-		Expect(oc.ClientSecret).NotTo(HaveLen(0))
+		u, oc = factories.AuthDuo(db)
 	})
 
 	AfterEach(func() {
