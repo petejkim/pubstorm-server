@@ -5,6 +5,7 @@ import (
 	"regexp"
 
 	"github.com/gin-gonic/gin"
+	"github.com/jinzhu/gorm"
 	"github.com/nitrous-io/rise-server/common"
 	"github.com/nitrous-io/rise-server/controllers"
 	"github.com/nitrous-io/rise-server/dbconn"
@@ -54,7 +55,15 @@ func RequireToken(c *gin.Context) {
 	u := &user.User{}
 
 	if err := db.Model(&t).Related(&u).Error; err != nil {
-		common.InternalServerError(c, err)
+		if err == gorm.RecordNotFound {
+			c.Header("WWW-Authenticate", `Bearer realm="rise-user"`)
+			c.JSON(http.StatusUnauthorized, gin.H{
+				"error":             "invalid_token",
+				"error_description": "access token is invalid",
+			})
+		} else {
+			common.InternalServerError(c, err)
+		}
 		c.Abort()
 		return
 	}

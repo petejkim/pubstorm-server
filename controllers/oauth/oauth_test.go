@@ -15,6 +15,7 @@ import (
 	"github.com/nitrous-io/rise-server/server"
 	"github.com/nitrous-io/rise-server/testhelper"
 	"github.com/nitrous-io/rise-server/testhelper/factories"
+	"github.com/nitrous-io/rise-server/testhelper/shared"
 	. "github.com/onsi/ginkgo"
 	. "github.com/onsi/ginkgo/extensions/table"
 	. "github.com/onsi/gomega"
@@ -246,67 +247,33 @@ var _ = Describe("OAuth", func() {
 	})
 
 	Describe("DELETE /oauth/token", func() {
-		var token *oauthtoken.OauthToken
-
-		doRequest := func(params url.Values, headers http.Header) {
-			s = httptest.NewServer(server.New())
-			res, err = testhelper.MakeRequest("DELETE", s.URL+"/oauth/token", params, headers, nil)
-			Expect(err).To(BeNil())
-		}
+		var (
+			t       *oauthtoken.OauthToken
+			headers http.Header
+		)
 
 		BeforeEach(func() {
-			token = &oauthtoken.OauthToken{
+			t = &oauthtoken.OauthToken{
 				UserID:        u.ID,
 				OauthClientID: oc.ID,
 			}
-
-			err = db.Create(token).Error
+			err = db.Create(t).Error
 			Expect(err).To(BeNil())
+
+			headers = http.Header{
+				"Authorization": {"Bearer " + t.Token},
+			}
 		})
 
-		Context("when the Authorization header is missing", func() {
-			BeforeEach(func() {
-				doRequest(nil, nil)
-			})
-
-			It("returns 401 unauthorized", func() {
-				b := &bytes.Buffer{}
-				_, err := b.ReadFrom(res.Body)
-				Expect(err).To(BeNil())
-
-				Expect(res.StatusCode).To(Equal(http.StatusUnauthorized))
-				Expect(b.String()).To(MatchJSON(`{
-					"error": "invalid_token",
-					"error_description": "access token is required"
-				}`))
-			})
-		})
-
-		Context("when a non-existent token is given", func() {
-			BeforeEach(func() {
-				doRequest(nil, http.Header{
-					"Authorization": {"Bearer " + token.Token + "xxx"},
-				})
-			})
-
-			It("returns 401 unauthorized", func() {
-				b := &bytes.Buffer{}
-				_, err := b.ReadFrom(res.Body)
-				Expect(err).To(BeNil())
-
-				Expect(res.StatusCode).To(Equal(http.StatusUnauthorized))
-				Expect(b.String()).To(MatchJSON(`{
-					"error": "invalid_token",
-					"error_description": "access token is invalid"
-				}`))
-			})
-		})
+		doRequest := func() {
+			s = httptest.NewServer(server.New())
+			res, err = testhelper.MakeRequest("DELETE", s.URL+"/oauth/token", nil, headers, nil)
+			Expect(err).To(BeNil())
+		}
 
 		Context("when a valid token is given", func() {
 			BeforeEach(func() {
-				doRequest(nil, http.Header{
-					"Authorization": {"Bearer " + token.Token},
-				})
+				doRequest()
 			})
 
 			It("returns 200 OK and soft-deletes the token", func() {
@@ -320,10 +287,17 @@ var _ = Describe("OAuth", func() {
 				}`))
 
 				var count int
-				err = db.Model(oauthtoken.OauthToken{}).Where("token = ?", token.Token).Count(&count).Error
+				err = db.Model(oauthtoken.OauthToken{}).Where("token = ?", t.Token).Count(&count).Error
 				Expect(err).To(BeNil())
 				Expect(count).To(BeZero())
 			})
+		})
+
+		shared.ItRequiresAuthentication(func() (*gorm.DB, *user.User, *http.Header) {
+			return db, u, &headers
+		}, func() *http.Response {
+			doRequest()
+			return res
 		})
 	})
 })

@@ -78,7 +78,8 @@ var _ = Describe("Users", func() {
 					"password": {"foobar"},
 				})
 				u = &user.User{}
-				db.Last(u)
+				err := db.Last(u).Error
+				Expect(err).To(BeNil())
 			})
 
 			It("returns 201 created", func() {
