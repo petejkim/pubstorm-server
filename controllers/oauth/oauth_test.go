@@ -64,8 +64,8 @@ var _ = Describe("OAuth", func() {
 			BeforeEach(func() {
 				doRequest(url.Values{
 					"grant_type": {"login_token"},
-					"username":   {"foo@example.com"},
-					"password":   {"foobar"},
+					"username":   {u.Email},
+					"password":   {u.Password},
 				}, nil, oc.ClientID, oc.ClientSecret)
 			})
 
@@ -91,8 +91,8 @@ var _ = Describe("OAuth", func() {
 				func(param string) {
 					params := url.Values{
 						"grant_type": {"password"},
-						"username":   {"foo@example.com"},
-						"password":   {"foobar"},
+						"username":   {u.Email},
+						"password":   {u.Password},
 					}
 					params.Del(param)
 					doRequest(params, nil, oc.ClientID, oc.ClientSecret)
@@ -122,8 +122,8 @@ var _ = Describe("OAuth", func() {
 				func(param string) {
 					params := url.Values{
 						"grant_type": {"password"},
-						"username":   {"foo@example.com"},
-						"password":   {"foobar"},
+						"username":   {u.Email},
+						"password":   {u.Password},
 					}
 					params.Set(param, params.Get(param)+"x") // make entry invalid
 					doRequest(params, nil, oc.ClientID, oc.ClientSecret)
@@ -154,8 +154,8 @@ var _ = Describe("OAuth", func() {
 
 				doRequest(url.Values{
 					"grant_type": {"password"},
-					"username":   {"foo@example.com"},
-					"password":   {"foobar"},
+					"username":   {u.Email},
+					"password":   {u.Password},
 				}, nil, oc.ClientID, oc.ClientSecret)
 			})
 
@@ -177,11 +177,15 @@ var _ = Describe("OAuth", func() {
 		})
 
 		Context("when the client credentials are invalid", func() {
-			params := url.Values{
-				"grant_type": {"password"},
-				"username":   {"foo@example.com"},
-				"password":   {"foobar"},
-			}
+			var params url.Values
+
+			BeforeEach(func() {
+				params = url.Values{
+					"grant_type": {"password"},
+					"username":   {u.Email},
+					"password":   {u.Password},
+				}
+			})
 
 			DescribeTable("it returns 401 with 'invalid_client' error",
 				func(doReq func()) {
@@ -214,8 +218,8 @@ var _ = Describe("OAuth", func() {
 			BeforeEach(func() {
 				doRequest(url.Values{
 					"grant_type": {"password"},
-					"username":   {"foo@example.com"},
-					"password":   {"foobar"},
+					"username":   {u.Email},
+					"password":   {u.Password},
 				}, nil, oc.ClientID, oc.ClientSecret)
 			})
 

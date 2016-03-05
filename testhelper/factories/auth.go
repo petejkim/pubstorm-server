@@ -5,27 +5,11 @@ import (
 	"github.com/nitrous-io/rise-server/models/oauthclient"
 	"github.com/nitrous-io/rise-server/models/oauthtoken"
 	"github.com/nitrous-io/rise-server/models/user"
-
 	. "github.com/onsi/gomega"
 )
 
 func AuthDuo(db *gorm.DB) (u *user.User, oc *oauthclient.OauthClient) {
-	u = &user.User{Email: "foo@example.com", Password: "foobar"}
-	err := u.Insert(db)
-	Expect(err).To(BeNil())
-
-	err = db.Model(&u).Update("confirmed_at", gorm.Expr("now()")).Error
-	Expect(err).To(BeNil())
-
-	oc = &oauthclient.OauthClient{
-		Email:        "foo@example.com",
-		Name:         "Foo CLI",
-		Organization: "FooCorp",
-	}
-	err = db.Create(oc).Error
-	Expect(err).To(BeNil())
-
-	return u, oc
+	return User(db), OauthClient(db)
 }
 
 func AuthTrio(db *gorm.DB) (u *user.User, oc *oauthclient.OauthClient, t *oauthtoken.OauthToken) {
