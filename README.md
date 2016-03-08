@@ -23,6 +23,16 @@ sudo apt-get update
 sudo apt-get install redis-server
 ```
 
+## Vendoring
+
+```shell
+# Install govendor
+go get -u github.com/kardianos/govendor
+
+# Vendor additional dependencies
+script/savedeps
+```
+
 ## DB Migrations
 
 ```shell
