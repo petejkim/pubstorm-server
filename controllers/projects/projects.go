@@ -5,7 +5,6 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/lib/pq"
-	"github.com/nitrous-io/rise-server/common"
 	"github.com/nitrous-io/rise-server/controllers"
 	"github.com/nitrous-io/rise-server/dbconn"
 	"github.com/nitrous-io/rise-server/models/project"
@@ -14,7 +13,7 @@ import (
 func Create(c *gin.Context) {
 	u := controllers.CurrentUser(c)
 	if u == nil {
-		common.InternalServerError(c, nil)
+		controllers.InternalServerError(c, nil)
 		return
 	}
 
@@ -33,7 +32,7 @@ func Create(c *gin.Context) {
 
 	db, err := dbconn.DB()
 	if err != nil {
-		common.InternalServerError(c, err)
+		controllers.InternalServerError(c, err)
 		return
 	}
 
@@ -48,7 +47,7 @@ func Create(c *gin.Context) {
 			return
 		}
 
-		common.InternalServerError(c, err)
+		controllers.InternalServerError(c, err)
 		return
 	}
 

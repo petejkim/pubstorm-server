@@ -6,7 +6,6 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/jinzhu/gorm"
-	"github.com/nitrous-io/rise-server/common"
 	"github.com/nitrous-io/rise-server/controllers"
 	"github.com/nitrous-io/rise-server/dbconn"
 	"github.com/nitrous-io/rise-server/models/oauthtoken"
@@ -18,7 +17,7 @@ var bearerTokenAuthHeaderRe = regexp.MustCompile(`\A\s*Bearer\s+([\S]+)\s*\z`)
 func RequireToken(c *gin.Context) {
 	db, err := dbconn.DB()
 	if err != nil {
-		common.InternalServerError(c, err)
+		controllers.InternalServerError(c, err)
 		c.Abort()
 		return
 	}
@@ -37,7 +36,7 @@ func RequireToken(c *gin.Context) {
 
 	t, err := oauthtoken.FindByToken(match[1])
 	if err != nil {
-		common.InternalServerError(c, err)
+		controllers.InternalServerError(c, err)
 		c.Abort()
 		return
 	}
@@ -62,7 +61,7 @@ func RequireToken(c *gin.Context) {
 				"error_description": "access token is invalid",
 			})
 		} else {
-			common.InternalServerError(c, err)
+			controllers.InternalServerError(c, err)
 		}
 		c.Abort()
 		return

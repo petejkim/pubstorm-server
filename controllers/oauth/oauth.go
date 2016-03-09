@@ -5,7 +5,6 @@ import (
 	"strings"
 
 	"github.com/gin-gonic/gin"
-	"github.com/nitrous-io/rise-server/common"
 	"github.com/nitrous-io/rise-server/controllers"
 	"github.com/nitrous-io/rise-server/dbconn"
 	"github.com/nitrous-io/rise-server/models/oauthclient"
@@ -38,7 +37,7 @@ func CreateToken(c *gin.Context) {
 
 	u, err := user.Authenticate(email, password)
 	if err != nil {
-		common.InternalServerError(c, err)
+		controllers.InternalServerError(c, err)
 		return
 	}
 
@@ -65,7 +64,7 @@ func CreateToken(c *gin.Context) {
 
 		authBytes, err := base64.StdEncoding.DecodeString(authHeader)
 		if err != nil {
-			common.InternalServerError(c, err)
+			controllers.InternalServerError(c, err)
 			return
 		}
 
@@ -79,7 +78,7 @@ func CreateToken(c *gin.Context) {
 
 	client, err := oauthclient.Authenticate(clientID, clientSecret)
 	if err != nil {
-		common.InternalServerError(c, err)
+		controllers.InternalServerError(c, err)
 		return
 	}
 
@@ -94,7 +93,7 @@ func CreateToken(c *gin.Context) {
 
 	db, err := dbconn.DB()
 	if err != nil {
-		common.InternalServerError(c, err)
+		controllers.InternalServerError(c, err)
 		return
 	}
 
@@ -104,7 +103,7 @@ func CreateToken(c *gin.Context) {
 	}
 
 	if err := db.Create(token).Error; err != nil {
-		common.InternalServerError(c, err)
+		controllers.InternalServerError(c, err)
 		return
 	}
 
@@ -118,19 +117,19 @@ func CreateToken(c *gin.Context) {
 func DestroyToken(c *gin.Context) {
 	db, err := dbconn.DB()
 	if err != nil {
-		common.InternalServerError(c, err)
+		controllers.InternalServerError(c, err)
 		return
 	}
 
 	t := controllers.CurrentToken(c)
 	if t == nil {
-		common.InternalServerError(c, err)
+		controllers.InternalServerError(c, err)
 		return
 	}
 
 	delQuery := db.Where("token = ?", t.Token).Delete(oauthtoken.OauthToken{})
 	if err := delQuery.Error; err != nil {
-		common.InternalServerError(c, err)
+		controllers.InternalServerError(c, err)
 		return
 	}
 

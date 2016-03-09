@@ -5,6 +5,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/nitrous-io/rise-server/common"
+	"github.com/nitrous-io/rise-server/controllers"
 	"github.com/nitrous-io/rise-server/dbconn"
 	"github.com/nitrous-io/rise-server/models/user"
 )
@@ -25,13 +26,13 @@ func Create(c *gin.Context) {
 
 	db, err := dbconn.DB()
 	if err != nil {
-		common.InternalServerError(c, err)
+		controllers.InternalServerError(c, err)
 		return
 	}
 
 	tx := db.Begin()
 	if err := tx.Error; err != nil {
-		common.InternalServerError(c, err)
+		controllers.InternalServerError(c, err)
 		return
 	}
 	defer tx.Rollback()
@@ -46,17 +47,17 @@ func Create(c *gin.Context) {
 			})
 			return
 		}
-		common.InternalServerError(c, err)
+		controllers.InternalServerError(c, err)
 		return
 	}
 
 	if err := sendConfirmationEmail(u); err != nil {
-		common.InternalServerError(c, err)
+		controllers.InternalServerError(c, err)
 		return
 	}
 
 	if err := tx.Commit().Error; err != nil {
-		common.InternalServerError(c, err)
+		controllers.InternalServerError(c, err)
 		return
 	}
 
@@ -79,7 +80,7 @@ func Confirm(c *gin.Context) {
 
 	confirmed, err := user.Confirm(c.PostForm("email"), c.PostForm("confirmation_code"))
 	if err != nil {
-		common.InternalServerError(c, err)
+		controllers.InternalServerError(c, err)
 		return
 	}
 
@@ -110,7 +111,7 @@ func ResendConfirmationCode(c *gin.Context) {
 
 	u, err := user.FindByEmail(email)
 	if err != nil {
-		common.InternalServerError(c, err)
+		controllers.InternalServerError(c, err)
 		return
 	}
 
@@ -124,7 +125,7 @@ func ResendConfirmationCode(c *gin.Context) {
 	}
 
 	if err = sendConfirmationEmail(u); err != nil {
-		common.InternalServerError(c, err)
+		controllers.InternalServerError(c, err)
 		return
 	}
 
