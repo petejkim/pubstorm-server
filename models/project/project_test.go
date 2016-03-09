@@ -41,8 +41,8 @@ var _ = Describe("Project", func() {
 
 		BeforeEach(func() {
 			proj = &project.Project{
-				User: u,
-				Name: "",
+				UserID: u.ID,
+				Name:   "",
 			}
 		})
 

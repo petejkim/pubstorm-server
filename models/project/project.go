@@ -16,7 +16,7 @@ type Project struct {
 	Name   string
 	UserID uint
 
-	User *user.User // belongs to user
+	User user.User // belongs to user
 }
 
 // Validates Project, if there are invalid fields, it returns a map of

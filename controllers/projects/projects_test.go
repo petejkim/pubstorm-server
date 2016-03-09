@@ -120,8 +120,8 @@ var _ = Describe("Projects", func() {
 		Context("when the project name is taken", func() {
 			BeforeEach(func() {
 				proj2 := &project.Project{
-					Name: "foo-bar-express",
-					User: u,
+					Name:   "foo-bar-express",
+					UserID: u.ID,
 				}
 
 				err := db.Create(proj2).Error

@@ -18,8 +18,8 @@ func Create(c *gin.Context) {
 	}
 
 	proj := &project.Project{
-		Name: c.PostForm("name"),
-		User: u,
+		Name:   c.PostForm("name"),
+		UserID: u.ID,
 	}
 
 	if errs := proj.Validate(); errs != nil {
