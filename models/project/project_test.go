@@ -70,4 +70,44 @@ var _ = Describe("Project", func() {
 			Entry("disallows special characters", "good&one", "is invalid"),
 		)
 	})
+
+	Describe("FindByName()", func() {
+		var (
+			proj *project.Project
+			err  error
+		)
+		Context("the project exists", func() {
+			BeforeEach(func() {
+				u := &user.User{
+					Email:    "harry.potter@gmail.com",
+					Password: "123456",
+				}
+				err = u.Insert(db)
+				Expect(err).To(BeNil())
+
+				proj = &project.Project{
+					Name:   "foo-bar-express",
+					UserID: u.ID,
+				}
+
+				err = db.Create(proj).Error
+				Expect(err).To(BeNil())
+			})
+
+			It("returns project", func() {
+				proj2, err := project.FindByName(proj.Name)
+				Expect(err).To(BeNil())
+				Expect(proj2.ID).To(Equal(proj.ID))
+				Expect(proj2.Name).To(Equal(proj.Name))
+			})
+		})
+
+		Context("when the project does not exist", func() {
+			It("returns nil", func() {
+				proj2, err := project.FindByName(proj.Name)
+				Expect(err).To(BeNil())
+				Expect(proj2).To(BeNil())
+			})
+		})
+	})
 })

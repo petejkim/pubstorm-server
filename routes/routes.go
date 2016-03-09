@@ -2,6 +2,7 @@ package routes
 
 import (
 	"github.com/gin-gonic/gin"
+	"github.com/nitrous-io/rise-server/controllers/deployments"
 	"github.com/nitrous-io/rise-server/controllers/oauth"
 	"github.com/nitrous-io/rise-server/controllers/ping"
 	"github.com/nitrous-io/rise-server/controllers/projects"
@@ -25,5 +26,6 @@ func Draw(r *gin.Engine) {
 		rr := r.Group("/", middleware.RequireToken)
 		rr.DELETE("/oauth/token", oauth.DestroyToken)
 		rr.POST("/projects", projects.Create)
+		rr.POST("/projects/:name/deployments", deployments.Create)
 	}
 }

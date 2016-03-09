@@ -3,6 +3,7 @@ package project
 import (
 	"regexp"
 
+	"github.com/nitrous-io/rise-server/dbconn"
 	"github.com/nitrous-io/rise-server/models/user"
 
 	"github.com/jinzhu/gorm"
@@ -47,4 +48,23 @@ func (p *Project) AsJSON() interface{} {
 	}{
 		p.Name,
 	}
+}
+
+// Find project by name
+func FindByName(name string) (proj *Project, err error) {
+	db, err := dbconn.DB()
+	if err != nil {
+		return nil, err
+	}
+
+	proj = &Project{}
+	q := db.Where("name = ?", name).First(proj)
+	if err = q.Error; err != nil {
+		if err == gorm.RecordNotFound {
+			return nil, nil
+		}
+		return nil, err
+	}
+
+	return proj, nil
 }
