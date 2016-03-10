@@ -48,7 +48,7 @@ var _ = Describe("Job", func() {
 			mq, err = mqconn.MQ()
 			Expect(err).To(BeNil())
 
-			testhelper.PurgeQueue(mq, "fooq")
+			testhelper.DeleteQueue(mq, "fooq")
 			j = job.New("fooq", []byte("bar"))
 		})
 

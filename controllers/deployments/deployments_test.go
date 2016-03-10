@@ -16,7 +16,9 @@ import (
 	"github.com/nitrous-io/rise-server/models/oauthtoken"
 	"github.com/nitrous-io/rise-server/models/project"
 	"github.com/nitrous-io/rise-server/models/user"
+	"github.com/nitrous-io/rise-server/pkg/mqconn"
 	"github.com/nitrous-io/rise-server/pkg/uploader"
+	"github.com/nitrous-io/rise-server/queues"
 	"github.com/nitrous-io/rise-server/server"
 	"github.com/nitrous-io/rise-server/testhelper"
 	"github.com/nitrous-io/rise-server/testhelper/factories"
@@ -24,6 +26,7 @@ import (
 	"github.com/nitrous-io/rise-server/testhelper/shared"
 	. "github.com/onsi/ginkgo"
 	. "github.com/onsi/gomega"
+	"github.com/streadway/amqp"
 )
 
 func Test(t *testing.T) {
@@ -33,7 +36,9 @@ func Test(t *testing.T) {
 
 var _ = Describe("Deployments", func() {
 	var (
-		db  *gorm.DB
+		db *gorm.DB
+		mq *amqp.Connection
+
 		s   *httptest.Server
 		res *http.Response
 		err error
@@ -42,7 +47,12 @@ var _ = Describe("Deployments", func() {
 	BeforeEach(func() {
 		db, err = dbconn.DB()
 		Expect(err).To(BeNil())
+
+		mq, err = mqconn.MQ()
+		Expect(err).To(BeNil())
+
 		testhelper.TruncateTables(db.DB())
+		testhelper.DeleteQueue(mq, queues.All...)
 	})
 
 	AfterEach(func() {
@@ -272,16 +282,16 @@ var _ = Describe("Deployments", func() {
 					Expect(b.String()).To(MatchJSON(fmt.Sprintf(`{
 						"deployment": {
 							"id": %d,
-							"state": "uploaded"
+							"state": "%s"
 						}
-					}`, depl.ID)))
+					}`, depl.ID, deployment.StatePendingDeploy)))
 				})
 
 				It("creates a deployment record", func() {
 					Expect(depl).NotTo(BeNil())
 					Expect(depl.ProjectID).To(Equal(proj.ID))
 					Expect(depl.UserID).To(Equal(u.ID))
-					Expect(depl.State).To(Equal("uploaded"))
+					Expect(depl.State).To(Equal(deployment.StatePendingDeploy))
 					Expect(depl.Prefix).NotTo(HaveLen(0))
 				})
 
@@ -293,6 +303,17 @@ var _ = Describe("Deployments", func() {
 					Expect(fakeUploader.Bucket).To(Equal(common.S3BucketName))
 					Expect(fakeUploader.Key).To(Equal(fmt.Sprintf("%s-%d-bundle-raw.tar.gz", depl.Prefix, depl.ID)))
 					Expect(fakeUploader.Body).To(Equal([]byte("hello\nworld!")))
+				})
+
+				It("enqueues a deploy job", func() {
+					d := testhelper.ConsumeQueue(mq, queues.Deploy)
+					Expect(d.Body).To(MatchJSON(fmt.Sprintf(`
+						{
+							"deployment_id": %d,
+							"deployment_prefix": "%s",
+							"project_name": "%s"
+						}
+					`, depl.ID, depl.Prefix, proj.Name)))
 				})
 			})
 		})

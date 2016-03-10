@@ -12,6 +12,8 @@ import (
 	"github.com/nitrous-io/rise-server/dbconn"
 	"github.com/nitrous-io/rise-server/models/deployment"
 	"github.com/nitrous-io/rise-server/models/project"
+	"github.com/nitrous-io/rise-server/pkg/job"
+	"github.com/nitrous-io/rise-server/queues"
 )
 
 func Create(c *gin.Context) {
@@ -89,9 +91,9 @@ func Create(c *gin.Context) {
 				return
 			}
 
-			key := fmt.Sprintf("%s-%d-bundle-raw.tar.gz", depl.Prefix, depl.ID)
+			uploadKey := fmt.Sprintf("%s-%d-bundle-raw.tar.gz", depl.Prefix, depl.ID)
 
-			if err := common.Upload(key, part); err != nil {
+			if err := common.Upload(uploadKey, part); err != nil {
 				controllers.InternalServerError(c, err)
 				return
 			}
@@ -99,7 +101,27 @@ func Create(c *gin.Context) {
 		}
 	}
 
-	if err := db.Model(&depl).UpdateColumn("state", "uploaded").Error; err != nil {
+	if err := db.Model(&depl).UpdateColumn("state", deployment.StateUploaded).Error; err != nil {
+		controllers.InternalServerError(c, err)
+		return
+	}
+
+	j, err := job.NewWithJSON(queues.Deploy, map[string]interface{}{
+		"deployment_id":     depl.ID,
+		"deployment_prefix": depl.Prefix,
+		"project_name":      proj.Name,
+	})
+	if err != nil {
+		controllers.InternalServerError(c, err)
+		return
+	}
+
+	if err := j.Enqueue(); err != nil {
+		controllers.InternalServerError(c, err)
+		return
+	}
+
+	if err := db.Model(&depl).UpdateColumn("state", deployment.StatePendingDeploy).Error; err != nil {
 		controllers.InternalServerError(c, err)
 		return
 	}

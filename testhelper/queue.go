@@ -8,12 +8,14 @@ import (
 	"github.com/streadway/amqp"
 )
 
-func PurgeQueue(mq *amqp.Connection, queue string) {
+func DeleteQueue(mq *amqp.Connection, queues ...string) {
 	ch, err := mq.Channel()
 	Expect(err).To(BeNil())
 	defer ch.Close()
-	_, err = ch.QueueDelete(queue, false, false, false)
-	Expect(err).To(BeNil())
+	for _, queue := range queues {
+		_, err = ch.QueueDelete(queue, false, false, false)
+		Expect(err).To(BeNil())
+	}
 }
 
 func ConsumeQueue(mq *amqp.Connection, queue string) *amqp.Delivery {

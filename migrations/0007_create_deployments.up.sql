@@ -4,7 +4,7 @@ CREATE TABLE deployments (
   project_id bigint REFERENCES projects(id) NOT NULL,
   user_id bigint REFERENCES users(id) NOT NULL,
 
-  state character varying(255) DEFAULT 'pending' NOT NULL,
+  state character varying(255) DEFAULT 'pending_upload' NOT NULL,
   prefix character varying(255) DEFAULT encode(gen_random_bytes(2), 'hex') NOT NULL,
 
   created_at timestamp without time zone DEFAULT now() NOT NULL,
