@@ -340,6 +340,11 @@
 			"revisionTime": "2015-07-19T17:22:15-04:00"
 		},
 		{
+			"path": "github.com/streadway/amqp",
+			"revision": "56eb08f0d1f9d90936ab1ab4e20ee9b9bf45ce26",
+			"revisionTime": "2015-08-19T17:11:42-07:00"
+		},
+		{
 			"path": "golang.org/x/net/context",
 			"revision": "7f88271ea9913b72aca44fa7fc8af919eacc17ce",
 			"revisionTime": "2016-02-05T10:48:01+09:00"
