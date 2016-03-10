@@ -6,42 +6,40 @@ import (
 	"net/http"
 	"net/url"
 	"strings"
+
+	. "github.com/onsi/gomega"
 )
 
 var tables []string
 
-func TruncateTables(db *sql.DB) error {
+func TruncateTables(db *sql.DB) {
 	if len(tables) == 0 {
 		tbls, err := getTables(db)
-		if err != nil {
-			return err
-		}
+		Expect(err).To(BeNil())
 		tables = tbls
 	}
 
 	tx, err := db.Begin()
 	if err != nil {
-		return err
+		Expect(err).To(BeNil())
 	}
 
 	if _, err := tx.Exec(`SET local session_replication_role TO 'replica'`); err != nil {
 		tx.Rollback()
-		return err
+		Expect(err).To(BeNil())
 	}
 
 	for _, tb := range tables {
 		if _, err := tx.Exec(fmt.Sprintf(`DELETE FROM %s`, tb)); err != nil {
 			tx.Rollback()
-			return err
+			Expect(err).To(BeNil())
 		}
 	}
 
 	if err := tx.Commit(); err != nil {
 		tx.Rollback()
-		return err
+		Expect(err).To(BeNil())
 	}
-
-	return nil
 }
 
 func getTables(db *sql.DB) ([]string, error) {
