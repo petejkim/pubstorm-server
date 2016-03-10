@@ -2,6 +2,7 @@ package common
 
 import (
 	"io/ioutil"
+	"math"
 	"os"
 
 	log "github.com/Sirupsen/logrus"
@@ -12,10 +13,10 @@ var (
 	S3BucketRegion = os.Getenv("S3_BUCKET_REGION")
 	S3BucketName   = os.Getenv("S3_BUCKET_NAME")
 
-	S3PartSize = int64(20 * 1024 * 1024) // 20 MiB
-	S3MaxParts = 5
+	MaxUploadSize = int64(1024 * 1024 * 1000) // 1 GiB
+	S3PartSize    = int64(50 * 1024 * 1024)   // 50 MiB
 
-	MaxUploadSize = int64(1024 * 1024 * 100) // 100 MiB
+	S3MaxParts = int(math.Ceil(float64(MaxUploadSize) / float64(S3PartSize)))
 )
 
 func init() {
