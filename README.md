@@ -28,6 +28,10 @@ sudo apt-get install rabbitmq-server=3.6.1-1
 sudo rabbitmqctl add_user admin password
 sudo rabbitmqctl set_user_tags admin administrator
 sudo rabbitmqctl set_permissions -p / admin ".*" ".*" ".*"
+sudo rabbitmqctl add_vhost rise_development
+sudo rabbitmqctl add_vhost rise_test
+sudo rabbitmqctl set_permissions -p rise_development admin ".*" ".*" ".*"
+sudo rabbitmqctl set_permissions -p rise_test admin ".*" ".*" ".*"
 ```
 
 ### Redis
