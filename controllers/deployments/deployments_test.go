@@ -16,8 +16,8 @@ import (
 	"github.com/nitrous-io/rise-server/models/oauthtoken"
 	"github.com/nitrous-io/rise-server/models/project"
 	"github.com/nitrous-io/rise-server/models/user"
+	"github.com/nitrous-io/rise-server/pkg/filetransfer"
 	"github.com/nitrous-io/rise-server/pkg/mqconn"
-	"github.com/nitrous-io/rise-server/pkg/uploader"
 	"github.com/nitrous-io/rise-server/queues"
 	"github.com/nitrous-io/rise-server/server"
 	"github.com/nitrous-io/rise-server/testhelper"
@@ -64,9 +64,9 @@ var _ = Describe("Deployments", func() {
 
 	Describe("POST /projects/:name/deployments", func() {
 		var (
-			fakeUploader *fake.Uploader
-			origUploader uploader.Uploader
-			err          error
+			fakeS3 *fake.FileTransfer
+			origS3 filetransfer.FileTransfer
+			err    error
 
 			u  *user.User
 			oc *oauthclient.OauthClient
@@ -77,9 +77,9 @@ var _ = Describe("Deployments", func() {
 		)
 
 		BeforeEach(func() {
-			origUploader = common.Uploader
-			fakeUploader = &fake.Uploader{}
-			common.Uploader = fakeUploader
+			origS3 = common.S3
+			fakeS3 = &fake.FileTransfer{}
+			common.S3 = fakeS3
 
 			u, oc, t = factories.AuthTrio(db)
 
@@ -95,7 +95,7 @@ var _ = Describe("Deployments", func() {
 		})
 
 		AfterEach(func() {
-			common.Uploader = origUploader
+			common.S3 = origS3
 		})
 
 		doRequestWithMultipart := func(partName string) {
@@ -164,7 +164,7 @@ var _ = Describe("Deployments", func() {
 				Expect(b.String()).To(MatchJSON(`{
 					"error": "not_found"
 				}`))
-				Expect(fakeUploader.Called).To(Equal(0))
+				Expect(fakeS3.UploadCalls.Count()).To(Equal(0))
 
 				depl := &deployment.Deployment{}
 				Expect(db.Last(&depl).Error).To(Equal(gorm.RecordNotFound))
@@ -188,7 +188,7 @@ var _ = Describe("Deployments", func() {
 				Expect(b.String()).To(MatchJSON(`{
 					"error": "not_found"
 				}`))
-				Expect(fakeUploader.Called).To(Equal(0))
+				Expect(fakeS3.UploadCalls.Count()).To(Equal(0))
 
 				depl := &deployment.Deployment{}
 				Expect(db.Last(&depl).Error).To(Equal(gorm.RecordNotFound))
@@ -208,7 +208,7 @@ var _ = Describe("Deployments", func() {
 						"error": "invalid_request",
 						"error_description": "the request should be encoded in multipart/form-data format"
 					}`))
-					Expect(fakeUploader.Called).To(Equal(0))
+					Expect(fakeS3.UploadCalls.Count()).To(Equal(0))
 
 					depl := &deployment.Deployment{}
 					Expect(db.Last(&depl).Error).To(Equal(gorm.RecordNotFound))
@@ -229,7 +229,7 @@ var _ = Describe("Deployments", func() {
 							"payload": "is required"
 						}
 					}`))
-					Expect(fakeUploader.Called).To(Equal(0))
+					Expect(fakeS3.UploadCalls.Count()).To(Equal(0))
 
 					depl := &deployment.Deployment{}
 					Expect(db.Last(&depl).Error).To(Equal(gorm.RecordNotFound))
@@ -258,7 +258,7 @@ var _ = Describe("Deployments", func() {
 						"error": "invalid_request",
 						"error_description": "request body is too large"
 					}`))
-					Expect(fakeUploader.Called).To(Equal(0))
+					Expect(fakeS3.UploadCalls.Count()).To(Equal(0))
 
 					depl := &deployment.Deployment{}
 					Expect(db.Last(&depl).Error).To(Equal(gorm.RecordNotFound))
@@ -296,13 +296,13 @@ var _ = Describe("Deployments", func() {
 				})
 
 				It("uploads bundle to s3", func() {
-					Expect(fakeUploader.Called).To(Equal(1))
-					Expect(fakeUploader.Region).NotTo(HaveLen(0))
-					Expect(fakeUploader.Region).To(Equal(common.S3BucketRegion))
-					Expect(fakeUploader.Bucket).NotTo(HaveLen(0))
-					Expect(fakeUploader.Bucket).To(Equal(common.S3BucketName))
-					Expect(fakeUploader.Key).To(Equal(fmt.Sprintf("%s-%d-bundle-raw.tar.gz", depl.Prefix, depl.ID)))
-					Expect(fakeUploader.Body).To(Equal([]byte("hello\nworld!")))
+					Expect(fakeS3.UploadCalls.Count()).To(Equal(1))
+					call := fakeS3.UploadCalls.NthCall(1)
+					Expect(call).NotTo(BeNil())
+					Expect(call.Arguments[0]).To(Equal(common.S3BucketRegion))
+					Expect(call.Arguments[1]).To(Equal(common.S3BucketName))
+					Expect(call.Arguments[2]).To(Equal(fmt.Sprintf("%s-%d/raw-bundle.tar.gz", depl.Prefix, depl.ID)))
+					Expect(call.SideEffects["uploaded_content"]).To(Equal([]byte("hello\nworld!")))
 				})
 
 				It("enqueues a deploy job", func() {

@@ -91,7 +91,7 @@ func Create(c *gin.Context) {
 				return
 			}
 
-			uploadKey := fmt.Sprintf("%s-%d-bundle-raw.tar.gz", depl.Prefix, depl.ID)
+			uploadKey := fmt.Sprintf("%s-%d/raw-bundle.tar.gz", depl.Prefix, depl.ID)
 
 			if err := common.Upload(uploadKey, part); err != nil {
 				controllers.InternalServerError(c, err)

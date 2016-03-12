@@ -16,7 +16,7 @@ var (
 	MaxUploadSize = int64(1024 * 1024 * 1000) // 1 GiB
 	S3PartSize    = int64(50 * 1024 * 1024)   // 50 MiB
 
-	S3MaxParts = int(math.Ceil(float64(MaxUploadSize) / float64(S3PartSize)))
+	S3MaxUploadParts = int(math.Ceil(float64(MaxUploadSize) / float64(S3PartSize)))
 )
 
 func init() {
