@@ -25,8 +25,7 @@ func MQ() (*amqp.Connection, error) {
 		}
 		mq = conn
 
-		closeChan = make(chan *amqp.Error)
-		conn.NotifyClose(closeChan)
+		closeChan = conn.NotifyClose(make(chan *amqp.Error))
 		go func() {
 			<-closeChan
 			mq = nil

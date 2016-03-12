@@ -2,6 +2,7 @@ package job
 
 import (
 	"encoding/json"
+	"time"
 
 	"github.com/nitrous-io/rise-server/pkg/mqconn"
 	"github.com/streadway/amqp"
@@ -57,6 +58,7 @@ func (j *Job) Enqueue() error {
 			DeliveryMode: amqp.Persistent,
 			ContentType:  "text/plain",
 			Body:         []byte(j.Data),
+			Timestamp:    time.Now(),
 		},
 	)
 }
