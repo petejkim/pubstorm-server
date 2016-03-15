@@ -301,7 +301,7 @@ var _ = Describe("Deployments", func() {
 					Expect(call).NotTo(BeNil())
 					Expect(call.Arguments[0]).To(Equal(common.S3BucketRegion))
 					Expect(call.Arguments[1]).To(Equal(common.S3BucketName))
-					Expect(call.Arguments[2]).To(Equal(fmt.Sprintf("%s-%d/raw-bundle.tar.gz", depl.Prefix, depl.ID)))
+					Expect(call.Arguments[2]).To(Equal(fmt.Sprintf("deployments/%s-%d/raw-bundle.tar.gz", depl.Prefix, depl.ID)))
 					Expect(call.SideEffects["uploaded_content"]).To(Equal([]byte("hello\nworld!")))
 				})
 
@@ -311,9 +311,10 @@ var _ = Describe("Deployments", func() {
 						{
 							"deployment_id": %d,
 							"deployment_prefix": "%s",
-							"project_name": "%s"
+							"project_name": "%s",
+							"domain": "%s.rise.cloud"
 						}
-					`, depl.ID, depl.Prefix, proj.Name)))
+					`, depl.ID, depl.Prefix, proj.Name, proj.Name)))
 				})
 			})
 		})

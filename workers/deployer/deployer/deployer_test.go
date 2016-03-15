@@ -43,7 +43,8 @@ var _ = Describe("Deployer", func() {
 			{
 				"deployment_id": 123,
 				"deployment_prefix": "a1b2c3",
-				"project_name": "foo-bar-express"
+				"project_name": "foo-bar-express",
+				"domain": "foo-bar-express.rise.cloud"
 			}
 		`))
 		Expect(err).To(BeNil())
@@ -53,10 +54,10 @@ var _ = Describe("Deployer", func() {
 		Expect(downloadCall).NotTo(BeNil())
 		Expect(downloadCall.Arguments[0]).To(Equal(deployer.S3BucketRegion))
 		Expect(downloadCall.Arguments[1]).To(Equal(deployer.S3BucketName))
-		Expect(downloadCall.Arguments[2]).To(Equal("a1b2c3-123/raw-bundle.tar.gz"))
+		Expect(downloadCall.Arguments[2]).To(Equal("deployments/a1b2c3-123/raw-bundle.tar.gz"))
 		Expect(downloadCall.ReturnValues[0]).To(BeNil())
 
-		Expect(fakeS3.UploadCalls.Count()).To(Equal(4))
+		Expect(fakeS3.UploadCalls.Count()).To(Equal(5)) // 4 files + metadata file
 
 		uploads := []string{
 			"images/rick-astley.jpg",
@@ -70,12 +71,24 @@ var _ = Describe("Deployer", func() {
 			Expect(uploadCall).NotTo(BeNil())
 			Expect(uploadCall.Arguments[0]).To(Equal(deployer.S3BucketRegion))
 			Expect(uploadCall.Arguments[1]).To(Equal(deployer.S3BucketName))
-			Expect(uploadCall.Arguments[2]).To(Equal("a1b2c3-123/webroot/" + upload))
+			Expect(uploadCall.Arguments[2]).To(Equal("deployments/a1b2c3-123/webroot/" + upload))
 			Expect(uploadCall.ReturnValues[0]).To(BeNil())
 
 			data, err := ioutil.ReadFile("../../../testhelper/fixtures/website/" + upload)
 			Expect(err).To(BeNil())
 			Expect(uploadCall.SideEffects["uploaded_content"]).To(Equal(data))
 		}
+
+		uploadCall := fakeS3.UploadCalls.NthCall(5)
+		Expect(uploadCall).NotTo(BeNil())
+		Expect(uploadCall.Arguments[0]).To(Equal(deployer.S3BucketRegion))
+		Expect(uploadCall.Arguments[1]).To(Equal(deployer.S3BucketName))
+		Expect(uploadCall.Arguments[2]).To(Equal("domains/foo-bar-express.rise.cloud/meta.json"))
+		Expect(uploadCall.ReturnValues[0]).To(BeNil())
+		Expect(uploadCall.SideEffects["uploaded_content"]).To(MatchJSON(`
+			{
+				"webroot": "deployments/a1b2c3-123/webroot"
+			}
+		`))
 	})
 })

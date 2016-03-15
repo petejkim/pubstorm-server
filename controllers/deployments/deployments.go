@@ -91,7 +91,7 @@ func Create(c *gin.Context) {
 				return
 			}
 
-			uploadKey := fmt.Sprintf("%s-%d/raw-bundle.tar.gz", depl.Prefix, depl.ID)
+			uploadKey := fmt.Sprintf("deployments/%s-%d/raw-bundle.tar.gz", depl.Prefix, depl.ID)
 
 			if err := common.Upload(uploadKey, part); err != nil {
 				controllers.InternalServerError(c, err)
@@ -110,6 +110,7 @@ func Create(c *gin.Context) {
 		"deployment_id":     depl.ID,
 		"deployment_prefix": depl.Prefix,
 		"project_name":      proj.Name,
+		"domain":            proj.Name + ".rise.cloud",
 	})
 	if err != nil {
 		controllers.InternalServerError(c, err)

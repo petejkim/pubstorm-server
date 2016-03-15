@@ -2,6 +2,7 @@ package deployer
 
 import (
 	"archive/tar"
+	"bytes"
 	"compress/gzip"
 	"encoding/json"
 	"fmt"
@@ -48,6 +49,7 @@ type jobData struct {
 	DeploymentID     int64  `json:"deployment_id"`
 	DeploymentPrefix string `json:"deployment_prefix"`
 	ProjectName      string `json:"project_name"`
+	Domain           string `json:"domain"`
 }
 
 var S3 filetransfer.FileTransfer = filetransfer.NewS3(S3PartSize, S3MaxUploadParts)
@@ -60,7 +62,7 @@ func Work(data []byte) error {
 	}
 
 	prefix := fmt.Sprintf("%s-%d", d.DeploymentPrefix, d.DeploymentID)
-	rawBundle := prefix + "/raw-bundle.tar.gz"
+	rawBundle := "deployments/" + prefix + "/raw-bundle.tar.gz"
 	tmpFileName := prefix + "-raw-bundle.tar.gz"
 
 	f, err := ioutil.TempFile("", tmpFileName)
@@ -85,6 +87,8 @@ func Work(data []byte) error {
 
 	tr := tar.NewReader(gr)
 
+	webroot := "deployments/" + prefix + "/webroot"
+
 	for {
 		hdr, err := tr.Next()
 		if err != nil {
@@ -99,10 +103,21 @@ func Work(data []byte) error {
 		}
 
 		fileName := path.Clean(hdr.Name)
-		remotePath := prefix + "/webroot/" + fileName
+		remotePath := webroot + "/" + fileName
 		if err := S3.Upload(S3BucketRegion, S3BucketName, remotePath, tr); err != nil {
 			return err
 		}
+	}
+
+	metaJson := &bytes.Buffer{}
+	if err := json.NewEncoder(metaJson).Encode(map[string]interface{}{
+		"webroot": webroot,
+	}); err != nil {
+		return err
+	}
+
+	if err := S3.Upload(S3BucketRegion, S3BucketName, "domains/"+d.Domain+"/meta.json", metaJson); err != nil {
+		return err
 	}
 
 	return nil
