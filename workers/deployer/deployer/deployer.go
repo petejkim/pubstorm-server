@@ -104,11 +104,12 @@ func Work(data []byte) error {
 
 		fileName := path.Clean(hdr.Name)
 		remotePath := webroot + "/" + fileName
-		if err := S3.Upload(S3BucketRegion, S3BucketName, remotePath, tr); err != nil {
+		if err := S3.Upload(S3BucketRegion, S3BucketName, remotePath, tr, "private"); err != nil {
 			return err
 		}
 	}
 
+	// the metadata file is publicly readable, do not put sensitive data
 	metaJson := &bytes.Buffer{}
 	if err := json.NewEncoder(metaJson).Encode(map[string]interface{}{
 		"webroot": webroot,
@@ -116,7 +117,7 @@ func Work(data []byte) error {
 		return err
 	}
 
-	if err := S3.Upload(S3BucketRegion, S3BucketName, "domains/"+d.Domain+"/meta.json", metaJson); err != nil {
+	if err := S3.Upload(S3BucketRegion, S3BucketName, "domains/"+d.Domain+"/meta.json", metaJson, "public-read"); err != nil {
 		return err
 	}
 

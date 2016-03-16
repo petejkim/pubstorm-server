@@ -15,7 +15,7 @@ type FileTransfer struct {
 	DownloadContent []byte
 }
 
-func (f *FileTransfer) Upload(region, bucket, key string, body io.Reader) (err error) {
+func (f *FileTransfer) Upload(region, bucket, key string, body io.Reader, acl string) (err error) {
 	var content []byte
 
 	if f.UploadError == nil {
@@ -24,7 +24,7 @@ func (f *FileTransfer) Upload(region, bucket, key string, body io.Reader) (err e
 		err = f.UploadError
 	}
 
-	f.UploadCalls.Add(List{region, bucket, key, body}, List{err}, Map{
+	f.UploadCalls.Add(List{region, bucket, key, body, acl}, List{err}, Map{
 		"uploaded_content": content,
 	})
 

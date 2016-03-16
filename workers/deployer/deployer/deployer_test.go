@@ -72,6 +72,7 @@ var _ = Describe("Deployer", func() {
 			Expect(uploadCall.Arguments[0]).To(Equal(deployer.S3BucketRegion))
 			Expect(uploadCall.Arguments[1]).To(Equal(deployer.S3BucketName))
 			Expect(uploadCall.Arguments[2]).To(Equal("deployments/a1b2c3-123/webroot/" + upload))
+			Expect(uploadCall.Arguments[4]).To(Equal("private"))
 			Expect(uploadCall.ReturnValues[0]).To(BeNil())
 
 			data, err := ioutil.ReadFile("../../../testhelper/fixtures/website/" + upload)
@@ -84,6 +85,7 @@ var _ = Describe("Deployer", func() {
 		Expect(uploadCall.Arguments[0]).To(Equal(deployer.S3BucketRegion))
 		Expect(uploadCall.Arguments[1]).To(Equal(deployer.S3BucketName))
 		Expect(uploadCall.Arguments[2]).To(Equal("domains/foo-bar-express.rise.cloud/meta.json"))
+		Expect(uploadCall.Arguments[4]).To(Equal("public-read"))
 		Expect(uploadCall.ReturnValues[0]).To(BeNil())
 		Expect(uploadCall.SideEffects["uploaded_content"]).To(MatchJSON(`
 			{
