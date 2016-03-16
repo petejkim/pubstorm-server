@@ -59,11 +59,14 @@ var _ = Describe("Deployer", func() {
 
 		Expect(fakeS3.UploadCalls.Count()).To(Equal(5)) // 4 files + metadata file
 
-		uploads := []string{
-			"images/rick-astley.jpg",
-			"index.html",
-			"js/app.js",
-			"css/app.css",
+		uploads := []struct {
+			filename    string
+			contentType string
+		}{
+			{"images/rick-astley.jpg", "image/jpeg"},
+			{"index.html", "text/html"},
+			{"js/app.js", "application/javascript"},
+			{"css/app.css", "text/css"},
 		}
 
 		for i, upload := range uploads {
@@ -71,11 +74,12 @@ var _ = Describe("Deployer", func() {
 			Expect(uploadCall).NotTo(BeNil())
 			Expect(uploadCall.Arguments[0]).To(Equal(deployer.S3BucketRegion))
 			Expect(uploadCall.Arguments[1]).To(Equal(deployer.S3BucketName))
-			Expect(uploadCall.Arguments[2]).To(Equal("deployments/a1b2c3-123/webroot/" + upload))
-			Expect(uploadCall.Arguments[4]).To(Equal("private"))
+			Expect(uploadCall.Arguments[2]).To(Equal("deployments/a1b2c3-123/webroot/" + upload.filename))
+			Expect(uploadCall.Arguments[4]).To(Equal(upload.contentType))
+			Expect(uploadCall.Arguments[5]).To(Equal("public-read"))
 			Expect(uploadCall.ReturnValues[0]).To(BeNil())
 
-			data, err := ioutil.ReadFile("../../../testhelper/fixtures/website/" + upload)
+			data, err := ioutil.ReadFile("../../../testhelper/fixtures/website/" + upload.filename)
 			Expect(err).To(BeNil())
 			Expect(uploadCall.SideEffects["uploaded_content"]).To(Equal(data))
 		}
@@ -85,7 +89,8 @@ var _ = Describe("Deployer", func() {
 		Expect(uploadCall.Arguments[0]).To(Equal(deployer.S3BucketRegion))
 		Expect(uploadCall.Arguments[1]).To(Equal(deployer.S3BucketName))
 		Expect(uploadCall.Arguments[2]).To(Equal("domains/foo-bar-express.rise.cloud/meta.json"))
-		Expect(uploadCall.Arguments[4]).To(Equal("public-read"))
+		Expect(uploadCall.Arguments[4]).To(Equal("application/json"))
+		Expect(uploadCall.Arguments[5]).To(Equal("public-read"))
 		Expect(uploadCall.ReturnValues[0]).To(BeNil())
 		Expect(uploadCall.SideEffects["uploaded_content"]).To(MatchJSON(`
 			{

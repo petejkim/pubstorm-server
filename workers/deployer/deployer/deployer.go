@@ -10,8 +10,11 @@ import (
 	"io/ioutil"
 	"log"
 	"math"
+	"mime"
 	"os"
 	"path"
+	"path/filepath"
+	"strings"
 
 	"github.com/nitrous-io/rise-server/pkg/filetransfer"
 )
@@ -89,6 +92,7 @@ func Work(data []byte) error {
 
 	webroot := "deployments/" + prefix + "/webroot"
 
+	// webroot is publicly readable
 	for {
 		hdr, err := tr.Next()
 		if err != nil {
@@ -104,12 +108,18 @@ func Work(data []byte) error {
 
 		fileName := path.Clean(hdr.Name)
 		remotePath := webroot + "/" + fileName
-		if err := S3.Upload(S3BucketRegion, S3BucketName, remotePath, tr, "private"); err != nil {
+
+		contentType := mime.TypeByExtension(filepath.Ext(fileName))
+		if i := strings.Index(contentType, ";"); i != -1 {
+			contentType = contentType[:i]
+		}
+
+		if err := S3.Upload(S3BucketRegion, S3BucketName, remotePath, tr, contentType, "public-read"); err != nil {
 			return err
 		}
 	}
 
-	// the metadata file is publicly readable, do not put sensitive data
+	// the metadata file is also publicly readable, do not put sensitive data
 	metaJson := &bytes.Buffer{}
 	if err := json.NewEncoder(metaJson).Encode(map[string]interface{}{
 		"webroot": webroot,
@@ -117,7 +127,7 @@ func Work(data []byte) error {
 		return err
 	}
 
-	if err := S3.Upload(S3BucketRegion, S3BucketName, "domains/"+d.Domain+"/meta.json", metaJson, "public-read"); err != nil {
+	if err := S3.Upload(S3BucketRegion, S3BucketName, "domains/"+d.Domain+"/meta.json", metaJson, "application/json", "public-read"); err != nil {
 		return err
 	}
 

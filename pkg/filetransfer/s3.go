@@ -21,7 +21,7 @@ func NewS3(partSize int64, maxUploadParts int) *S3 {
 	}
 }
 
-func (s *S3) Upload(region, bucket, key string, body io.Reader, acl string) (err error) {
+func (s *S3) Upload(region, bucket, key string, body io.Reader, contentType, acl string) (err error) {
 	sess := session.New(&aws.Config{Region: aws.String(region)})
 	uploader := s3manager.NewUploader(sess, func(u *s3manager.Uploader) {
 		if s.partSize != 0 {
@@ -32,15 +32,20 @@ func (s *S3) Upload(region, bucket, key string, body io.Reader, acl string) (err
 		}
 	})
 
+	if contentType == "" {
+		contentType = "application/octet-stream"
+	}
+
 	if acl == "" {
 		acl = "private"
 	}
 
 	_, err = uploader.Upload(&s3manager.UploadInput{
-		ACL:    aws.String(acl),
-		Body:   body,
-		Bucket: aws.String(bucket),
-		Key:    aws.String(key),
+		Bucket:      aws.String(bucket),
+		Key:         aws.String(key),
+		Body:        body,
+		ACL:         aws.String(acl),
+		ContentType: aws.String(contentType),
 	})
 	return
 }

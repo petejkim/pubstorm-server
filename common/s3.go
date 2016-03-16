@@ -8,8 +8,8 @@ import (
 
 var S3 filetransfer.FileTransfer = filetransfer.NewS3(S3PartSize, S3MaxUploadParts)
 
-func Upload(path string, body io.Reader, acl string) (err error) {
-	return S3.Upload(S3BucketRegion, S3BucketName, path, body, acl)
+func Upload(path string, body io.Reader, contentType, acl string) (err error) {
+	return S3.Upload(S3BucketRegion, S3BucketName, path, body, contentType, acl)
 }
 
 func Download(path string, out io.WriterAt) (err error) {

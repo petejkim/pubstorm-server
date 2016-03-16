@@ -302,7 +302,8 @@ var _ = Describe("Deployments", func() {
 					Expect(call.Arguments[0]).To(Equal(common.S3BucketRegion))
 					Expect(call.Arguments[1]).To(Equal(common.S3BucketName))
 					Expect(call.Arguments[2]).To(Equal(fmt.Sprintf("deployments/%s-%d/raw-bundle.tar.gz", depl.Prefix, depl.ID)))
-					Expect(call.Arguments[4]).To(Equal("private"))
+					Expect(call.Arguments[4]).To(Equal(""))
+					Expect(call.Arguments[5]).To(Equal("private"))
 					Expect(call.SideEffects["uploaded_content"]).To(Equal([]byte("hello\nworld!")))
 				})
 
