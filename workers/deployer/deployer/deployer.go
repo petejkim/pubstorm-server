@@ -122,7 +122,7 @@ func Work(data []byte) error {
 	// the metadata file is also publicly readable, do not put sensitive data
 	metaJson := &bytes.Buffer{}
 	if err := json.NewEncoder(metaJson).Encode(map[string]interface{}{
-		"webroot": webroot,
+		"prefix": prefix,
 	}); err != nil {
 		return err
 	}

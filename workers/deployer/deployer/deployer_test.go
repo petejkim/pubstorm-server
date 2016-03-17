@@ -94,7 +94,7 @@ var _ = Describe("Deployer", func() {
 		Expect(uploadCall.ReturnValues[0]).To(BeNil())
 		Expect(uploadCall.SideEffects["uploaded_content"]).To(MatchJSON(`
 			{
-				"webroot": "deployments/a1b2c3-123/webroot"
+				"prefix": "a1b2c3-123"
 			}
 		`))
 	})
