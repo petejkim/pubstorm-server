@@ -4,7 +4,7 @@ import (
 	"fmt"
 
 	"github.com/jinzhu/gorm"
-	"github.com/nitrous-io/rise-server/models/oauthclient"
+	"github.com/nitrous-io/rise-server/apiserver/models/oauthclient"
 	. "github.com/onsi/gomega"
 )
 

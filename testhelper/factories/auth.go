@@ -2,9 +2,9 @@ package factories
 
 import (
 	"github.com/jinzhu/gorm"
-	"github.com/nitrous-io/rise-server/models/oauthclient"
-	"github.com/nitrous-io/rise-server/models/oauthtoken"
-	"github.com/nitrous-io/rise-server/models/user"
+	"github.com/nitrous-io/rise-server/apiserver/models/oauthclient"
+	"github.com/nitrous-io/rise-server/apiserver/models/oauthtoken"
+	"github.com/nitrous-io/rise-server/apiserver/models/user"
 	. "github.com/onsi/gomega"
 )
 

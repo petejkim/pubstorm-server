@@ -2,4 +2,4 @@
 DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
 
 cd $DIR/..
-$DIR/env go run main.go
+$DIR/env go run apiserver/apiserver.go
