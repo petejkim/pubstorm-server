@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"github.com/nitrous-io/rise-server/apiserver/models/oauthtoken"
+	"github.com/nitrous-io/rise-server/apiserver/models/project"
 	"github.com/nitrous-io/rise-server/apiserver/models/user"
 
 	"github.com/gin-gonic/gin"
@@ -15,8 +16,9 @@ import (
 )
 
 const (
-	CurrentTokenKey = "current_token"
-	CurrentUserKey  = "current_user"
+	CurrentTokenKey   = "current_token"
+	CurrentUserKey    = "current_user"
+	CurrentProjectKey = "current_project"
 )
 
 func CurrentToken(c *gin.Context) *oauthtoken.OauthToken {
@@ -43,6 +45,19 @@ func CurrentUser(c *gin.Context) *user.User {
 		return nil
 	}
 	return u
+}
+
+func CurrentProject(c *gin.Context) *project.Project {
+	pi, exists := c.Get(CurrentProjectKey)
+	if pi == nil || !exists {
+		return nil
+	}
+
+	p, ok := pi.(*project.Project)
+	if !ok {
+		return nil
+	}
+	return p
 }
 
 func InternalServerError(c *gin.Context, err error) {

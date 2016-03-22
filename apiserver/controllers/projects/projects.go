@@ -12,10 +12,6 @@ import (
 
 func Create(c *gin.Context) {
 	u := controllers.CurrentUser(c)
-	if u == nil {
-		controllers.InternalServerError(c, nil)
-		return
-	}
 
 	proj := &project.Project{
 		Name:   c.PostForm("name"),

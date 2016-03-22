@@ -23,9 +23,13 @@ func Draw(r *gin.Engine) {
 	r.POST("/oauth/token", oauth.CreateToken)
 
 	{
-		rr := r.Group("/", middleware.RequireToken)
-		rr.DELETE("/oauth/token", oauth.DestroyToken)
-		rr.POST("/projects", projects.Create)
-		rr.POST("/projects/:name/deployments", deployments.Create)
+		r2 := r.Group("/", middleware.RequireToken)
+		r2.DELETE("/oauth/token", oauth.DestroyToken)
+		r2.POST("/projects", projects.Create)
+
+		{
+			r3 := r2.Group("/projects/:project_name", middleware.RequireProject)
+			r3.POST("/deployments", deployments.Create)
+		}
 	}
 }

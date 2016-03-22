@@ -11,7 +11,11 @@ import (
 	. "github.com/onsi/gomega"
 )
 
-func ItRequiresAuthentication(varFn func() (*gorm.DB, *user.User, *http.Header), reqFn func() *http.Response) {
+func ItRequiresAuthentication(
+	varFn func() (*gorm.DB, *user.User, *http.Header),
+	reqFn func() *http.Response,
+	assertFn func(),
+) {
 	var (
 		db      *gorm.DB
 		u       *user.User
@@ -40,6 +44,10 @@ func ItRequiresAuthentication(varFn func() (*gorm.DB, *user.User, *http.Header),
 				"error": "invalid_token",
 				"error_description": "access token is required"
 			}`))
+
+			if assertFn != nil {
+				assertFn()
+			}
 		})
 	})
 
@@ -59,6 +67,10 @@ func ItRequiresAuthentication(varFn func() (*gorm.DB, *user.User, *http.Header),
 				"error": "invalid_token",
 				"error_description": "access token is invalid"
 			}`))
+
+			if assertFn != nil {
+				assertFn()
+			}
 		})
 	})
 
@@ -79,6 +91,10 @@ func ItRequiresAuthentication(varFn func() (*gorm.DB, *user.User, *http.Header),
 				"error": "invalid_token",
 				"error_description": "access token is invalid"
 			}`))
+
+			if assertFn != nil {
+				assertFn()
+			}
 		})
 	})
 }

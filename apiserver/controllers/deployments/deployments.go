@@ -10,7 +10,6 @@ import (
 	"github.com/nitrous-io/rise-server/apiserver/controllers"
 	"github.com/nitrous-io/rise-server/apiserver/dbconn"
 	"github.com/nitrous-io/rise-server/apiserver/models/deployment"
-	"github.com/nitrous-io/rise-server/apiserver/models/project"
 	"github.com/nitrous-io/rise-server/pkg/job"
 	"github.com/nitrous-io/rise-server/shared/messages"
 	"github.com/nitrous-io/rise-server/shared/queues"
@@ -19,23 +18,7 @@ import (
 
 func Create(c *gin.Context) {
 	u := controllers.CurrentUser(c)
-	if u == nil {
-		controllers.InternalServerError(c, nil)
-		return
-	}
-
-	name := c.Param("name")
-	proj, err := project.FindByName(name)
-	if err != nil {
-		controllers.InternalServerError(c, err)
-	}
-
-	if proj == nil || proj.UserID != u.ID {
-		c.JSON(http.StatusNotFound, gin.H{
-			"error": "not_found",
-		})
-		return
-	}
+	proj := controllers.CurrentProject(c)
 
 	// get the multipart reader for the request.
 	reader, err := c.Request.MultipartReader()

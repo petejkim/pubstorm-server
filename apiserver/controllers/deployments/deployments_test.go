@@ -148,51 +148,18 @@ var _ = Describe("Deployments", func() {
 		}, func() *http.Response {
 			doRequest()
 			return res
-		})
+		}, nil)
 
-		Context("when the project does not exist", func() {
-			BeforeEach(func() {
-				Expect(db.Delete(proj).Error).To(BeNil())
-				doRequest()
-			})
-
-			It("returns 404 not found and does not upload", func() {
-				b := &bytes.Buffer{}
-				_, err = b.ReadFrom(res.Body)
-
-				Expect(res.StatusCode).To(Equal(http.StatusNotFound))
-				Expect(b.String()).To(MatchJSON(`{
-					"error": "not_found"
-				}`))
-				Expect(fakeS3.UploadCalls.Count()).To(Equal(0))
-
-				depl := &deployment.Deployment{}
-				Expect(db.Last(&depl).Error).To(Equal(gorm.RecordNotFound))
-			})
-		})
-
-		Context("when the project does not belong to current user", func() {
-			BeforeEach(func() {
-				u2 := factories.User(db)
-				err = db.Model(&proj).UpdateColumn("user_id", u2.ID).Error
-				Expect(err).To(BeNil())
-
-				doRequest()
-			})
-
-			It("returns 404 not found and does not upload", func() {
-				b := &bytes.Buffer{}
-				_, err = b.ReadFrom(res.Body)
-
-				Expect(res.StatusCode).To(Equal(http.StatusNotFound))
-				Expect(b.String()).To(MatchJSON(`{
-					"error": "not_found"
-				}`))
-				Expect(fakeS3.UploadCalls.Count()).To(Equal(0))
-
-				depl := &deployment.Deployment{}
-				Expect(db.Last(&depl).Error).To(Equal(gorm.RecordNotFound))
-			})
+		shared.ItRequiresProject(func() (*gorm.DB, *project.Project) {
+			return db, proj
+		}, func() *http.Response {
+			doRequest()
+			return res
+		}, func() {
+			// should not deploy anything if project is not found
+			Expect(fakeS3.UploadCalls.Count()).To(Equal(0))
+			depl := &deployment.Deployment{}
+			Expect(db.Last(&depl).Error).To(Equal(gorm.RecordNotFound))
 		})
 
 		Context("when the project belongs to current user", func() {

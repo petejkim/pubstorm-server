@@ -298,6 +298,6 @@ var _ = Describe("OAuth", func() {
 		}, func() *http.Response {
 			doRequest()
 			return res
-		})
+		}, nil)
 	})
 })
