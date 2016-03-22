@@ -1,5 +1,6 @@
 package queues
 
+// queue names
 const (
 	Deploy = "deploy"
 )

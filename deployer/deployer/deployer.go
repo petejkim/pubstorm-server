@@ -16,6 +16,8 @@ import (
 	"strings"
 
 	"github.com/nitrous-io/rise-server/pkg/filetransfer"
+	"github.com/nitrous-io/rise-server/pkg/pubsub"
+	"github.com/nitrous-io/rise-server/shared/exchanges"
 	"github.com/nitrous-io/rise-server/shared/s3"
 )
 
@@ -112,6 +114,14 @@ func Work(data []byte) error {
 	}
 
 	if err := S3.Upload(s3.BucketRegion, s3.BucketName, "domains/"+d.Domain+"/meta.json", metaJson, "application/json", "public-read"); err != nil {
+		return err
+	}
+
+	m, err := pubsub.NewMessageWithJSON(exchanges.Edges, exchanges.RouteV1Invalidation, map[string]interface{}{
+		"domain": d.Domain,
+	})
+
+	if err := m.Publish(); err != nil {
 		return err
 	}
 

@@ -6,10 +6,14 @@ import (
 
 	"github.com/nitrous-io/rise-server/deployer/deployer"
 	"github.com/nitrous-io/rise-server/pkg/filetransfer"
+	"github.com/nitrous-io/rise-server/pkg/mqconn"
+	"github.com/nitrous-io/rise-server/shared/exchanges"
 	"github.com/nitrous-io/rise-server/shared/s3"
+	"github.com/nitrous-io/rise-server/testhelper"
 	"github.com/nitrous-io/rise-server/testhelper/fake"
 	. "github.com/onsi/ginkgo"
 	. "github.com/onsi/gomega"
+	"github.com/streadway/amqp"
 )
 
 func Test(t *testing.T) {
@@ -22,19 +26,28 @@ var _ = Describe("Deployer", func() {
 		fakeS3 *fake.FileTransfer
 		origS3 filetransfer.FileTransfer
 		err    error
+
+		mq    *amqp.Connection
+		qName string
 	)
 
 	BeforeEach(func() {
 		origS3 = s3.S3
 		fakeS3 = &fake.FileTransfer{}
 		deployer.S3 = fakeS3
+
+		mq, err = mqconn.MQ()
+		Expect(err).To(BeNil())
+
+		testhelper.DeleteExchange(mq, exchanges.All...)
+		qName = testhelper.StartQueueWithExchange(mq, exchanges.Edges, exchanges.RouteV1Invalidation)
 	})
 
 	AfterEach(func() {
 		deployer.S3 = origS3
 	})
 
-	It("fetches the raw bundle from S3 and uploads to S3", func() {
+	It("fetches the raw bundle from S3, uploads to S3, and publishes invalidation message to edges", func() {
 		// mock download
 		fakeS3.DownloadContent, err = ioutil.ReadFile("../../testhelper/fixtures/website.tar.gz")
 		Expect(err).To(BeNil())
@@ -97,5 +110,8 @@ var _ = Describe("Deployer", func() {
 				"prefix": "a1b2c3-123"
 			}
 		`))
+
+		d := testhelper.ConsumeQueue(mq, qName)
+		Expect(d.Body).To(MatchJSON(`{ "domain": "foo-bar-express.rise.cloud" }`))
 	})
 })
