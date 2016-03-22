@@ -9,20 +9,20 @@ import (
 )
 
 type Job struct {
-	Queue string
-	Data  []byte
+	QueueName string
+	Data      []byte
 }
 
-func New(queue string, data []byte) *Job {
-	return &Job{Queue: queue, Data: data}
+func New(queueName string, data []byte) *Job {
+	return &Job{QueueName: queueName, Data: data}
 }
 
-func NewWithJSON(queue string, data map[string]interface{}) (*Job, error) {
+func NewWithJSON(queueName string, data map[string]interface{}) (*Job, error) {
 	d, err := json.Marshal(data)
 	if err != nil {
 		return nil, err
 	}
-	return &Job{Queue: queue, Data: d}, nil
+	return &Job{QueueName: queueName, Data: d}, nil
 }
 
 func (j *Job) Enqueue() error {
@@ -38,7 +38,7 @@ func (j *Job) Enqueue() error {
 	defer ch.Close()
 
 	q, err := ch.QueueDeclare(
-		j.Queue,
+		j.QueueName,
 		true,  // durable
 		false, // delete when unused
 		false, // exclusive

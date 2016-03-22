@@ -17,7 +17,6 @@ func Test(t *testing.T) {
 }
 
 var _ = Describe("Job", func() {
-
 	Describe("NewWithJSON()", func() {
 		It("encodes json and returns a new job", func() {
 			j, err := job.NewWithJSON("fooq", map[string]interface{}{
@@ -27,7 +26,7 @@ var _ = Describe("Job", func() {
 			Expect(err).To(BeNil())
 
 			Expect(j).To(BeAssignableToTypeOf(&job.Job{}))
-			Expect(j.Queue).To(Equal("fooq"))
+			Expect(j.QueueName).To(Equal("fooq"))
 			Expect(j.Data).To(MatchJSON(`
 				{
 					"foo": "bar",
