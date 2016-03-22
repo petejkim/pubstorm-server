@@ -6,12 +6,11 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/nitrous-io/rise-server/deployer/deployer"
-	"github.com/nitrous-io/rise-server/pkg/mqconn"
-	"github.com/nitrous-io/rise-server/shared/queues"
-	"github.com/streadway/amqp"
-
 	log "github.com/Sirupsen/logrus"
+	"github.com/nitrous-io/rise-server/edged/invalidator"
+	"github.com/nitrous-io/rise-server/pkg/mqconn"
+	"github.com/nitrous-io/rise-server/shared/exchanges"
+	"github.com/streadway/amqp"
 )
 
 func main() {
@@ -40,20 +39,57 @@ func run() {
 		}
 	}()
 
-	queueName := queues.Deploy
+	exchangeName := exchanges.Edges
 
-	q, err := ch.QueueDeclare(
-		queueName,
-		true,  // durable
-		false, // delete when unused
-		false, // exclusive
-		false, // noWait
-		nil,
-	)
-	if err != nil {
-		log.Errorf("Failed to declare queue(%s): %v", queueName, err)
+	if err := ch.ExchangeDeclare(
+		exchangeName, // name
+		"direct",     // type
+		true,         // durable
+		false,        // auto-deleted
+		false,        // internal
+		false,        // no-wait
+		nil,          // arguments
+	); err != nil {
+		log.Errorf("Failed to declare exchange(%s): %v", exchangeName, err)
 		return
 	}
+
+	routeKey := exchanges.RouteV1Invalidation
+
+	q, err := ch.QueueDeclare(
+		"",    // name
+		true,  // durable
+		true,  // delete when usused
+		false, // exclusive. This should be false to make connection persistent
+		false, // no-wait
+		nil,   // arguments
+	)
+	if err != nil {
+		log.Errorf("Failed to declare queue for exchange(%s) and route(%s): %v", exchangeName, routeKey, err)
+		return
+	}
+
+	if ch.QueueBind(
+		q.Name,       // queue name
+		routeKey,     // routing key
+		exchangeName, // exchange
+		false,
+		nil,
+	); err != nil {
+		log.Errorf("Failed to bind queue(%s) for route(%s) to exchange(%s): %v", q.Name, routeKey, exchangeName, err)
+		return
+	}
+
+	defer func() {
+		if err = ch.QueueUnbind(
+			q.Name,       // queue name
+			routeKey,     // routing key
+			exchangeName, // exchange
+			nil,
+		); err != nil {
+			log.Errorf("Failed to unbind queue(%s) for route(%s) from exchange(%s): %v", q.Name, routeKey, exchangeName, err)
+		}
+	}()
 
 	msgCh, err := ch.Consume(
 		q.Name, // queue
@@ -78,7 +114,8 @@ func run() {
 	for {
 		select {
 		case d := <-msgCh:
-			err = deployer.Work(d.Body)
+			err := invalidator.Work(d.Body)
+
 			if err != nil {
 				// failure
 				log.Warnln("Work failed", err, string(d.Body))
@@ -87,16 +124,15 @@ func run() {
 					// nack after a delay to prevent thrashing
 					time.Sleep(1 * time.Second)
 					if err := d.Nack(false, true); err != nil {
-						log.WithFields(log.Fields{"queue": queueName}).Warnln("Failed to Nack message:", err)
+						log.WithFields(log.Fields{"queue": q.Name}).Warnln("Failed to Nack message:", err)
 					}
 				}()
 			} else {
 				// success
 				if err := d.Ack(false); err != nil {
-					log.WithFields(log.Fields{"queue": queueName}).Warnln("Failed to Ack message:", err)
+					log.WithFields(log.Fields{"queue": q.Name}).Warnln("Failed to Ack message:", err)
 				}
 			}
-
 		case err := <-connErrCh:
 			log.Errorln(err)
 			return
