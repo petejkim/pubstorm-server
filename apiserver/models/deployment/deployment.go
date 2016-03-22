@@ -1,10 +1,9 @@
 package deployment
 
 import (
-	"os/user"
-
 	"github.com/jinzhu/gorm"
 	"github.com/nitrous-io/rise-server/apiserver/models/project"
+	"github.com/nitrous-io/rise-server/apiserver/models/user"
 )
 
 const (

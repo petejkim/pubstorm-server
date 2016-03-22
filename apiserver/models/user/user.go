@@ -2,7 +2,6 @@ package user
 
 import (
 	"errors"
-	"os/user"
 	"regexp"
 
 	"github.com/jinzhu/gorm"
@@ -110,7 +109,7 @@ func Confirm(email, confirmationCode string) (confirmed bool, err error) {
 		return false, err
 	}
 
-	q := db.Model(user.User{}).Where(
+	q := db.Model(User{}).Where(
 		"email = ? AND confirmation_code = ? AND confirmed_at IS NULL", email, confirmationCode,
 	).Update("confirmed_at", gorm.Expr("now()"))
 	if err = q.Error; err != nil {
