@@ -17,7 +17,7 @@ func New(queueName string, data []byte) *Job {
 	return &Job{QueueName: queueName, Data: data}
 }
 
-func NewWithJSON(queueName string, data map[string]interface{}) (*Job, error) {
+func NewWithJSON(queueName string, data interface{}) (*Job, error) {
 	d, err := json.Marshal(data)
 	if err != nil {
 		return nil, err

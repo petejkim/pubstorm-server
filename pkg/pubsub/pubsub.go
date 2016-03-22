@@ -18,7 +18,7 @@ func NewMessage(exchangeName, route string, data []byte) *Message {
 	return &Message{ExchangeName: exchangeName, Route: route, Data: data}
 }
 
-func NewMessageWithJSON(exchangeName, route string, data map[string]interface{}) (*Message, error) {
+func NewMessageWithJSON(exchangeName, route string, data interface{}) (*Message, error) {
 	d, err := json.Marshal(data)
 	if err != nil {
 		return nil, err

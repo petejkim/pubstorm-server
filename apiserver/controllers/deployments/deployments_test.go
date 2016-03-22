@@ -314,7 +314,7 @@ var _ = Describe("Deployments", func() {
 							"deployment_id": %d,
 							"deployment_prefix": "%s",
 							"project_name": "%s",
-							"domain": "%s.rise.cloud"
+							"domains": ["%s.rise.cloud"]
 						}
 					`, depl.ID, depl.Prefix, proj.Name, proj.Name)))
 				})

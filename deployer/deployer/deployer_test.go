@@ -57,7 +57,10 @@ var _ = Describe("Deployer", func() {
 				"deployment_id": 123,
 				"deployment_prefix": "a1b2c3",
 				"project_name": "foo-bar-express",
-				"domain": "foo-bar-express.rise.cloud"
+				"domains": [
+					"foo-bar-express.rise.cloud",
+					"www.foo-bar-express.com"
+				]
 			}
 		`))
 		Expect(err).To(BeNil())
@@ -70,7 +73,7 @@ var _ = Describe("Deployer", func() {
 		Expect(downloadCall.Arguments[2]).To(Equal("deployments/a1b2c3-123/raw-bundle.tar.gz"))
 		Expect(downloadCall.ReturnValues[0]).To(BeNil())
 
-		Expect(fakeS3.UploadCalls.Count()).To(Equal(5)) // 4 files + metadata file
+		Expect(fakeS3.UploadCalls.Count()).To(Equal(6)) // 4 asset files + 2 metadata files (2 domains)
 
 		uploads := []struct {
 			filename    string
@@ -97,21 +100,26 @@ var _ = Describe("Deployer", func() {
 			Expect(uploadCall.SideEffects["uploaded_content"]).To(Equal(data))
 		}
 
-		uploadCall := fakeS3.UploadCalls.NthCall(5)
-		Expect(uploadCall).NotTo(BeNil())
-		Expect(uploadCall.Arguments[0]).To(Equal(s3.BucketRegion))
-		Expect(uploadCall.Arguments[1]).To(Equal(s3.BucketName))
-		Expect(uploadCall.Arguments[2]).To(Equal("domains/foo-bar-express.rise.cloud/meta.json"))
-		Expect(uploadCall.Arguments[4]).To(Equal("application/json"))
-		Expect(uploadCall.Arguments[5]).To(Equal("public-read"))
-		Expect(uploadCall.ReturnValues[0]).To(BeNil())
-		Expect(uploadCall.SideEffects["uploaded_content"]).To(MatchJSON(`
-			{
+		for i, domain := range []string{"foo-bar-express.rise.cloud", "www.foo-bar-express.com"} {
+			uploadCall := fakeS3.UploadCalls.NthCall(5 + i)
+			Expect(uploadCall).NotTo(BeNil())
+			Expect(uploadCall.Arguments[0]).To(Equal(s3.BucketRegion))
+			Expect(uploadCall.Arguments[1]).To(Equal(s3.BucketName))
+			Expect(uploadCall.Arguments[2]).To(Equal("domains/" + domain + "/meta.json"))
+			Expect(uploadCall.Arguments[4]).To(Equal("application/json"))
+			Expect(uploadCall.Arguments[5]).To(Equal("public-read"))
+			Expect(uploadCall.ReturnValues[0]).To(BeNil())
+			Expect(uploadCall.SideEffects["uploaded_content"]).To(MatchJSON(`{
 				"prefix": "a1b2c3-123"
-			}
-		`))
+			}`))
+		}
 
 		d := testhelper.ConsumeQueue(mq, qName)
-		Expect(d.Body).To(MatchJSON(`{ "domain": "foo-bar-express.rise.cloud" }`))
+		Expect(d.Body).To(MatchJSON(`{
+			"domains": [
+				"foo-bar-express.rise.cloud",
+				"www.foo-bar-express.com"
+			]
+		}`))
 	})
 })

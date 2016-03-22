@@ -18,6 +18,7 @@ import (
 	"github.com/nitrous-io/rise-server/pkg/filetransfer"
 	"github.com/nitrous-io/rise-server/pkg/pubsub"
 	"github.com/nitrous-io/rise-server/shared/exchanges"
+	"github.com/nitrous-io/rise-server/shared/messages"
 	"github.com/nitrous-io/rise-server/shared/s3"
 )
 
@@ -34,17 +35,10 @@ func init() {
 	}
 }
 
-type jobData struct {
-	DeploymentID     int64  `json:"deployment_id"`
-	DeploymentPrefix string `json:"deployment_prefix"`
-	ProjectName      string `json:"project_name"`
-	Domain           string `json:"domain"`
-}
-
 var S3 filetransfer.FileTransfer = filetransfer.NewS3(s3.PartSize, s3.MaxUploadParts)
 
 func Work(data []byte) error {
-	d := &jobData{}
+	d := &messages.DeployJobData{}
 	err := json.Unmarshal(data, d)
 	if err != nil {
 		return err
@@ -106,19 +100,24 @@ func Work(data []byte) error {
 	}
 
 	// the metadata file is also publicly readable, do not put sensitive data
-	metaJson := &bytes.Buffer{}
-	if err := json.NewEncoder(metaJson).Encode(map[string]interface{}{
+	metaJson, err := json.Marshal(map[string]interface{}{
 		"prefix": prefix,
-	}); err != nil {
+	})
+	if err != nil {
 		return err
 	}
 
-	if err := S3.Upload(s3.BucketRegion, s3.BucketName, "domains/"+d.Domain+"/meta.json", metaJson, "application/json", "public-read"); err != nil {
-		return err
+	reader := bytes.NewReader(metaJson)
+
+	for _, domain := range d.Domains {
+		reader.Seek(0, 0)
+		if err := S3.Upload(s3.BucketRegion, s3.BucketName, "domains/"+domain+"/meta.json", reader, "application/json", "public-read"); err != nil {
+			return err
+		}
 	}
 
-	m, err := pubsub.NewMessageWithJSON(exchanges.Edges, exchanges.RouteV1Invalidation, map[string]interface{}{
-		"domain": d.Domain,
+	m, err := pubsub.NewMessageWithJSON(exchanges.Edges, exchanges.RouteV1Invalidation, &messages.V1InvalidationMessageData{
+		Domains: d.Domains,
 	})
 
 	if err := m.Publish(); err != nil {

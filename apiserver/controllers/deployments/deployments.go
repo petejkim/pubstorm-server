@@ -12,6 +12,7 @@ import (
 	"github.com/nitrous-io/rise-server/apiserver/models/deployment"
 	"github.com/nitrous-io/rise-server/apiserver/models/project"
 	"github.com/nitrous-io/rise-server/pkg/job"
+	"github.com/nitrous-io/rise-server/shared/messages"
 	"github.com/nitrous-io/rise-server/shared/queues"
 	"github.com/nitrous-io/rise-server/shared/s3"
 )
@@ -106,11 +107,11 @@ func Create(c *gin.Context) {
 		return
 	}
 
-	j, err := job.NewWithJSON(queues.Deploy, map[string]interface{}{
-		"deployment_id":     depl.ID,
-		"deployment_prefix": depl.Prefix,
-		"project_name":      proj.Name,
-		"domain":            proj.Name + ".rise.cloud",
+	j, err := job.NewWithJSON(queues.Deploy, &messages.DeployJobData{
+		DeploymentID:     depl.ID,
+		DeploymentPrefix: depl.Prefix,
+		ProjectName:      proj.Name,
+		Domains:          []string{proj.Name + ".rise.cloud"},
 	})
 	if err != nil {
 		controllers.InternalServerError(c, err)
