@@ -33,6 +33,13 @@ var _ = Describe("Domains", func() {
 		s   *httptest.Server
 		res *http.Response
 		err error
+
+		u  *user.User
+		oc *oauthclient.OauthClient
+		t  *oauthtoken.OauthToken
+
+		headers http.Header
+		proj    *project.Project
 	)
 
 	BeforeEach(func() {
@@ -40,6 +47,18 @@ var _ = Describe("Domains", func() {
 		Expect(err).To(BeNil())
 
 		testhelper.TruncateTables(db.DB())
+
+		u, oc, t = factories.AuthTrio(db)
+
+		proj = &project.Project{
+			Name:   "foo-bar-express",
+			UserID: u.ID,
+		}
+		Expect(db.Create(proj).Error).To(BeNil())
+
+		headers = http.Header{
+			"Authorization": {"Bearer " + t.Token},
+		}
 	})
 
 	AfterEach(func() {
@@ -49,32 +68,79 @@ var _ = Describe("Domains", func() {
 		s.Close()
 	})
 
+	Describe("GET /projects/:name/domains", func() {
+
+		doRequest := func() {
+			s = httptest.NewServer(server.New())
+			res, err = testhelper.MakeRequest("GET", s.URL+"/projects/foo-bar-express/domains", nil, headers, nil)
+			Expect(err).To(BeNil())
+		}
+
+		Context("when no custom domain is added", func() {
+			It("lists only the default rise.cloud subdomain", func() {
+				doRequest()
+				b := &bytes.Buffer{}
+				_, err := b.ReadFrom(res.Body)
+				Expect(err).To(BeNil())
+
+				Expect(res.StatusCode).To(Equal(http.StatusOK))
+				Expect(b.String()).To(MatchJSON(`{
+					"domains": [
+						"foo-bar-express.rise.cloud"
+					]
+				}`))
+			})
+		})
+
+		Context("when custom domains for this project exist", func() {
+			BeforeEach(func() {
+				for _, dn := range []string{"www.foo-bar-express.com", "www.foobarexpress.com"} {
+					dom := &domain.Domain{
+						Name:      dn,
+						ProjectID: proj.ID,
+					}
+
+					err := db.Create(dom).Error
+					Expect(err).To(BeNil())
+				}
+				doRequest()
+			})
+
+			It("lists all domains for the project", func() {
+				b := &bytes.Buffer{}
+				_, err := b.ReadFrom(res.Body)
+				Expect(err).To(BeNil())
+
+				Expect(res.StatusCode).To(Equal(http.StatusOK))
+				Expect(b.String()).To(MatchJSON(`{
+					"domains": [
+						"foo-bar-express.rise.cloud",
+						"www.foo-bar-express.com",
+						"www.foobarexpress.com"
+					]
+				}`))
+			})
+		})
+
+		shared.ItRequiresAuthentication(func() (*gorm.DB, *user.User, *http.Header) {
+			return db, u, &headers
+		}, func() *http.Response {
+			doRequest()
+			return res
+		}, nil)
+
+		shared.ItRequiresProject(func() (*gorm.DB, *project.Project) {
+			return db, proj
+		}, func() *http.Response {
+			doRequest()
+			return res
+		}, nil)
+	})
+
 	Describe("POST /projects/:name/domains", func() {
-		var (
-			err error
-
-			u  *user.User
-			oc *oauthclient.OauthClient
-			t  *oauthtoken.OauthToken
-
-			headers http.Header
-			proj    *project.Project
-			params  url.Values
-		)
+		var params url.Values
 
 		BeforeEach(func() {
-			u, oc, t = factories.AuthTrio(db)
-
-			proj = &project.Project{
-				Name:   "foo-bar-express",
-				UserID: u.ID,
-			}
-			Expect(db.Create(proj).Error).To(BeNil())
-
-			headers = http.Header{
-				"Authorization": {"Bearer " + t.Token},
-			}
-
 			params = url.Values{
 				"name": {"www.foo-bar-express.com"},
 			}

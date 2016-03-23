@@ -31,6 +31,7 @@ func Draw(r *gin.Engine) {
 		{
 			r3 := r2.Group("/projects/:project_name", middleware.RequireProject)
 			r3.POST("/deployments", deployments.Create)
+			r3.GET("/domains", domains.Index)
 			r3.POST("/domains", domains.Create)
 		}
 	}

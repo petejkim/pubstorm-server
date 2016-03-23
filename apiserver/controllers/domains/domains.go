@@ -2,6 +2,7 @@ package domains
 
 import (
 	"net/http"
+	"sort"
 
 	"github.com/gin-gonic/gin"
 	"github.com/lib/pq"
@@ -9,6 +10,35 @@ import (
 	"github.com/nitrous-io/rise-server/apiserver/dbconn"
 	"github.com/nitrous-io/rise-server/apiserver/models/domain"
 )
+
+func Index(c *gin.Context) {
+	proj := controllers.CurrentProject(c)
+
+	db, err := dbconn.DB()
+	if err != nil {
+		controllers.InternalServerError(c, err)
+		return
+	}
+
+	doms := []*domain.Domain{}
+	if err := db.Where("project_id = ?", proj.ID).Find(&doms).Error; err != nil {
+		controllers.InternalServerError(c, err)
+		return
+	}
+
+	domNames := make([]string, 0, len(doms))
+	for _, dom := range doms {
+		domNames = append(domNames, dom.Name)
+	}
+	sort.Sort(sort.StringSlice(domNames))
+
+	c.JSON(http.StatusOK, gin.H{
+		"domains": append(
+			[]string{proj.Name + ".rise.cloud"},
+			domNames...,
+		),
+	})
+}
 
 func Create(c *gin.Context) {
 	proj := controllers.CurrentProject(c)
