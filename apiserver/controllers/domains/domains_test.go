@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	"github.com/jinzhu/gorm"
+	"github.com/nitrous-io/rise-server/apiserver/common"
 	"github.com/nitrous-io/rise-server/apiserver/dbconn"
 	"github.com/nitrous-io/rise-server/apiserver/models/domain"
 	"github.com/nitrous-io/rise-server/apiserver/models/oauthclient"
@@ -77,7 +78,7 @@ var _ = Describe("Domains", func() {
 		}
 
 		Context("when no custom domain is added", func() {
-			It("lists only the default rise.cloud subdomain", func() {
+			It("lists only the default subdomain", func() {
 				doRequest()
 				b := &bytes.Buffer{}
 				_, err := b.ReadFrom(res.Body)
@@ -86,7 +87,7 @@ var _ = Describe("Domains", func() {
 				Expect(res.StatusCode).To(Equal(http.StatusOK))
 				Expect(b.String()).To(MatchJSON(`{
 					"domains": [
-						"foo-bar-express.rise.cloud"
+						"foo-bar-express.` + common.DefaultDomain + `"
 					]
 				}`))
 			})
@@ -114,7 +115,7 @@ var _ = Describe("Domains", func() {
 				Expect(res.StatusCode).To(Equal(http.StatusOK))
 				Expect(b.String()).To(MatchJSON(`{
 					"domains": [
-						"foo-bar-express.rise.cloud",
+						"foo-bar-express.` + common.DefaultDomain + `",
 						"www.foo-bar-express.com",
 						"www.foobarexpress.com"
 					]

@@ -1,11 +1,14 @@
 package project_test
 
 import (
+	"fmt"
 	"strings"
 	"testing"
 
 	"github.com/jinzhu/gorm"
+	"github.com/nitrous-io/rise-server/apiserver/common"
 	"github.com/nitrous-io/rise-server/apiserver/dbconn"
+	"github.com/nitrous-io/rise-server/apiserver/models/domain"
 	"github.com/nitrous-io/rise-server/apiserver/models/project"
 	"github.com/nitrous-io/rise-server/apiserver/models/user"
 	"github.com/nitrous-io/rise-server/testhelper"
@@ -40,10 +43,7 @@ var _ = Describe("Project", func() {
 		var proj *project.Project
 
 		BeforeEach(func() {
-			proj = &project.Project{
-				UserID: u.ID,
-				Name:   "",
-			}
+			proj = factories.Project(db, u)
 		})
 
 		DescribeTable("validates name",
@@ -77,7 +77,8 @@ var _ = Describe("Project", func() {
 			proj *project.Project
 			err  error
 		)
-		Context("the project exists", func() {
+
+		Context("when the project exists", func() {
 			BeforeEach(func() {
 				u := &user.User{
 					Email:    "harry.potter@gmail.com",
@@ -108,6 +109,52 @@ var _ = Describe("Project", func() {
 				proj2, err := project.FindByName(proj.Name)
 				Expect(err).To(BeNil())
 				Expect(proj2).To(BeNil())
+			})
+		})
+	})
+
+	Describe("DomainNames", func() {
+		var proj *project.Project
+
+		BeforeEach(func() {
+			proj = factories.Project(db, u)
+		})
+
+		Context("there is no domains for the project", func() {
+			It("only returns the default subdomain", func() {
+				domainNames, err := proj.DomainNames()
+				Expect(err).To(BeNil())
+				Expect(domainNames).To(Equal([]string{
+					fmt.Sprintf("%s.%s", proj.Name, common.DefaultDomain),
+				}))
+			})
+		})
+
+		Context("there are domains for the project", func() {
+			BeforeEach(func() {
+				dom1 := &domain.Domain{
+					ProjectID: proj.ID,
+					Name:      "foo-bar-express.com",
+				}
+				err := db.Create(dom1).Error
+				Expect(err).To(BeNil())
+
+				dom2 := &domain.Domain{
+					ProjectID: proj.ID,
+					Name:      "foobarexpress.com",
+				}
+				err = db.Create(dom2).Error
+				Expect(err).To(BeNil())
+			})
+
+			It("returns all domains", func() {
+				domainNames, err := proj.DomainNames()
+				Expect(err).To(BeNil())
+				Expect(domainNames).To(Equal([]string{
+					fmt.Sprintf("%s.%s", proj.Name, common.DefaultDomain),
+					"foo-bar-express.com",
+					"foobarexpress.com",
+				}))
 			})
 		})
 	})

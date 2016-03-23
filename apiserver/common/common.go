@@ -8,7 +8,8 @@ import (
 )
 
 var (
-	MailerEmail = os.Getenv("MAILER_EMAIL")
+	MailerEmail   = os.Getenv("MAILER_EMAIL")
+	DefaultDomain = os.Getenv("DEFAULT_DOMAIN")
 )
 
 func init() {
@@ -20,6 +21,10 @@ func init() {
 
 	if MailerEmail == "" {
 		MailerEmail = "Rise.sh <support@rise.sh>"
+	}
+
+	if DefaultDomain == "" {
+		DefaultDomain = "rise.cloud"
 	}
 
 	logLevelEnv := os.Getenv("RISE_LOG_LEVEL")
