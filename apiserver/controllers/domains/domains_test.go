@@ -202,7 +202,6 @@ var _ = Describe("Domains", func() {
 						Name:      "www.foo-bar-express.com",
 						ProjectID: proj.ID,
 					}
-
 					err := db.Create(dom).Error
 					Expect(err).To(BeNil())
 
@@ -252,6 +251,49 @@ var _ = Describe("Domains", func() {
 					Expect(dom.ProjectID).To(Equal(proj.ID))
 				})
 			})
+		})
+
+		shared.ItRequiresAuthentication(func() (*gorm.DB, *user.User, *http.Header) {
+			return db, u, &headers
+		}, func() *http.Response {
+			doRequest()
+			return res
+		}, nil)
+
+		shared.ItRequiresProject(func() (*gorm.DB, *project.Project) {
+			return db, proj
+		}, func() *http.Response {
+			doRequest()
+			return res
+		}, nil)
+	})
+
+	Describe("DELETE /projects/:project_name/domains/:name", func() {
+		var (
+			domainName string
+			d          *domain.Domain
+		)
+
+		BeforeEach(func() {
+			d = factories.Domain(db, proj)
+			domainName = d.Name
+		})
+
+		doRequest := func() {
+			s = httptest.NewServer(server.New())
+			res, err = testhelper.MakeRequest("DELETE", s.URL+"/projects/foo-bar-express/domains/"+domainName, nil, headers, nil)
+			Expect(err).To(BeNil())
+		}
+
+		It("deletes the domain from the project", func() {
+			doRequest()
+
+			Expect(res.StatusCode).To(Equal(http.StatusOK))
+
+			var count int
+			err = db.Model(domain.Domain{}).Where("id = ?", d.ID).Count(&count).Error
+			Expect(err).To(BeNil())
+			Expect(count).To(BeZero())
 		})
 
 		shared.ItRequiresAuthentication(func() (*gorm.DB, *user.User, *http.Header) {

@@ -71,3 +71,22 @@ func Create(c *gin.Context) {
 		"domain": dom.AsJSON(),
 	})
 }
+
+func Destroy(c *gin.Context) {
+	domainName := c.Param("name")
+
+	db, err := dbconn.DB()
+	if err != nil {
+		controllers.InternalServerError(c, err)
+		return
+	}
+
+	if err := db.Where("name = ?", domainName).Delete(domain.Domain{}).Error; err != nil {
+		controllers.InternalServerError(c, err)
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"deleted": true,
+	})
+}

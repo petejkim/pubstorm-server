@@ -33,6 +33,7 @@ func Draw(r *gin.Engine) {
 			r3.POST("/deployments", deployments.Create)
 			r3.GET("/domains", domains.Index)
 			r3.POST("/domains", domains.Create)
+			r3.DELETE("/domains/:name", domains.Destroy)
 		}
 	}
 }
