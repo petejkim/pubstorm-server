@@ -5,7 +5,6 @@ import (
 	"strings"
 
 	"github.com/jinzhu/gorm"
-	"github.com/nitrous-io/rise-server/apiserver/models/project"
 )
 
 var domainLabelRe = regexp.MustCompile(`\A([A-Za-z0-9]|([A-Za-z0-9][A-Za-z0-9\-]*[A-Za-z0-9]))\z`)
@@ -15,8 +14,6 @@ type Domain struct {
 
 	ProjectID uint
 	Name      string
-
-	Project project.Project // belongs to project
 }
 
 // Validates Domain, if there are invalid fields, it returns a map of

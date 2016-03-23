@@ -4,7 +4,6 @@ import (
 	"regexp"
 
 	"github.com/nitrous-io/rise-server/apiserver/dbconn"
-	"github.com/nitrous-io/rise-server/apiserver/models/user"
 
 	"github.com/jinzhu/gorm"
 )
@@ -16,8 +15,6 @@ type Project struct {
 
 	Name   string
 	UserID uint
-
-	User user.User // belongs to user
 }
 
 // Validates Project, if there are invalid fields, it returns a map of

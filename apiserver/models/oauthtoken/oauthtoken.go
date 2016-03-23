@@ -6,7 +6,6 @@ import (
 	"github.com/jinzhu/gorm"
 	"github.com/lib/pq"
 	"github.com/nitrous-io/rise-server/apiserver/dbconn"
-	"github.com/nitrous-io/rise-server/apiserver/models/user"
 )
 
 type OauthToken struct {
@@ -16,8 +15,6 @@ type OauthToken struct {
 	Token         string `sql:"default:encode(gen_random_bytes(64), 'hex')"`
 	CreatedAt     time.Time
 	DeletedAt     pq.NullTime
-
-	User user.User // belongs to user
 }
 
 // Finds oauth token by token

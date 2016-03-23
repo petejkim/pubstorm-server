@@ -1,10 +1,6 @@
 package deployment
 
-import (
-	"github.com/jinzhu/gorm"
-	"github.com/nitrous-io/rise-server/apiserver/models/project"
-	"github.com/nitrous-io/rise-server/apiserver/models/user"
-)
+import "github.com/jinzhu/gorm"
 
 const (
 	StatePendingUpload = "pending_upload"
@@ -23,9 +19,6 @@ type Deployment struct {
 
 	ProjectID uint
 	UserID    uint
-
-	Project project.Project // belongs to project
-	User    user.User       // belongs to user
 }
 
 // Returns a struct that can be converted to JSON
