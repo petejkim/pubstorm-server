@@ -5,7 +5,6 @@ import (
 
 	"github.com/jinzhu/gorm"
 	"github.com/lib/pq"
-	"github.com/nitrous-io/rise-server/apiserver/dbconn"
 )
 
 type OauthToken struct {
@@ -18,12 +17,7 @@ type OauthToken struct {
 }
 
 // Finds oauth token by token
-func FindByToken(token string) (t *OauthToken, err error) {
-	db, err := dbconn.DB()
-	if err != nil {
-		return nil, err
-	}
-
+func FindByToken(db *gorm.DB, token string) (t *OauthToken, err error) {
 	t = &OauthToken{}
 	q := db.Where("token = ?", token).First(t)
 	if err = q.Error; err != nil {

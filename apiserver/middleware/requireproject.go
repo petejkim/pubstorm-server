@@ -5,6 +5,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/nitrous-io/rise-server/apiserver/controllers"
+	"github.com/nitrous-io/rise-server/apiserver/dbconn"
 	"github.com/nitrous-io/rise-server/apiserver/models/project"
 )
 
@@ -16,8 +17,15 @@ func RequireProject(c *gin.Context) {
 		return
 	}
 
+	db, err := dbconn.DB()
+	if err != nil {
+		controllers.InternalServerError(c, err)
+		c.Abort()
+		return
+	}
+
 	name := c.Param("project_name")
-	proj, err := project.FindByName(name)
+	proj, err := project.FindByName(db, name)
 	if err != nil {
 		controllers.InternalServerError(c, err)
 		c.Abort()

@@ -44,7 +44,7 @@ var _ = Describe("OauthClient", func() {
 
 		Context("when the crendentials are valid", func() {
 			It("returns user", func() {
-				c2, err := oauthclient.Authenticate(c.ClientID, c.ClientSecret)
+				c2, err := oauthclient.Authenticate(db, c.ClientID, c.ClientSecret)
 				Expect(c2).NotTo(BeNil())
 				Expect(c2.ID).To(Equal(c.ID))
 				Expect(c2.ClientID).To(Equal(c.ClientID))
@@ -54,7 +54,7 @@ var _ = Describe("OauthClient", func() {
 
 		Context("when the crendentials are invalid", func() {
 			It("returns nil", func() {
-				c2, err := oauthclient.Authenticate(c.ClientID, c.ClientSecret+"x")
+				c2, err := oauthclient.Authenticate(db, c.ClientID, c.ClientSecret+"x")
 				Expect(c2).To(BeNil())
 				Expect(err).To(BeNil())
 			})

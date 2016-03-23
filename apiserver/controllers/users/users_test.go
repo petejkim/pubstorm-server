@@ -425,7 +425,7 @@ var _ = Describe("Users", func() {
 
 				Context("the user is already confirmed", func() {
 					BeforeEach(func() {
-						confirmed, err := user.Confirm(u.Email, u.ConfirmationCode)
+						confirmed, err := user.Confirm(db, u.Email, u.ConfirmationCode)
 						Expect(confirmed).To(BeTrue())
 						Expect(err).To(BeNil())
 					})

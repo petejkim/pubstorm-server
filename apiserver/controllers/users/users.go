@@ -78,7 +78,13 @@ func Confirm(c *gin.Context) {
 		}
 	}
 
-	confirmed, err := user.Confirm(c.PostForm("email"), c.PostForm("confirmation_code"))
+	db, err := dbconn.DB()
+	if err != nil {
+		controllers.InternalServerError(c, err)
+		return
+	}
+
+	confirmed, err := user.Confirm(db, c.PostForm("email"), c.PostForm("confirmation_code"))
 	if err != nil {
 		controllers.InternalServerError(c, err)
 		return
@@ -109,7 +115,13 @@ func ResendConfirmationCode(c *gin.Context) {
 		return
 	}
 
-	u, err := user.FindByEmail(email)
+	db, err := dbconn.DB()
+	if err != nil {
+		controllers.InternalServerError(c, err)
+		return
+	}
+
+	u, err := user.FindByEmail(db, email)
 	if err != nil {
 		controllers.InternalServerError(c, err)
 		return

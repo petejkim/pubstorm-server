@@ -13,7 +13,13 @@ import (
 func Index(c *gin.Context) {
 	proj := controllers.CurrentProject(c)
 
-	domNames, err := proj.DomainNames()
+	db, err := dbconn.DB()
+	if err != nil {
+		controllers.InternalServerError(c, err)
+		return
+	}
+
+	domNames, err := proj.DomainNames(db)
 	if err != nil {
 		controllers.InternalServerError(c, err)
 		return

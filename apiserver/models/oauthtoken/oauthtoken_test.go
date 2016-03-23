@@ -56,7 +56,7 @@ var _ = Describe("OauthToken", func() {
 
 			Context("when the token is valid", func() {
 				It("returns token", func() {
-					t1, err := oauthtoken.FindByToken(t.Token)
+					t1, err := oauthtoken.FindByToken(db, t.Token)
 					Expect(err).To(BeNil())
 					Expect(t1.ID).To(Equal(t.ID))
 					Expect(t1.Token).To(Equal(t.Token))
@@ -65,7 +65,7 @@ var _ = Describe("OauthToken", func() {
 
 			Context("when the token does not exist", func() {
 				It("returns nil", func() {
-					t1, err := oauthtoken.FindByToken(t.Token + "xx")
+					t1, err := oauthtoken.FindByToken(db, t.Token+"xx")
 					Expect(t1).To(BeNil())
 					Expect(err).To(BeNil())
 				})

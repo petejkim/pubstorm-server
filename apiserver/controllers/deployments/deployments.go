@@ -56,7 +56,7 @@ func Create(c *gin.Context) {
 		return
 	}
 
-	domainNames, err := proj.DomainNames()
+	domainNames, err := proj.DomainNames(db)
 	if err != nil {
 		controllers.InternalServerError(c, err)
 		return

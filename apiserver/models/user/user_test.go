@@ -109,7 +109,7 @@ var _ = Describe("User", func() {
 
 		Context("when the crendentials are valid", func() {
 			It("returns user", func() {
-				u2, err := user.Authenticate(u.Email, u.Password)
+				u2, err := user.Authenticate(db, u.Email, u.Password)
 				Expect(u2).NotTo(BeNil())
 				Expect(u2.ID).To(Equal(u.ID))
 				Expect(u2.Email).To(Equal(u.Email))
@@ -119,7 +119,7 @@ var _ = Describe("User", func() {
 
 		Context("when the crendentials are invalid", func() {
 			It("returns nil", func() {
-				u2, err := user.Authenticate(u.Email, u.Password+"x")
+				u2, err := user.Authenticate(db, u.Email, u.Password+"x")
 				Expect(u2).To(BeNil())
 				Expect(err).To(BeNil())
 			})
@@ -140,7 +140,7 @@ var _ = Describe("User", func() {
 
 		Context("when the email and confirmation code are valid", func() {
 			It("returns true and confirms user", func() {
-				confirmed, err := user.Confirm(u.Email, u.ConfirmationCode)
+				confirmed, err := user.Confirm(db, u.Email, u.ConfirmationCode)
 				Expect(confirmed).To(BeTrue())
 				Expect(err).To(BeNil())
 
@@ -154,7 +154,7 @@ var _ = Describe("User", func() {
 
 		Context("when the email or confirmation code is invalid", func() {
 			It("returns false and does not confirm user", func() {
-				confirmed, err := user.Confirm(u.Email, u.ConfirmationCode+"x")
+				confirmed, err := user.Confirm(db, u.Email, u.ConfirmationCode+"x")
 				Expect(confirmed).To(BeFalse())
 				Expect(err).To(BeNil())
 
@@ -167,7 +167,7 @@ var _ = Describe("User", func() {
 
 		Context("when user is already confirmed", func() {
 			It("returns false and does not re-confirm user", func() {
-				confirmed, err := user.Confirm(u.Email, u.ConfirmationCode)
+				confirmed, err := user.Confirm(db, u.Email, u.ConfirmationCode)
 				Expect(confirmed).To(BeTrue())
 				Expect(err).To(BeNil())
 
@@ -175,7 +175,7 @@ var _ = Describe("User", func() {
 				Expect(err).To(BeNil())
 				prevConfirmedAt := u.ConfirmedAt
 
-				confirmed, err = user.Confirm(u.Email, u.ConfirmationCode)
+				confirmed, err = user.Confirm(db, u.Email, u.ConfirmationCode)
 				Expect(confirmed).To(BeFalse())
 				Expect(err).To(BeNil())
 
@@ -200,7 +200,7 @@ var _ = Describe("User", func() {
 
 			Context("when the email is valid", func() {
 				It("returns user", func() {
-					u1, err := user.FindByEmail(u.Email)
+					u1, err := user.FindByEmail(db, u.Email)
 					Expect(err).To(BeNil())
 					Expect(u1.ID).To(Equal(u.ID))
 					Expect(u1.Email).To(Equal(u.Email))
@@ -209,7 +209,7 @@ var _ = Describe("User", func() {
 
 			Context("the user does not exist", func() {
 				It("returns nil", func() {
-					u1, err := user.FindByEmail(u.Email + "xx")
+					u1, err := user.FindByEmail(db, u.Email+"xx")
 					Expect(u1).To(BeNil())
 					Expect(err).To(BeNil())
 				})

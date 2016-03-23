@@ -34,7 +34,7 @@ func RequireToken(c *gin.Context) {
 		return
 	}
 
-	t, err := oauthtoken.FindByToken(match[1])
+	t, err := oauthtoken.FindByToken(db, match[1])
 	if err != nil {
 		controllers.InternalServerError(c, err)
 		c.Abort()

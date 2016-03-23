@@ -6,7 +6,6 @@ import (
 
 	"github.com/jinzhu/gorm"
 	"github.com/lib/pq"
-	"github.com/nitrous-io/rise-server/apiserver/dbconn"
 )
 
 var (
@@ -82,12 +81,7 @@ func (u *User) Insert(db *gorm.DB) error {
 }
 
 // Checks email and password and return user if credentials are valid
-func Authenticate(email, password string) (u *User, err error) {
-	db, err := dbconn.DB()
-	if err != nil {
-		return nil, err
-	}
-
+func Authenticate(db *gorm.DB, email, password string) (u *User, err error) {
 	u = &User{}
 	if err = db.Where(
 		"email = ? AND encrypted_password = crypt(?, encrypted_password)",
@@ -103,12 +97,7 @@ func Authenticate(email, password string) (u *User, err error) {
 }
 
 // Finds user by email and confirmation code and confirms user if found
-func Confirm(email, confirmationCode string) (confirmed bool, err error) {
-	db, err := dbconn.DB()
-	if err != nil {
-		return false, err
-	}
-
+func Confirm(db *gorm.DB, email, confirmationCode string) (confirmed bool, err error) {
 	q := db.Model(User{}).Where(
 		"email = ? AND confirmation_code = ? AND confirmed_at IS NULL", email, confirmationCode,
 	).Update("confirmed_at", gorm.Expr("now()"))
@@ -124,12 +113,7 @@ func Confirm(email, confirmationCode string) (confirmed bool, err error) {
 }
 
 // Finds user by email
-func FindByEmail(email string) (u *User, err error) {
-	db, err := dbconn.DB()
-	if err != nil {
-		return nil, err
-	}
-
+func FindByEmail(db *gorm.DB, email string) (u *User, err error) {
 	u = &User{}
 	q := db.Where("email = ?", email).First(u)
 	if err = q.Error; err != nil {

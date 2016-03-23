@@ -35,7 +35,13 @@ func CreateToken(c *gin.Context) {
 		return
 	}
 
-	u, err := user.Authenticate(email, password)
+	db, err := dbconn.DB()
+	if err != nil {
+		controllers.InternalServerError(c, err)
+		return
+	}
+
+	u, err := user.Authenticate(db, email, password)
 	if err != nil {
 		controllers.InternalServerError(c, err)
 		return
@@ -61,7 +67,6 @@ func CreateToken(c *gin.Context) {
 
 	authHeader := strings.TrimPrefix(c.Request.Header.Get("Authorization"), "Basic ")
 	if authHeader != "" {
-
 		authBytes, err := base64.StdEncoding.DecodeString(authHeader)
 		if err != nil {
 			controllers.InternalServerError(c, err)
@@ -76,7 +81,7 @@ func CreateToken(c *gin.Context) {
 		clientSecret = c.PostForm("client_secret")
 	}
 
-	client, err := oauthclient.Authenticate(clientID, clientSecret)
+	client, err := oauthclient.Authenticate(db, clientID, clientSecret)
 	if err != nil {
 		controllers.InternalServerError(c, err)
 		return
@@ -88,12 +93,6 @@ func CreateToken(c *gin.Context) {
 			"error":             "invalid_client",
 			"error_description": "client credentials are invalid",
 		})
-		return
-	}
-
-	db, err := dbconn.DB()
-	if err != nil {
-		controllers.InternalServerError(c, err)
 		return
 	}
 

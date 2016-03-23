@@ -97,7 +97,7 @@ var _ = Describe("Project", func() {
 			})
 
 			It("returns project", func() {
-				proj2, err := project.FindByName(proj.Name)
+				proj2, err := project.FindByName(db, proj.Name)
 				Expect(err).To(BeNil())
 				Expect(proj2.ID).To(Equal(proj.ID))
 				Expect(proj2.Name).To(Equal(proj.Name))
@@ -106,7 +106,7 @@ var _ = Describe("Project", func() {
 
 		Context("when the project does not exist", func() {
 			It("returns nil", func() {
-				proj2, err := project.FindByName(proj.Name)
+				proj2, err := project.FindByName(db, proj.Name)
 				Expect(err).To(BeNil())
 				Expect(proj2).To(BeNil())
 			})
@@ -122,7 +122,7 @@ var _ = Describe("Project", func() {
 
 		Context("there is no domains for the project", func() {
 			It("only returns the default subdomain", func() {
-				domainNames, err := proj.DomainNames()
+				domainNames, err := proj.DomainNames(db)
 				Expect(err).To(BeNil())
 				Expect(domainNames).To(Equal([]string{
 					fmt.Sprintf("%s.%s", proj.Name, common.DefaultDomain),
@@ -148,7 +148,7 @@ var _ = Describe("Project", func() {
 			})
 
 			It("returns all domains", func() {
-				domainNames, err := proj.DomainNames()
+				domainNames, err := proj.DomainNames(db)
 				Expect(err).To(BeNil())
 				Expect(domainNames).To(Equal([]string{
 					fmt.Sprintf("%s.%s", proj.Name, common.DefaultDomain),
