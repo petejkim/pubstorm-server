@@ -65,9 +65,10 @@ var _ = Describe("Project", func() {
 			Entry("disallows starting with a hyphen", "-abc", "is invalid"),
 			Entry("disallows ending with a hyphen", "abc-", "is invalid"),
 			Entry("disallows spaces", "good one", "is invalid"),
+			Entry("disallows special characters", "good&one", "is invalid"),
+			Entry("disallows multiline regex attack", "abc\ndef", "is invalid"),
 			Entry("disallows names shorter than 3 characters", "aa", "is too short (min. 3 characters)"),
 			Entry("disallows names longer than 63 characters", strings.Repeat("a", 64), "is too long (max. 63 characters)"),
-			Entry("disallows special characters", "good&one", "is invalid"),
 		)
 	})
 

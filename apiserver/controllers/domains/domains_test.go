@@ -1,0 +1,204 @@
+package domains_test
+
+import (
+	"bytes"
+	"net/http"
+	"net/http/httptest"
+	"net/url"
+	"testing"
+
+	"github.com/jinzhu/gorm"
+	"github.com/nitrous-io/rise-server/apiserver/dbconn"
+	"github.com/nitrous-io/rise-server/apiserver/models/domain"
+	"github.com/nitrous-io/rise-server/apiserver/models/oauthclient"
+	"github.com/nitrous-io/rise-server/apiserver/models/oauthtoken"
+	"github.com/nitrous-io/rise-server/apiserver/models/project"
+	"github.com/nitrous-io/rise-server/apiserver/models/user"
+	"github.com/nitrous-io/rise-server/apiserver/server"
+	"github.com/nitrous-io/rise-server/testhelper"
+	"github.com/nitrous-io/rise-server/testhelper/factories"
+	"github.com/nitrous-io/rise-server/testhelper/shared"
+	. "github.com/onsi/ginkgo"
+	. "github.com/onsi/gomega"
+)
+
+func Test(t *testing.T) {
+	RegisterFailHandler(Fail)
+	RunSpecs(t, "domains")
+}
+
+var _ = Describe("Domains", func() {
+	var (
+		db  *gorm.DB
+		s   *httptest.Server
+		res *http.Response
+		err error
+	)
+
+	BeforeEach(func() {
+		db, err = dbconn.DB()
+		Expect(err).To(BeNil())
+
+		testhelper.TruncateTables(db.DB())
+	})
+
+	AfterEach(func() {
+		if res != nil {
+			res.Body.Close()
+		}
+		s.Close()
+	})
+
+	Describe("POST /projects/:name/domains", func() {
+		var (
+			err error
+
+			u  *user.User
+			oc *oauthclient.OauthClient
+			t  *oauthtoken.OauthToken
+
+			headers http.Header
+			proj    *project.Project
+			params  url.Values
+		)
+
+		BeforeEach(func() {
+			u, oc, t = factories.AuthTrio(db)
+
+			proj = &project.Project{
+				Name:   "foo-bar-express",
+				UserID: u.ID,
+			}
+			Expect(db.Create(proj).Error).To(BeNil())
+
+			headers = http.Header{
+				"Authorization": {"Bearer " + t.Token},
+			}
+
+			params = url.Values{
+				"name": {"www.foo-bar-express.com"},
+			}
+		})
+
+		doRequest := func() {
+			s = httptest.NewServer(server.New())
+			res, err = testhelper.MakeRequest("POST", s.URL+"/projects/foo-bar-express/domains", params, headers, nil)
+			Expect(err).To(BeNil())
+		}
+
+		Context("when the project belongs to current user", func() {
+			Context("when the domain name is empty", func() {
+				BeforeEach(func() {
+					params.Del("name")
+					doRequest()
+				})
+
+				It("returns 422 unprocessable entity", func() {
+					b := &bytes.Buffer{}
+					_, err := b.ReadFrom(res.Body)
+					Expect(err).To(BeNil())
+
+					Expect(res.StatusCode).To(Equal(422))
+					Expect(b.String()).To(MatchJSON(`{
+						"error": "invalid_params",
+						"errors": {
+							"name": "is required"
+						}
+					}`))
+				})
+			})
+
+			Context("when the domain name is invalid", func() {
+				BeforeEach(func() {
+					params.Set("name", "www.foo-b@r-express.com")
+					doRequest()
+				})
+
+				It("returns 422 unprocessable entity", func() {
+					b := &bytes.Buffer{}
+					_, err := b.ReadFrom(res.Body)
+					Expect(err).To(BeNil())
+
+					Expect(res.StatusCode).To(Equal(422))
+					Expect(b.String()).To(MatchJSON(`{
+					"error": "invalid_params",
+					"errors": {
+						"name": "is invalid"
+					}
+				}`))
+				})
+			})
+
+			Context("when the domain name is taken", func() {
+				BeforeEach(func() {
+					dom := &domain.Domain{
+						Name:      "www.foo-bar-express.com",
+						ProjectID: proj.ID,
+					}
+
+					err := db.Create(dom).Error
+					Expect(err).To(BeNil())
+
+					doRequest()
+				})
+
+				It("returns 422 unprocessable entity", func() {
+					b := &bytes.Buffer{}
+					_, err := b.ReadFrom(res.Body)
+					Expect(err).To(BeNil())
+
+					Expect(res.StatusCode).To(Equal(422))
+					Expect(b.String()).To(MatchJSON(`{
+						"error": "invalid_params",
+						"errors": {
+							"name": "is taken"
+						}
+					}`))
+				})
+			})
+
+			Context("when a valid domain name is given", func() {
+				var dom *domain.Domain
+
+				BeforeEach(func() {
+					doRequest()
+					dom = &domain.Domain{}
+					err := db.Last(dom).Error
+					Expect(err).To(BeNil())
+				})
+
+				It("returns 201 created", func() {
+					b := &bytes.Buffer{}
+					_, err := b.ReadFrom(res.Body)
+					Expect(err).To(BeNil())
+
+					Expect(res.StatusCode).To(Equal(http.StatusCreated))
+					Expect(b.String()).To(MatchJSON(`{
+						"domain": {
+							"name": "www.foo-bar-express.com"
+						}
+					}`))
+				})
+
+				It("creates a domain record in the DB", func() {
+					Expect(dom.Name).To(Equal("www.foo-bar-express.com"))
+					Expect(dom.ProjectID).To(Equal(proj.ID))
+				})
+			})
+		})
+
+		shared.ItRequiresAuthentication(func() (*gorm.DB, *user.User, *http.Header) {
+			return db, u, &headers
+		}, func() *http.Response {
+			doRequest()
+			return res
+		}, nil)
+
+		shared.ItRequiresProject(func() (*gorm.DB, *project.Project) {
+			return db, proj
+		}, func() *http.Response {
+			doRequest()
+			return res
+		}, nil)
+	})
+})

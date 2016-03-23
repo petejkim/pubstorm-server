@@ -3,6 +3,7 @@ package routes
 import (
 	"github.com/gin-gonic/gin"
 	"github.com/nitrous-io/rise-server/apiserver/controllers/deployments"
+	"github.com/nitrous-io/rise-server/apiserver/controllers/domains"
 	"github.com/nitrous-io/rise-server/apiserver/controllers/oauth"
 	"github.com/nitrous-io/rise-server/apiserver/controllers/ping"
 	"github.com/nitrous-io/rise-server/apiserver/controllers/projects"
@@ -30,6 +31,7 @@ func Draw(r *gin.Engine) {
 		{
 			r3 := r2.Group("/projects/:project_name", middleware.RequireProject)
 			r3.POST("/deployments", deployments.Create)
+			r3.POST("/domains", domains.Create)
 		}
 	}
 }

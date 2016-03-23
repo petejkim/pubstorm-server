@@ -9,7 +9,7 @@ import (
 	"github.com/jinzhu/gorm"
 )
 
-var projectNameRe = regexp.MustCompile(`(?m)(^[A-Za-z0-9][A-Za-z0-9\-]{1,61}[A-Za-z0-9]$)`)
+var projectNameRe = regexp.MustCompile(`\A[A-Za-z0-9][A-Za-z0-9\-]{1,61}[A-Za-z0-9]\z`)
 
 type Project struct {
 	gorm.Model
