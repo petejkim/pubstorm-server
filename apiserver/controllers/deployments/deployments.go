@@ -56,6 +56,12 @@ func Create(c *gin.Context) {
 		return
 	}
 
+	domainNames, err := proj.DomainNames()
+	if err != nil {
+		controllers.InternalServerError(c, err)
+		return
+	}
+
 	// upload "payload" part to s3
 	for {
 		part, err := reader.NextPart()
@@ -94,7 +100,7 @@ func Create(c *gin.Context) {
 		DeploymentID:     depl.ID,
 		DeploymentPrefix: depl.Prefix,
 		ProjectName:      proj.Name,
-		Domains:          []string{proj.Name + ".rise.cloud"},
+		Domains:          domainNames,
 	})
 	if err != nil {
 		controllers.InternalServerError(c, err)
