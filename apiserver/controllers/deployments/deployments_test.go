@@ -278,6 +278,7 @@ var _ = Describe("Deployments", func() {
 
 				It("enqueues a deploy job", func() {
 					d := testhelper.ConsumeQueue(mq, queues.Deploy)
+					Expect(d).NotTo(BeNil())
 					Expect(d.Body).To(MatchJSON(fmt.Sprintf(`
 						{
 							"deployment_id": %d,
@@ -285,7 +286,9 @@ var _ = Describe("Deployments", func() {
 							"project_name": "%s",
 							"domains": [
 								"%s.%s"
-							]
+							],
+							"skip_webroot_upload": false,
+							"skip_invalidation": false
 						}
 					`, depl.ID, depl.Prefix, proj.Name, proj.Name, common.DefaultDomain)))
 				})
@@ -310,6 +313,8 @@ var _ = Describe("Deployments", func() {
 
 				It("enqueues a deploy job with the user's domains", func() {
 					d := testhelper.ConsumeQueue(mq, queues.Deploy)
+					Expect(d).NotTo(BeNil())
+
 					Expect(d.Body).To(MatchJSON(fmt.Sprintf(`
 						{
 							"deployment_id": %d,
@@ -318,7 +323,9 @@ var _ = Describe("Deployments", func() {
 							"domains": [
 								"%s.%s",
 								"foo-bar-express.com"
-							]
+							],
+							"skip_webroot_upload": false,
+							"skip_invalidation": false
 						}
 					`, depl.ID, depl.Prefix, proj.Name, proj.Name, common.DefaultDomain)))
 				})

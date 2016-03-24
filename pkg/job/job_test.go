@@ -56,6 +56,7 @@ var _ = Describe("Job", func() {
 			Expect(err).To(BeNil())
 
 			d := testhelper.ConsumeQueue(mq, "fooq")
+			Expect(d).NotTo(BeNil())
 			Expect(string(d.Body)).To(Equal("bar"))
 		})
 	})

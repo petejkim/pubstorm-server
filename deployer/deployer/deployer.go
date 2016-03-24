@@ -45,57 +45,60 @@ func Work(data []byte) error {
 	}
 
 	prefix := fmt.Sprintf("%s-%d", d.DeploymentPrefix, d.DeploymentID)
-	rawBundle := "deployments/" + prefix + "/raw-bundle.tar.gz"
-	tmpFileName := prefix + "-raw-bundle.tar.gz"
 
-	f, err := ioutil.TempFile("", tmpFileName)
-	if err != nil {
-		return err
-	}
-	defer func() {
-		f.Close()
-		os.Remove(f.Name())
-	}()
+	if !d.SkipWebrootUpload {
+		rawBundle := "deployments/" + prefix + "/raw-bundle.tar.gz"
+		tmpFileName := prefix + "-raw-bundle.tar.gz"
 
-	if err := S3.Download(s3.BucketRegion, s3.BucketName, rawBundle, f); err != nil {
-		return err
-	}
-
-	gr, err := gzip.NewReader(f)
-	if err != nil {
-		fmt.Println("could not unzip", err)
-		return err
-	}
-	defer gr.Close()
-
-	tr := tar.NewReader(gr)
-
-	webroot := "deployments/" + prefix + "/webroot"
-
-	// webroot is publicly readable
-	for {
-		hdr, err := tr.Next()
+		f, err := ioutil.TempFile("", tmpFileName)
 		if err != nil {
-			if err == io.EOF {
-				break
+			return err
+		}
+		defer func() {
+			f.Close()
+			os.Remove(f.Name())
+		}()
+
+		if err := S3.Download(s3.BucketRegion, s3.BucketName, rawBundle, f); err != nil {
+			return err
+		}
+
+		gr, err := gzip.NewReader(f)
+		if err != nil {
+			fmt.Println("could not unzip", err)
+			return err
+		}
+		defer gr.Close()
+
+		tr := tar.NewReader(gr)
+
+		webroot := "deployments/" + prefix + "/webroot"
+
+		// webroot is publicly readable
+		for {
+			hdr, err := tr.Next()
+			if err != nil {
+				if err == io.EOF {
+					break
+				}
+				return err
 			}
-			return err
-		}
 
-		if hdr.FileInfo().IsDir() {
-			continue
-		}
+			if hdr.FileInfo().IsDir() {
+				continue
+			}
 
-		fileName := path.Clean(hdr.Name)
-		remotePath := webroot + "/" + fileName
+			fileName := path.Clean(hdr.Name)
+			remotePath := webroot + "/" + fileName
 
-		contentType := mime.TypeByExtension(filepath.Ext(fileName))
-		if i := strings.Index(contentType, ";"); i != -1 {
-			contentType = contentType[:i]
-		}
+			contentType := mime.TypeByExtension(filepath.Ext(fileName))
+			if i := strings.Index(contentType, ";"); i != -1 {
+				contentType = contentType[:i]
+			}
 
-		if err := S3.Upload(s3.BucketRegion, s3.BucketName, remotePath, tr, contentType, "public-read"); err != nil {
-			return err
+			if err := S3.Upload(s3.BucketRegion, s3.BucketName, remotePath, tr, contentType, "public-read"); err != nil {
+				return err
+			}
 		}
 	}
 
@@ -116,12 +119,17 @@ func Work(data []byte) error {
 		}
 	}
 
-	m, err := pubsub.NewMessageWithJSON(exchanges.Edges, exchanges.RouteV1Invalidation, &messages.V1InvalidationMessageData{
-		Domains: d.Domains,
-	})
+	if !d.SkipInvalidation {
+		m, err := pubsub.NewMessageWithJSON(exchanges.Edges, exchanges.RouteV1Invalidation, &messages.V1InvalidationMessageData{
+			Domains: d.Domains,
+		})
+		if err != nil {
+			return err
+		}
 
-	if err := m.Publish(); err != nil {
-		return err
+		if err := m.Publish(); err != nil {
+			return err
+		}
 	}
 
 	return nil

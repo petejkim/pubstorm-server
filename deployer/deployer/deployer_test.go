@@ -47,7 +47,7 @@ var _ = Describe("Deployer", func() {
 		deployer.S3 = origS3
 	})
 
-	It("fetches the raw bundle from S3, uploads to S3, and publishes invalidation message to edges", func() {
+	It("fetches the raw bundle from S3, uploads assets and meta data to S3, and publishes invalidation message to edges", func() {
 		// mock download
 		fakeS3.DownloadContent, err = ioutil.ReadFile("../../testhelper/fixtures/website.tar.gz")
 		Expect(err).To(BeNil())
@@ -115,11 +115,83 @@ var _ = Describe("Deployer", func() {
 		}
 
 		d := testhelper.ConsumeQueue(mq, qName)
+		Expect(d).NotTo(BeNil())
 		Expect(d.Body).To(MatchJSON(`{
 			"domains": [
 				"foo-bar-express.rise.cloud",
 				"www.foo-bar-express.com"
 			]
 		}`))
+	})
+
+	Context("when skip_webroot_upload is true", func() {
+		assertMetaDataUpload := func() {
+			Expect(fakeS3.UploadCalls.Count()).To(Equal(2)) // 2 metadata files (2 domains)
+
+			for i, domain := range []string{"foo-bar-express.rise.cloud", "www.foo-bar-express.com"} {
+				uploadCall := fakeS3.UploadCalls.NthCall(1 + i)
+				Expect(uploadCall).NotTo(BeNil())
+				Expect(uploadCall.Arguments[0]).To(Equal(s3.BucketRegion))
+				Expect(uploadCall.Arguments[1]).To(Equal(s3.BucketName))
+				Expect(uploadCall.Arguments[2]).To(Equal("domains/" + domain + "/meta.json"))
+				Expect(uploadCall.Arguments[4]).To(Equal("application/json"))
+				Expect(uploadCall.Arguments[5]).To(Equal("public-read"))
+				Expect(uploadCall.ReturnValues[0]).To(BeNil())
+				Expect(uploadCall.SideEffects["uploaded_content"]).To(MatchJSON(`{
+					"prefix": "a1b2c3-123"
+				}`))
+			}
+		}
+
+		It("only uploads metadata to S3, and publishes invalidation message to edges", func() {
+			err = deployer.Work([]byte(`
+				{
+					"deployment_id": 123,
+					"deployment_prefix": "a1b2c3",
+					"project_name": "foo-bar-express",
+					"domains": [
+						"foo-bar-express.rise.cloud",
+						"www.foo-bar-express.com"
+					],
+					"skip_webroot_upload": true
+				}
+			`))
+			Expect(err).To(BeNil())
+
+			assertMetaDataUpload()
+
+			d := testhelper.ConsumeQueue(mq, qName)
+			Expect(d).NotTo(BeNil())
+			Expect(d.Body).To(MatchJSON(`{
+				"domains": [
+					"foo-bar-express.rise.cloud",
+					"www.foo-bar-express.com"
+				]
+			}`))
+		})
+
+		Context("when skip_invalidation is also true", func() {
+			It("only uploads metadata to s3, and does not publish invalidation message", func() {
+				err = deployer.Work([]byte(`
+					{
+						"deployment_id": 123,
+						"deployment_prefix": "a1b2c3",
+						"project_name": "foo-bar-express",
+						"domains": [
+							"foo-bar-express.rise.cloud",
+							"www.foo-bar-express.com"
+						],
+						"skip_webroot_upload": true,
+						"skip_invalidation": true
+					}
+				`))
+
+				Expect(err).To(BeNil())
+				assertMetaDataUpload()
+
+				d := testhelper.ConsumeQueue(mq, qName)
+				Expect(d).To(BeNil())
+			})
+		})
 	})
 })

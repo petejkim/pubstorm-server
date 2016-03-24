@@ -3,7 +3,6 @@ package testhelper
 import (
 	"time"
 
-	"github.com/onsi/ginkgo"
 	. "github.com/onsi/gomega"
 	"github.com/streadway/amqp"
 )
@@ -37,7 +36,7 @@ func ConsumeQueue(mq *amqp.Connection, queueName string) *amqp.Delivery {
 	case m := <-msgCh:
 		return &m
 	case <-time.After(100 * time.Millisecond):
-		ginkgo.Fail("Could not consume message before timeout")
+		return nil
 	}
 
 	return nil

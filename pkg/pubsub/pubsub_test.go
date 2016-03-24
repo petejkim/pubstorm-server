@@ -69,9 +69,11 @@ var _ = Describe("PubSub", func() {
 			Expect(err).To(BeNil())
 
 			d1 := testhelper.ConsumeQueue(mq, q1)
+			Expect(d1).NotTo(BeNil())
 			Expect(string(d1.Body)).To(Equal("chocolates"))
 
 			d2 := testhelper.ConsumeQueue(mq, q2)
+			Expect(d2).NotTo(BeNil())
 			Expect(string(d2.Body)).To(Equal("chocolates"))
 		})
 	})
