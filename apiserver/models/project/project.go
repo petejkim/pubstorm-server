@@ -18,7 +18,7 @@ type Project struct {
 	Name   string
 	UserID uint
 
-	ActiveDeploymentID *uint
+	ActiveDeploymentID *uint // pointer to be nullable. remember to dereference by using *ActiveDeploymentID to get actual value
 }
 
 // Validates Project, if there are invalid fields, it returns a map of

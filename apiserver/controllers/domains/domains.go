@@ -8,6 +8,9 @@ import (
 	"github.com/nitrous-io/rise-server/apiserver/controllers"
 	"github.com/nitrous-io/rise-server/apiserver/dbconn"
 	"github.com/nitrous-io/rise-server/apiserver/models/domain"
+	"github.com/nitrous-io/rise-server/pkg/job"
+	"github.com/nitrous-io/rise-server/shared/messages"
+	"github.com/nitrous-io/rise-server/shared/queues"
 )
 
 func Index(c *gin.Context) {
@@ -79,6 +82,23 @@ func Create(c *gin.Context) {
 
 		controllers.InternalServerError(c, err)
 		return
+	}
+
+	if proj.ActiveDeploymentID != nil {
+		j, err := job.NewWithJSON(queues.Deploy, &messages.DeployJobData{
+			DeploymentID:      *proj.ActiveDeploymentID,
+			SkipWebrootUpload: true,
+			SkipInvalidation:  true, // invalidation is not necessary because we are adding a new domain
+		})
+		if err != nil {
+			controllers.InternalServerError(c, err)
+			return
+		}
+
+		if err := j.Enqueue(); err != nil {
+			controllers.InternalServerError(c, err)
+			return
+		}
 	}
 
 	c.JSON(http.StatusCreated, gin.H{

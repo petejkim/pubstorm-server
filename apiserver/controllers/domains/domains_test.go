@@ -2,6 +2,7 @@ package domains_test
 
 import (
 	"bytes"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -10,17 +11,21 @@ import (
 	"github.com/jinzhu/gorm"
 	"github.com/nitrous-io/rise-server/apiserver/common"
 	"github.com/nitrous-io/rise-server/apiserver/dbconn"
+	"github.com/nitrous-io/rise-server/apiserver/models/deployment"
 	"github.com/nitrous-io/rise-server/apiserver/models/domain"
 	"github.com/nitrous-io/rise-server/apiserver/models/oauthclient"
 	"github.com/nitrous-io/rise-server/apiserver/models/oauthtoken"
 	"github.com/nitrous-io/rise-server/apiserver/models/project"
 	"github.com/nitrous-io/rise-server/apiserver/models/user"
 	"github.com/nitrous-io/rise-server/apiserver/server"
+	"github.com/nitrous-io/rise-server/pkg/mqconn"
+	"github.com/nitrous-io/rise-server/shared/queues"
 	"github.com/nitrous-io/rise-server/testhelper"
 	"github.com/nitrous-io/rise-server/testhelper/factories"
 	"github.com/nitrous-io/rise-server/testhelper/shared"
 	. "github.com/onsi/ginkgo"
 	. "github.com/onsi/gomega"
+	"github.com/streadway/amqp"
 )
 
 func Test(t *testing.T) {
@@ -30,7 +35,9 @@ func Test(t *testing.T) {
 
 var _ = Describe("Domains", func() {
 	var (
-		db  *gorm.DB
+		db *gorm.DB
+		mq *amqp.Connection
+
 		s   *httptest.Server
 		res *http.Response
 		err error
@@ -47,7 +54,11 @@ var _ = Describe("Domains", func() {
 		db, err = dbconn.DB()
 		Expect(err).To(BeNil())
 
+		mq, err = mqconn.MQ()
+		Expect(err).To(BeNil())
+
 		testhelper.TruncateTables(db.DB())
+		testhelper.DeleteQueue(mq, queues.All...)
 
 		u, oc, t = factories.AuthTrio(db)
 
@@ -263,29 +274,74 @@ var _ = Describe("Domains", func() {
 			Context("when a valid domain name is given", func() {
 				var dom *domain.Domain
 
-				BeforeEach(func() {
+				JustBeforeEach(func() {
 					doRequest()
 					dom = &domain.Domain{}
 					err := db.Last(dom).Error
 					Expect(err).To(BeNil())
 				})
 
-				It("returns 201 created", func() {
-					b := &bytes.Buffer{}
-					_, err := b.ReadFrom(res.Body)
-					Expect(err).To(BeNil())
+				Context("when there is an active deployment", func() {
+					var depl *deployment.Deployment
 
-					Expect(res.StatusCode).To(Equal(http.StatusCreated))
-					Expect(b.String()).To(MatchJSON(`{
-						"domain": {
-							"name": "www.foo-bar-express.com"
-						}
-					}`))
+					BeforeEach(func() {
+						depl = factories.Deployment(db, proj, u, deployment.StateDeployed)
+						err := db.Model(proj).Update("active_deployment_id", depl.ID).Error
+						Expect(err).To(BeNil())
+					})
+
+					It("returns 201 created", func() {
+						b := &bytes.Buffer{}
+						_, err := b.ReadFrom(res.Body)
+						Expect(err).To(BeNil())
+
+						Expect(res.StatusCode).To(Equal(http.StatusCreated))
+						Expect(b.String()).To(MatchJSON(`{
+							"domain": {
+								"name": "www.foo-bar-express.com"
+							}
+						}`))
+					})
+
+					It("creates a domain record in the DB", func() {
+						Expect(dom.Name).To(Equal("www.foo-bar-express.com"))
+						Expect(dom.ProjectID).To(Equal(proj.ID))
+					})
+
+					It("enqueues a deploy job to upload meta.json", func() {
+						d := testhelper.ConsumeQueue(mq, queues.Deploy)
+						Expect(d).NotTo(BeNil())
+						Expect(d.Body).To(MatchJSON(fmt.Sprintf(`{
+							"deployment_id": %d,
+							"skip_webroot_upload": true,
+							"skip_invalidation": true
+						}`, *proj.ActiveDeploymentID)))
+					})
 				})
 
-				It("creates a domain record in the DB", func() {
-					Expect(dom.Name).To(Equal("www.foo-bar-express.com"))
-					Expect(dom.ProjectID).To(Equal(proj.ID))
+				Context("when there is no active deployment", func() {
+					It("returns 201 created", func() {
+						b := &bytes.Buffer{}
+						_, err := b.ReadFrom(res.Body)
+						Expect(err).To(BeNil())
+
+						Expect(res.StatusCode).To(Equal(http.StatusCreated))
+						Expect(b.String()).To(MatchJSON(`{
+							"domain": {
+								"name": "www.foo-bar-express.com"
+							}
+						}`))
+					})
+
+					It("creates a domain record in the DB", func() {
+						Expect(dom.Name).To(Equal("www.foo-bar-express.com"))
+						Expect(dom.ProjectID).To(Equal(proj.ID))
+					})
+
+					It("does not enqueue any job", func() {
+						d := testhelper.ConsumeQueue(mq, queues.Deploy)
+						Expect(d).To(BeNil())
+					})
 				})
 			})
 		})
