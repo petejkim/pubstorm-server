@@ -288,4 +288,95 @@ var _ = Describe("Deployments", func() {
 			})
 		})
 	})
+
+	Describe("POST /projects/:project_name/deployments/:id", func() {
+		var (
+			err error
+
+			u  *user.User
+			oc *oauthclient.OauthClient
+			t  *oauthtoken.OauthToken
+
+			headers http.Header
+			proj    *project.Project
+			depl    *deployment.Deployment
+		)
+
+		BeforeEach(func() {
+			u, oc, t = factories.AuthTrio(db)
+
+			proj = &project.Project{
+				Name:   "foo-bar-express",
+				UserID: u.ID,
+			}
+			Expect(db.Create(proj).Error).To(BeNil())
+
+			headers = http.Header{
+				"Authorization": {"Bearer " + t.Token},
+			}
+
+			depl = &deployment.Deployment{
+				Prefix:    "a1b2c3",
+				State:     deployment.StatePendingDeploy,
+				ProjectID: proj.ID,
+				UserID:    u.ID,
+			}
+			Expect(db.Create(depl).Error).To(BeNil())
+		})
+
+		doRequest := func() {
+			s = httptest.NewServer(server.New())
+			url := fmt.Sprintf("%s/projects/foo-bar-express/deployments/%d", s.URL, depl.ID)
+			res, err = testhelper.MakeRequest("GET", url, nil, headers, nil)
+			Expect(err).To(BeNil())
+		}
+
+		shared.ItRequiresAuthentication(func() (*gorm.DB, *user.User, *http.Header) {
+			return db, u, &headers
+		}, func() *http.Response {
+			doRequest()
+			return res
+		}, nil)
+
+		shared.ItRequiresProject(func() (*gorm.DB, *project.Project) {
+			return db, proj
+		}, func() *http.Response {
+			doRequest()
+			return res
+		}, nil)
+
+		Context("the deployment exist", func() {
+			It("returns 200 status ok", func() {
+				doRequest()
+				b := &bytes.Buffer{}
+				_, err = b.ReadFrom(res.Body)
+
+				Expect(res.StatusCode).To(Equal(http.StatusOK))
+				Expect(b.String()).To(MatchJSON(fmt.Sprintf(`{
+					"deployment": {
+						"id": %d,
+						"state": "%s"
+					}
+				}`, depl.ID, deployment.StatePendingDeploy)))
+			})
+		})
+
+		Context("the deployment does not exist", func() {
+			BeforeEach(func() {
+				Expect(db.Delete(depl).Error).To(BeNil())
+			})
+
+			It("returns 404 not found", func() {
+				doRequest()
+				b := &bytes.Buffer{}
+				_, err = b.ReadFrom(res.Body)
+
+				Expect(res.StatusCode).To(Equal(http.StatusNotFound))
+				Expect(b.String()).To(MatchJSON(`{
+					"error": "not_found",
+					"error_message": "deployment could not be found"
+				}`))
+			})
+		})
+	})
 })

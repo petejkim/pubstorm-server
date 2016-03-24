@@ -7,6 +7,7 @@ import (
 	"strconv"
 
 	"github.com/gin-gonic/gin"
+	"github.com/jinzhu/gorm"
 	"github.com/nitrous-io/rise-server/apiserver/controllers"
 	"github.com/nitrous-io/rise-server/apiserver/dbconn"
 	"github.com/nitrous-io/rise-server/apiserver/models/deployment"
@@ -111,4 +112,31 @@ func Create(c *gin.Context) {
 	c.JSON(http.StatusAccepted, gin.H{
 		"deployment": depl.AsJSON(),
 	})
+}
+
+func Show(c *gin.Context) {
+	deploymentID := c.Param("id")
+	db, err := dbconn.DB()
+	if err != nil {
+		controllers.InternalServerError(c, err)
+		return
+	}
+
+	depl := &deployment.Deployment{}
+	if err := db.Where("id = ?", deploymentID).First(depl).Error; err != nil {
+		if err == gorm.RecordNotFound {
+			c.JSON(http.StatusNotFound, gin.H{
+				"error":         "not_found",
+				"error_message": "deployment could not be found",
+			})
+			return
+		}
+		controllers.InternalServerError(c, err)
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"deployment": depl.AsJSON(),
+	})
+	return
 }
