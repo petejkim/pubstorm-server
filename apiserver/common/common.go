@@ -3,13 +3,16 @@ package common
 import (
 	"io/ioutil"
 	"os"
+	"strconv"
 
 	log "github.com/Sirupsen/logrus"
 )
 
 var (
 	MailerEmail   = os.Getenv("MAILER_EMAIL")
-	DefaultDomain = os.Getenv("DEFAULT_DOMAIN")
+	DefaultDomain = os.Getenv("DEFAULT_DOMAIN") // default domain (e.g. rise.cloud)
+
+	MaxDomainsPerProject = 5 // MAX_DOMAINS - max # of custom domains per project
 )
 
 func init() {
@@ -17,14 +20,6 @@ func init() {
 	if riseEnv == "" {
 		riseEnv = "development"
 		os.Setenv("RISE_ENV", riseEnv)
-	}
-
-	if MailerEmail == "" {
-		MailerEmail = "Rise.sh <support@rise.sh>"
-	}
-
-	if DefaultDomain == "" {
-		DefaultDomain = "rise.cloud"
 	}
 
 	logLevelEnv := os.Getenv("RISE_LOG_LEVEL")
@@ -43,6 +38,21 @@ func init() {
 		}
 	} else {
 		log.SetLevel(logLevel)
+	}
+
+	if MailerEmail == "" {
+		MailerEmail = "Rise.sh <support@rise.sh>"
+	}
+
+	if DefaultDomain == "" {
+		DefaultDomain = "rise.cloud"
+	}
+
+	n, err := strconv.Atoi(os.Getenv("MAX_DOMAINS"))
+	if err != nil {
+		log.Warn("Ignoring MAX_DOMAINS, not a valid numeric value!")
+	} else {
+		MaxDomainsPerProject = n
 	}
 
 	if riseEnv != "test" {

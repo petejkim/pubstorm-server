@@ -223,6 +223,43 @@ var _ = Describe("Domains", func() {
 				})
 			})
 
+			Context("when the project has reached max number of domains allowed", func() {
+				var origMaxDomains int
+
+				BeforeEach(func() {
+					origMaxDomains = common.MaxDomainsPerProject
+					common.MaxDomainsPerProject = 2
+
+					for i := 0; i < common.MaxDomainsPerProject; i++ {
+						factories.Domain(db, proj)
+					}
+
+					doRequest()
+				})
+
+				AfterEach(func() {
+					common.MaxDomainsPerProject = origMaxDomains
+				})
+
+				It("returns 422 unprocessable entity", func() {
+					b := &bytes.Buffer{}
+					_, err := b.ReadFrom(res.Body)
+					Expect(err).To(BeNil())
+
+					Expect(res.StatusCode).To(Equal(422))
+					Expect(b.String()).To(MatchJSON(`{
+						"error": "invalid_request",
+						"error_description": "project cannot have more domains"
+					}`))
+
+					var domainCount int
+					err = db.Model(domain.Domain{}).Where("project_id = ?", proj.ID).Count(&domainCount).Error
+					Expect(err).To(BeNil())
+
+					Expect(domainCount).To(Equal(common.MaxDomainsPerProject))
+				})
+			})
+
 			Context("when a valid domain name is given", func() {
 				var dom *domain.Domain
 

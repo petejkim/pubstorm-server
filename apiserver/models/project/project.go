@@ -49,7 +49,7 @@ func (p *Project) AsJSON() interface{} {
 	}
 }
 
-// get list of domain names for this project
+// Returns list of domain names for this project
 func (p *Project) DomainNames(db *gorm.DB) ([]string, error) {
 	doms := []*domain.Domain{}
 	if err := db.Where("project_id = ?", p.ID).Find(&doms).Error; err != nil {
@@ -78,4 +78,18 @@ func FindByName(db *gorm.DB, name string) (proj *Project, err error) {
 	}
 
 	return proj, nil
+}
+
+// Returns whether more domains can be added to this project
+func (p *Project) CanAddDomain(db *gorm.DB) (bool, error) {
+	var domainCount int
+	if err := db.Model(domain.Domain{}).Where("project_id = ?", p.ID).Count(&domainCount).Error; err != nil {
+		return false, err
+	}
+
+	if domainCount < common.MaxDomainsPerProject {
+		return true, nil
+	}
+
+	return false, nil
 }

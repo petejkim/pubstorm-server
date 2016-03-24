@@ -29,6 +29,8 @@ var _ = Describe("Project", func() {
 		u   *user.User
 		db  *gorm.DB
 		err error
+
+		proj *project.Project
 	)
 
 	BeforeEach(func() {
@@ -37,15 +39,10 @@ var _ = Describe("Project", func() {
 		testhelper.TruncateTables(db.DB())
 
 		u = factories.User(db)
+		proj = factories.Project(db, u)
 	})
 
 	Describe("Validate()", func() {
-		var proj *project.Project
-
-		BeforeEach(func() {
-			proj = factories.Project(db, u)
-		})
-
 		DescribeTable("validates name",
 			func(name, nameErr string) {
 				proj.Name = name
@@ -73,29 +70,7 @@ var _ = Describe("Project", func() {
 	})
 
 	Describe("FindByName()", func() {
-		var (
-			proj *project.Project
-			err  error
-		)
-
-		Context("when the project exists", func() {
-			BeforeEach(func() {
-				u := &user.User{
-					Email:    "harry.potter@gmail.com",
-					Password: "123456",
-				}
-				err = u.Insert(db)
-				Expect(err).To(BeNil())
-
-				proj = &project.Project{
-					Name:   "foo-bar-express",
-					UserID: u.ID,
-				}
-
-				err = db.Create(proj).Error
-				Expect(err).To(BeNil())
-			})
-
+		Context("when the project by the given name exists", func() {
 			It("returns project", func() {
 				proj2, err := project.FindByName(db, proj.Name)
 				Expect(err).To(BeNil())
@@ -104,22 +79,16 @@ var _ = Describe("Project", func() {
 			})
 		})
 
-		Context("when the project does not exist", func() {
+		Context("when the project by the given name does not exist", func() {
 			It("returns nil", func() {
-				proj2, err := project.FindByName(db, proj.Name)
+				proj2, err := project.FindByName(db, proj.Name+"xx")
 				Expect(err).To(BeNil())
 				Expect(proj2).To(BeNil())
 			})
 		})
 	})
 
-	Describe("DomainNames", func() {
-		var proj *project.Project
-
-		BeforeEach(func() {
-			proj = factories.Project(db, u)
-		})
-
+	Describe("DomainNames()", func() {
 		Context("there is no domains for the project", func() {
 			It("only returns the default subdomain", func() {
 				domainNames, err := proj.DomainNames(db)
@@ -155,6 +124,41 @@ var _ = Describe("Project", func() {
 					"foo-bar-express.com",
 					"foobarexpress.com",
 				}))
+			})
+		})
+	})
+
+	Describe("CanAddDomain()", func() {
+		var origMaxDomains int
+
+		BeforeEach(func() {
+			origMaxDomains = common.MaxDomainsPerProject
+			common.MaxDomainsPerProject = 2
+		})
+
+		AfterEach(func() {
+			common.MaxDomainsPerProject = origMaxDomains
+		})
+
+		Context("when the project has fewer than the max number of custom domains allowed", func() {
+			It("returns true", func() {
+				canCreate, err := proj.CanAddDomain(db)
+				Expect(err).To(BeNil())
+				Expect(canCreate).To(BeTrue())
+			})
+		})
+
+		Context("when the project already has the max number of custom domains allowed", func() {
+			BeforeEach(func() {
+				for i := 0; i < common.MaxDomainsPerProject; i++ {
+					factories.Domain(db, proj)
+				}
+			})
+
+			It("returns false", func() {
+				canCreate, err := proj.CanAddDomain(db)
+				Expect(err).To(BeNil())
+				Expect(canCreate).To(BeFalse())
 			})
 		})
 	})

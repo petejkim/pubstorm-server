@@ -52,6 +52,20 @@ func Create(c *gin.Context) {
 		return
 	}
 
+	canCreate, err := proj.CanAddDomain(db)
+	if err != nil {
+		controllers.InternalServerError(c, err)
+		return
+	}
+
+	if !canCreate {
+		c.JSON(422, gin.H{
+			"error":             "invalid_request",
+			"error_description": "project cannot have more domains",
+		})
+		return
+	}
+
 	if err := db.Create(dom).Error; err != nil {
 		if e, ok := err.(*pq.Error); ok && e.Code.Name() == "unique_violation" {
 			c.JSON(422, gin.H{
