@@ -17,6 +17,8 @@ type Project struct {
 
 	Name   string
 	UserID uint
+
+	ActiveDeploymentID *uint
 }
 
 // Validates Project, if there are invalid fields, it returns a map of

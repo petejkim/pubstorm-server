@@ -9,10 +9,8 @@ import (
 	"testing"
 
 	"github.com/jinzhu/gorm"
-	"github.com/nitrous-io/rise-server/apiserver/common"
 	"github.com/nitrous-io/rise-server/apiserver/dbconn"
 	"github.com/nitrous-io/rise-server/apiserver/models/deployment"
-	"github.com/nitrous-io/rise-server/apiserver/models/domain"
 	"github.com/nitrous-io/rise-server/apiserver/models/oauthclient"
 	"github.com/nitrous-io/rise-server/apiserver/models/oauthtoken"
 	"github.com/nitrous-io/rise-server/apiserver/models/project"
@@ -282,52 +280,10 @@ var _ = Describe("Deployments", func() {
 					Expect(d.Body).To(MatchJSON(fmt.Sprintf(`
 						{
 							"deployment_id": %d,
-							"deployment_prefix": "%s",
-							"project_name": "%s",
-							"domains": [
-								"%s.%s"
-							],
 							"skip_webroot_upload": false,
 							"skip_invalidation": false
 						}
-					`, depl.ID, depl.Prefix, proj.Name, proj.Name, common.DefaultDomain)))
-				})
-			})
-
-			Context("when the request is valid and the user has more domains", func() {
-				var depl *deployment.Deployment
-
-				BeforeEach(func() {
-					dom := &domain.Domain{
-						Name:      "foo-bar-express.com",
-						ProjectID: proj.ID,
-					}
-
-					err := db.Create(dom).Error
-					Expect(err).To(BeNil())
-
-					doRequest()
-					depl = &deployment.Deployment{}
-					db.Last(depl)
-				})
-
-				It("enqueues a deploy job with the user's domains", func() {
-					d := testhelper.ConsumeQueue(mq, queues.Deploy)
-					Expect(d).NotTo(BeNil())
-
-					Expect(d.Body).To(MatchJSON(fmt.Sprintf(`
-						{
-							"deployment_id": %d,
-							"deployment_prefix": "%s",
-							"project_name": "%s",
-							"domains": [
-								"%s.%s",
-								"foo-bar-express.com"
-							],
-							"skip_webroot_upload": false,
-							"skip_invalidation": false
-						}
-					`, depl.ID, depl.Prefix, proj.Name, proj.Name, common.DefaultDomain)))
+					`, depl.ID)))
 				})
 			})
 		})

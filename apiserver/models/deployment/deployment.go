@@ -1,6 +1,10 @@
 package deployment
 
-import "github.com/jinzhu/gorm"
+import (
+	"fmt"
+
+	"github.com/jinzhu/gorm"
+)
 
 const (
 	StatePendingUpload = "pending_upload"
@@ -30,4 +34,9 @@ func (d *Deployment) AsJSON() interface{} {
 		d.ID,
 		d.State,
 	}
+}
+
+// Returns prefix and ID in <prefix>-<id> format
+func (d *Deployment) PrefixID() string {
+	return fmt.Sprintf("%s-%d", d.Prefix, d.ID)
 }

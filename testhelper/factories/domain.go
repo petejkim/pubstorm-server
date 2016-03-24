@@ -12,20 +12,31 @@ import (
 
 var domainN = 0
 
-func Domain(db *gorm.DB, proj *project.Project) (d *domain.Domain) {
-	domainN++
-
+func Domain(db *gorm.DB, proj *project.Project, domainNames ...string) (d *domain.Domain) {
 	if proj == nil {
 		proj = Project(db, nil)
 	}
 
-	d = &domain.Domain{
-		ProjectID: proj.ID,
-		Name:      fmt.Sprintf("www.dom%d.com", domainN),
+	if domainNames == nil {
+		domainN++
+
+		d = &domain.Domain{
+			ProjectID: proj.ID,
+			Name:      fmt.Sprintf("www.dom%d.com", domainN),
+		}
+		err := db.Create(d).Error
+		Expect(err).To(BeNil())
+	} else {
+		for _, domName := range domainNames {
+			d = &domain.Domain{
+				ProjectID: proj.ID,
+				Name:      domName,
+			}
+			err := db.Create(d).Error
+			Expect(err).To(BeNil())
+		}
 	}
 
-	err := db.Create(d).Error
-	Expect(err).To(BeNil())
-
+	// returns only the last domain created
 	return d
 }

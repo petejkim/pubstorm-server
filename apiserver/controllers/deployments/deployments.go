@@ -56,12 +56,6 @@ func Create(c *gin.Context) {
 		return
 	}
 
-	domainNames, err := proj.DomainNames(db)
-	if err != nil {
-		controllers.InternalServerError(c, err)
-		return
-	}
-
 	// upload "payload" part to s3
 	for {
 		part, err := reader.NextPart()
@@ -91,16 +85,13 @@ func Create(c *gin.Context) {
 		}
 	}
 
-	if err := db.Model(&depl).UpdateColumn("state", deployment.StateUploaded).Error; err != nil {
+	if err := db.Model(&depl).Update("state", deployment.StateUploaded).Error; err != nil {
 		controllers.InternalServerError(c, err)
 		return
 	}
 
 	j, err := job.NewWithJSON(queues.Deploy, &messages.DeployJobData{
-		DeploymentID:     depl.ID,
-		DeploymentPrefix: depl.Prefix,
-		ProjectName:      proj.Name,
-		Domains:          domainNames,
+		DeploymentID: depl.ID,
 	})
 	if err != nil {
 		controllers.InternalServerError(c, err)
@@ -112,7 +103,7 @@ func Create(c *gin.Context) {
 		return
 	}
 
-	if err := db.Model(&depl).UpdateColumn("state", deployment.StatePendingDeploy).Error; err != nil {
+	if err := db.Model(&depl).Update("state", deployment.StatePendingDeploy).Error; err != nil {
 		controllers.InternalServerError(c, err)
 		return
 	}

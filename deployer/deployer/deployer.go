@@ -15,6 +15,9 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/nitrous-io/rise-server/apiserver/dbconn"
+	"github.com/nitrous-io/rise-server/apiserver/models/deployment"
+	"github.com/nitrous-io/rise-server/apiserver/models/project"
 	"github.com/nitrous-io/rise-server/pkg/filetransfer"
 	"github.com/nitrous-io/rise-server/pkg/pubsub"
 	"github.com/nitrous-io/rise-server/shared/exchanges"
@@ -44,11 +47,21 @@ func Work(data []byte) error {
 		return err
 	}
 
-	prefix := fmt.Sprintf("%s-%d", d.DeploymentPrefix, d.DeploymentID)
+	db, err := dbconn.DB()
+	if err != nil {
+		return err
+	}
+
+	depl := &deployment.Deployment{}
+	if err := db.First(depl, d.DeploymentID).Error; err != nil {
+		return err
+	}
+
+	prefixID := depl.PrefixID()
 
 	if !d.SkipWebrootUpload {
-		rawBundle := "deployments/" + prefix + "/raw-bundle.tar.gz"
-		tmpFileName := prefix + "-raw-bundle.tar.gz"
+		rawBundle := "deployments/" + prefixID + "/raw-bundle.tar.gz"
+		tmpFileName := prefixID + "-raw-bundle.tar.gz"
 
 		f, err := ioutil.TempFile("", tmpFileName)
 		if err != nil {
@@ -72,7 +85,7 @@ func Work(data []byte) error {
 
 		tr := tar.NewReader(gr)
 
-		webroot := "deployments/" + prefix + "/webroot"
+		webroot := "deployments/" + prefixID + "/webroot"
 
 		// webroot is publicly readable
 		for {
@@ -104,7 +117,7 @@ func Work(data []byte) error {
 
 	// the metadata file is also publicly readable, do not put sensitive data
 	metaJson, err := json.Marshal(map[string]interface{}{
-		"prefix": prefix,
+		"prefix": prefixID,
 	})
 	if err != nil {
 		return err
@@ -112,7 +125,17 @@ func Work(data []byte) error {
 
 	reader := bytes.NewReader(metaJson)
 
-	for _, domain := range d.Domains {
+	proj := &project.Project{}
+	if err := db.First(proj, depl.ProjectID).Error; err != nil {
+		return err
+	}
+
+	domainNames, err := proj.DomainNames(db)
+	if err != nil {
+		return err
+	}
+
+	for _, domain := range domainNames {
 		reader.Seek(0, 0)
 		if err := S3.Upload(s3.BucketRegion, s3.BucketName, "domains/"+domain+"/meta.json", reader, "application/json", "public-read"); err != nil {
 			return err
@@ -121,7 +144,7 @@ func Work(data []byte) error {
 
 	if !d.SkipInvalidation {
 		m, err := pubsub.NewMessageWithJSON(exchanges.Edges, exchanges.RouteV1Invalidation, &messages.V1InvalidationMessageData{
-			Domains: d.Domains,
+			Domains: domainNames,
 		})
 		if err != nil {
 			return err
@@ -130,6 +153,31 @@ func Work(data []byte) error {
 		if err := m.Publish(); err != nil {
 			return err
 		}
+	}
+
+	tx := db.Begin()
+	if err := tx.Error; err != nil {
+		return err
+	}
+	defer tx.Rollback()
+
+	if err := tx.Model(deployment.Deployment{}).
+		Where("id = ?", d.DeploymentID).
+		Update("state", deployment.StateDeployed).
+		Error; err != nil {
+		return err
+	}
+
+	if err := tx.Model(depl).Update("state", deployment.StateDeployed).Error; err != nil {
+		return err
+	}
+
+	if err := tx.Model(proj).Update("active_deployment_id", &depl.ID).Error; err != nil {
+		return err
+	}
+
+	if err := tx.Commit().Error; err != nil {
+		return err
 	}
 
 	return nil

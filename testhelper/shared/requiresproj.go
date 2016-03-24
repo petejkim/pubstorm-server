@@ -54,7 +54,7 @@ func ItRequiresProject(
 	Context("when the project does not belong to current user", func() {
 		BeforeEach(func() {
 			u2 := factories.User(db)
-			err := db.Model(&proj).UpdateColumn("user_id", u2.ID).Error
+			err := db.Model(&proj).Update("user_id", u2.ID).Error
 			Expect(err).To(BeNil())
 			res = reqFn()
 		})
