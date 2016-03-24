@@ -1,0 +1,19 @@
+#!/bin/bash -e
+
+IMAGE_NAME=rise-server-build
+
+DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
+cd $DIR/..
+
+# Ensure we have the latest image
+docker build -t $IMAGE_NAME .
+mkdir -p build
+rm -rf build/*
+
+docker run --rm \
+  -e UPLOAD_S3=$UPLOAD_S3 \
+  -e ACCESS_KEY=$ACCESS_KEY \
+  -e SECRET_KEY=$SECRET_KEY \
+  -v $(pwd)/build:/opt/bin \
+  -v $(pwd):/opt/src/github.com/nitrous-io/rise-server \
+  $IMAGE_NAME /opt/src/github.com/nitrous-io/rise-server/script/docker-build
