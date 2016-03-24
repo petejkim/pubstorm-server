@@ -82,7 +82,7 @@ var _ = Describe("OAuth", func() {
 				}`))
 
 				tok := &oauthtoken.OauthToken{}
-				err = db.Last(&tok).Error
+				err = db.Last(tok).Error
 				Expect(err).To(Equal(gorm.RecordNotFound))
 			})
 		})
@@ -109,7 +109,7 @@ var _ = Describe("OAuth", func() {
 					}`))
 
 					tok := &oauthtoken.OauthToken{}
-					err = db.Last(&tok).Error
+					err = db.Last(tok).Error
 					Expect(err).To(Equal(gorm.RecordNotFound))
 				},
 				Entry("grant_type is required", "grant_type"),
@@ -140,7 +140,7 @@ var _ = Describe("OAuth", func() {
 					}`))
 
 					tok := &oauthtoken.OauthToken{}
-					err = db.Last(&tok).Error
+					err = db.Last(tok).Error
 					Expect(err).To(Equal(gorm.RecordNotFound))
 				},
 				Entry("username should be valid", "username"),
@@ -150,7 +150,7 @@ var _ = Describe("OAuth", func() {
 
 		Context("when the user hasn't confirmed email", func() {
 			BeforeEach(func() {
-				err = db.Model(&u).Update("confirmed_at", nil).Error
+				err = db.Model(u).Update("confirmed_at", gorm.Expr("NULL")).Error
 				Expect(err).To(BeNil())
 
 				doRequest(url.Values{
@@ -172,7 +172,7 @@ var _ = Describe("OAuth", func() {
 				}`))
 
 				tok := &oauthtoken.OauthToken{}
-				err = db.Last(&tok).Error
+				err = db.Last(tok).Error
 				Expect(err).To(Equal(gorm.RecordNotFound))
 			})
 		})
@@ -203,7 +203,7 @@ var _ = Describe("OAuth", func() {
 					}`))
 
 					tok := &oauthtoken.OauthToken{}
-					err = db.Last(&tok).Error
+					err = db.Last(tok).Error
 					Expect(err).To(Equal(gorm.RecordNotFound))
 				},
 				Entry("client id should be valid", func() {
@@ -230,7 +230,7 @@ var _ = Describe("OAuth", func() {
 				Expect(err).To(BeNil())
 
 				tok := &oauthtoken.OauthToken{}
-				err = db.Last(&tok).Error
+				err = db.Last(tok).Error
 				Expect(err).To(BeNil())
 
 				Expect(tok.UserID).To(Equal(u.ID))

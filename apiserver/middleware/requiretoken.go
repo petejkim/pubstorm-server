@@ -53,7 +53,7 @@ func RequireToken(c *gin.Context) {
 
 	u := &user.User{}
 
-	if err := db.Model(&t).Related(&u).Error; err != nil {
+	if err := db.Model(t).Related(u).Error; err != nil {
 		if err == gorm.RecordNotFound {
 			c.Header("WWW-Authenticate", `Bearer realm="rise-user"`)
 			c.JSON(http.StatusUnauthorized, gin.H{

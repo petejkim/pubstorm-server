@@ -20,7 +20,7 @@ func User(db *gorm.DB) (u *user.User) {
 	err := u.Insert(db)
 	Expect(err).To(BeNil())
 
-	err = db.Model(&u).Update("confirmed_at", gorm.Expr("now()")).Error
+	err = db.Model(u).Update("confirmed_at", gorm.Expr("now()")).Error
 	Expect(err).To(BeNil())
 
 	return u

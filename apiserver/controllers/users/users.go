@@ -127,7 +127,7 @@ func ResendConfirmationCode(c *gin.Context) {
 		return
 	}
 
-	if u == nil || u.ConfirmedAt.Valid {
+	if u == nil || u.ConfirmedAt != nil {
 		c.JSON(422, gin.H{
 			"error":             "invalid_params",
 			"error_description": "email is not found or already confirmed",

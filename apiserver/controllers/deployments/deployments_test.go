@@ -159,7 +159,7 @@ var _ = Describe("Deployments", func() {
 			// should not deploy anything if project is not found
 			Expect(fakeS3.UploadCalls.Count()).To(Equal(0))
 			depl := &deployment.Deployment{}
-			Expect(db.Last(&depl).Error).To(Equal(gorm.RecordNotFound))
+			Expect(db.Last(depl).Error).To(Equal(gorm.RecordNotFound))
 		})
 
 		Context("when the project belongs to current user", func() {
@@ -178,7 +178,7 @@ var _ = Describe("Deployments", func() {
 					Expect(fakeS3.UploadCalls.Count()).To(Equal(0))
 
 					depl := &deployment.Deployment{}
-					Expect(db.Last(&depl).Error).To(Equal(gorm.RecordNotFound))
+					Expect(db.Last(depl).Error).To(Equal(gorm.RecordNotFound))
 				})
 			})
 
@@ -199,7 +199,7 @@ var _ = Describe("Deployments", func() {
 					Expect(fakeS3.UploadCalls.Count()).To(Equal(0))
 
 					depl := &deployment.Deployment{}
-					Expect(db.Last(&depl).Error).To(Equal(gorm.RecordNotFound))
+					Expect(db.Last(depl).Error).To(Equal(gorm.RecordNotFound))
 				})
 			})
 
@@ -228,7 +228,7 @@ var _ = Describe("Deployments", func() {
 					Expect(fakeS3.UploadCalls.Count()).To(Equal(0))
 
 					depl := &deployment.Deployment{}
-					Expect(db.Last(&depl).Error).To(Equal(gorm.RecordNotFound))
+					Expect(db.Last(depl).Error).To(Equal(gorm.RecordNotFound))
 				})
 			})
 

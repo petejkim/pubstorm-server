@@ -4,7 +4,6 @@ import (
 	"time"
 
 	"github.com/jinzhu/gorm"
-	"github.com/lib/pq"
 )
 
 type OauthToken struct {
@@ -13,7 +12,7 @@ type OauthToken struct {
 	OauthClientID uint
 	Token         string `sql:"default:encode(gen_random_bytes(64), 'hex')"`
 	CreatedAt     time.Time
-	DeletedAt     pq.NullTime
+	DeletedAt     *time.Time
 }
 
 // Finds oauth token by token

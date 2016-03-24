@@ -55,7 +55,7 @@ func CreateToken(c *gin.Context) {
 		return
 	}
 
-	if !u.ConfirmedAt.Valid {
+	if u.ConfirmedAt == nil {
 		c.JSON(400, gin.H{
 			"error":             "invalid_grant",
 			"error_description": "user has not confirmed email address",

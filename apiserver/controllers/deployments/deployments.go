@@ -85,7 +85,7 @@ func Create(c *gin.Context) {
 		}
 	}
 
-	if err := db.Model(&depl).Update("state", deployment.StateUploaded).Error; err != nil {
+	if err := db.Model(depl).Update("state", deployment.StateUploaded).Error; err != nil {
 		controllers.InternalServerError(c, err)
 		return
 	}
@@ -103,7 +103,7 @@ func Create(c *gin.Context) {
 		return
 	}
 
-	if err := db.Model(&depl).Update("state", deployment.StatePendingDeploy).Error; err != nil {
+	if err := db.Model(depl).Update("state", deployment.StatePendingDeploy).Error; err != nil {
 		controllers.InternalServerError(c, err)
 		return
 	}

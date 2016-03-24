@@ -147,8 +147,8 @@ var _ = Describe("User", func() {
 				err = db.Where("id = ?", u.ID).First(u).Error
 				Expect(err).To(BeNil())
 
-				Expect(u.ConfirmedAt.Valid).To(BeTrue())
-				Expect(u.ConfirmedAt.Time.Unix()).NotTo(BeZero())
+				Expect(u.ConfirmedAt).NotTo(BeNil())
+				Expect(u.ConfirmedAt.Unix()).NotTo(BeZero())
 			})
 		})
 
@@ -161,7 +161,7 @@ var _ = Describe("User", func() {
 				err = db.Where("id = ?", u.ID).First(u).Error
 				Expect(err).To(BeNil())
 
-				Expect(u.ConfirmedAt.Valid).To(BeFalse())
+				Expect(u.ConfirmedAt).To(BeNil())
 			})
 		})
 
@@ -174,6 +174,7 @@ var _ = Describe("User", func() {
 				err = db.Where("id = ?", u.ID).First(u).Error
 				Expect(err).To(BeNil())
 				prevConfirmedAt := u.ConfirmedAt
+				Expect(prevConfirmedAt).NotTo(BeNil())
 
 				confirmed, err = user.Confirm(db, u.Email, u.ConfirmationCode)
 				Expect(confirmed).To(BeFalse())
@@ -182,7 +183,8 @@ var _ = Describe("User", func() {
 				err = db.Where("id = ?", u.ID).First(u).Error
 				Expect(err).To(BeNil())
 
-				Expect(u.ConfirmedAt.Time.Unix()).To(Equal(prevConfirmedAt.Time.Unix()))
+				Expect(u.ConfirmedAt).NotTo(BeNil())
+				Expect(u.ConfirmedAt.Unix()).To(Equal(prevConfirmedAt.Unix()))
 			})
 		})
 	})

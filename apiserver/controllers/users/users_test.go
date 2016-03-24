@@ -99,7 +99,7 @@ var _ = Describe("Users", func() {
 
 			It("creates a user record in the DB", func() {
 				Expect(u.Email).To(Equal("foo@example.com"))
-				Expect(u.ConfirmedAt.Valid).To(BeFalse())
+				Expect(u.ConfirmedAt).To(BeNil())
 				Expect(u.ConfirmationCode).NotTo(HaveLen(0))
 
 				var pwHashed bool
@@ -249,7 +249,7 @@ var _ = Describe("Users", func() {
 			err = u.Insert(db)
 			Expect(err).To(BeNil())
 			Expect(u.ID).NotTo(BeZero())
-			Expect(u.ConfirmedAt.Valid).To(BeFalse())
+			Expect(u.ConfirmedAt).To(BeNil())
 
 			params = url.Values{
 				"email":             {u.Email},
@@ -283,7 +283,7 @@ var _ = Describe("Users", func() {
 					err = db.Where("id = ?", u.ID).First(u).Error
 					Expect(err).To(BeNil())
 
-					Expect(u.ConfirmedAt.Valid).To(BeFalse())
+					Expect(u.ConfirmedAt).To(BeNil())
 				},
 
 				Entry("require email", func() {
@@ -320,8 +320,8 @@ var _ = Describe("Users", func() {
 				err = db.Where("id = ?", u.ID).First(u).Error
 				Expect(err).To(BeNil())
 
-				Expect(u.ConfirmedAt.Valid).To(BeTrue())
-				Expect(u.ConfirmedAt.Time.Unix()).NotTo(BeZero())
+				Expect(u.ConfirmedAt).NotTo(BeNil())
+				Expect(*u.ConfirmedAt).NotTo(BeZero())
 			})
 		})
 	})
@@ -356,7 +356,7 @@ var _ = Describe("Users", func() {
 				err = u.Insert(db)
 				Expect(err).To(BeNil())
 				Expect(u.ID).NotTo(BeZero())
-				Expect(u.ConfirmedAt.Valid).To(BeFalse())
+				Expect(u.ConfirmedAt).To(BeNil())
 
 				doRequest(url.Values{})
 			})
@@ -395,7 +395,7 @@ var _ = Describe("Users", func() {
 					err = u.Insert(db)
 					Expect(err).To(BeNil())
 					Expect(u.ID).NotTo(BeZero())
-					Expect(u.ConfirmedAt.Valid).To(BeFalse())
+					Expect(u.ConfirmedAt).To(BeNil())
 				})
 
 				It("returns 200 OK", func() {

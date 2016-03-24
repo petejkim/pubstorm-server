@@ -3,6 +3,7 @@ package user
 import (
 	"errors"
 	"regexp"
+	"time"
 
 	"github.com/jinzhu/gorm"
 	"github.com/lib/pq"
@@ -23,7 +24,7 @@ type User struct {
 	Organization string
 
 	ConfirmationCode string `sql:"default:lpad((floor(random() * 999999) + 1)::text, 6, '0')"`
-	ConfirmedAt      pq.NullTime
+	ConfirmedAt      *time.Time
 }
 
 // Returns a struct that can be converted to JSON
