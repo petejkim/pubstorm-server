@@ -42,7 +42,7 @@ func ItRequiresProject(
 			Expect(res.StatusCode).To(Equal(http.StatusNotFound))
 			Expect(b.String()).To(MatchJSON(`{
 				"error": "not_found",
-				"error_message": "project could not be found"
+				"error_description": "project could not be found"
 			}`))
 
 			if assertFn != nil {
@@ -67,7 +67,7 @@ func ItRequiresProject(
 			Expect(res.StatusCode).To(Equal(http.StatusNotFound))
 			Expect(b.String()).To(MatchJSON(`{
 				"error": "not_found",
-				"error_message": "project could not be found"
+				"error_description": "project could not be found"
 			}`))
 
 			if assertFn != nil {

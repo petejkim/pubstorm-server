@@ -126,8 +126,8 @@ func Show(c *gin.Context) {
 	if err := db.Where("id = ?", deploymentID).First(depl).Error; err != nil {
 		if err == gorm.RecordNotFound {
 			c.JSON(http.StatusNotFound, gin.H{
-				"error":         "not_found",
-				"error_message": "deployment could not be found",
+				"error":             "not_found",
+				"error_description": "deployment could not be found",
 			})
 			return
 		}

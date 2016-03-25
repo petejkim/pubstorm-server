@@ -34,8 +34,8 @@ func RequireProject(c *gin.Context) {
 
 	if proj == nil || proj.UserID != u.ID {
 		c.JSON(http.StatusNotFound, gin.H{
-			"error":         "not_found",
-			"error_message": "project could not be found",
+			"error":             "not_found",
+			"error_description": "project could not be found",
 		})
 		c.Abort()
 		return

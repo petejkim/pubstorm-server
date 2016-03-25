@@ -374,7 +374,7 @@ var _ = Describe("Deployments", func() {
 				Expect(res.StatusCode).To(Equal(http.StatusNotFound))
 				Expect(b.String()).To(MatchJSON(`{
 					"error": "not_found",
-					"error_message": "deployment could not be found"
+					"error_description": "deployment could not be found"
 				}`))
 			})
 		})
