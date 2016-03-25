@@ -123,7 +123,7 @@ func Show(c *gin.Context) {
 	}
 
 	depl := &deployment.Deployment{}
-	if err := db.Where("id = ?", deploymentID).First(depl).Error; err != nil {
+	if err := db.First(depl, deploymentID).Error; err != nil {
 		if err == gorm.RecordNotFound {
 			c.JSON(http.StatusNotFound, gin.H{
 				"error":             "not_found",

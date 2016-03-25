@@ -280,7 +280,7 @@ var _ = Describe("Users", func() {
 						"error_description": "` + message + `"
 					}`))
 
-					err = db.Where("id = ?", u.ID).First(u).Error
+					err = db.First(u, u.ID).Error
 					Expect(err).To(BeNil())
 
 					Expect(u.ConfirmedAt).To(BeNil())
@@ -317,7 +317,7 @@ var _ = Describe("Users", func() {
 					"confirmed": true
 				}`))
 
-				err = db.Where("id = ?", u.ID).First(u).Error
+				err = db.First(u, u.ID).Error
 				Expect(err).To(BeNil())
 
 				Expect(u.ConfirmedAt).NotTo(BeNil())
