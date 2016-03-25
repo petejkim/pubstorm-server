@@ -9,7 +9,6 @@ import (
 	"testing"
 
 	"github.com/jinzhu/gorm"
-	"github.com/nitrous-io/rise-server/apiserver/common"
 	"github.com/nitrous-io/rise-server/apiserver/dbconn"
 	"github.com/nitrous-io/rise-server/apiserver/models/deployment"
 	"github.com/nitrous-io/rise-server/apiserver/models/domain"
@@ -20,13 +19,14 @@ import (
 	"github.com/nitrous-io/rise-server/apiserver/server"
 	"github.com/nitrous-io/rise-server/pkg/filetransfer"
 	"github.com/nitrous-io/rise-server/pkg/mqconn"
+	"github.com/nitrous-io/rise-server/shared"
 	"github.com/nitrous-io/rise-server/shared/exchanges"
 	"github.com/nitrous-io/rise-server/shared/queues"
 	"github.com/nitrous-io/rise-server/shared/s3client"
 	"github.com/nitrous-io/rise-server/testhelper"
 	"github.com/nitrous-io/rise-server/testhelper/factories"
 	"github.com/nitrous-io/rise-server/testhelper/fake"
-	"github.com/nitrous-io/rise-server/testhelper/shared"
+	sharedexamples "github.com/nitrous-io/rise-server/testhelper/shared"
 	. "github.com/onsi/ginkgo"
 	. "github.com/onsi/gomega"
 	"github.com/streadway/amqp"
@@ -111,7 +111,7 @@ var _ = Describe("Domains", func() {
 				Expect(res.StatusCode).To(Equal(http.StatusOK))
 				Expect(b.String()).To(MatchJSON(`{
 					"domains": [
-						"foo-bar-express.` + common.DefaultDomain + `"
+						"foo-bar-express.` + shared.DefaultDomain + `"
 					]
 				}`))
 			})
@@ -139,7 +139,7 @@ var _ = Describe("Domains", func() {
 				Expect(res.StatusCode).To(Equal(http.StatusOK))
 				Expect(b.String()).To(MatchJSON(`{
 					"domains": [
-						"foo-bar-express.` + common.DefaultDomain + `",
+						"foo-bar-express.` + shared.DefaultDomain + `",
 						"www.foo-bar-express.com",
 						"www.foobarexpress.com"
 					]
@@ -147,14 +147,14 @@ var _ = Describe("Domains", func() {
 			})
 		})
 
-		shared.ItRequiresAuthentication(func() (*gorm.DB, *user.User, *http.Header) {
+		sharedexamples.ItRequiresAuthentication(func() (*gorm.DB, *user.User, *http.Header) {
 			return db, u, &headers
 		}, func() *http.Response {
 			doRequest()
 			return res
 		}, nil)
 
-		shared.ItRequiresProject(func() (*gorm.DB, *project.Project) {
+		sharedexamples.ItRequiresProject(func() (*gorm.DB, *project.Project) {
 			return db, proj
 		}, func() *http.Response {
 			doRequest()
@@ -251,10 +251,10 @@ var _ = Describe("Domains", func() {
 				var origMaxDomains int
 
 				BeforeEach(func() {
-					origMaxDomains = common.MaxDomainsPerProject
-					common.MaxDomainsPerProject = 2
+					origMaxDomains = shared.MaxDomainsPerProject
+					shared.MaxDomainsPerProject = 2
 
-					for i := 0; i < common.MaxDomainsPerProject; i++ {
+					for i := 0; i < shared.MaxDomainsPerProject; i++ {
 						factories.Domain(db, proj)
 					}
 
@@ -262,7 +262,7 @@ var _ = Describe("Domains", func() {
 				})
 
 				AfterEach(func() {
-					common.MaxDomainsPerProject = origMaxDomains
+					shared.MaxDomainsPerProject = origMaxDomains
 				})
 
 				It("returns 422 unprocessable entity", func() {
@@ -280,7 +280,7 @@ var _ = Describe("Domains", func() {
 					err = db.Model(domain.Domain{}).Where("project_id = ?", proj.ID).Count(&domainCount).Error
 					Expect(err).To(BeNil())
 
-					Expect(domainCount).To(Equal(common.MaxDomainsPerProject))
+					Expect(domainCount).To(Equal(shared.MaxDomainsPerProject))
 				})
 			})
 
@@ -381,14 +381,14 @@ var _ = Describe("Domains", func() {
 			})
 		})
 
-		shared.ItRequiresAuthentication(func() (*gorm.DB, *user.User, *http.Header) {
+		sharedexamples.ItRequiresAuthentication(func() (*gorm.DB, *user.User, *http.Header) {
 			return db, u, &headers
 		}, func() *http.Response {
 			doRequest()
 			return res
 		}, nil)
 
-		shared.ItRequiresProject(func() (*gorm.DB, *project.Project) {
+		sharedexamples.ItRequiresProject(func() (*gorm.DB, *project.Project) {
 			return db, proj
 		}, func() *http.Response {
 			doRequest()
@@ -479,14 +479,14 @@ var _ = Describe("Domains", func() {
 			})
 		})
 
-		shared.ItRequiresAuthentication(func() (*gorm.DB, *user.User, *http.Header) {
+		sharedexamples.ItRequiresAuthentication(func() (*gorm.DB, *user.User, *http.Header) {
 			return db, u, &headers
 		}, func() *http.Response {
 			doRequest()
 			return res
 		}, nil)
 
-		shared.ItRequiresProject(func() (*gorm.DB, *project.Project) {
+		sharedexamples.ItRequiresProject(func() (*gorm.DB, *project.Project) {
 			return db, proj
 		}, func() *http.Response {
 			doRequest()

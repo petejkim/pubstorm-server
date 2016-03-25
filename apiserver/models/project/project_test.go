@@ -6,11 +6,11 @@ import (
 	"testing"
 
 	"github.com/jinzhu/gorm"
-	"github.com/nitrous-io/rise-server/apiserver/common"
 	"github.com/nitrous-io/rise-server/apiserver/dbconn"
 	"github.com/nitrous-io/rise-server/apiserver/models/domain"
 	"github.com/nitrous-io/rise-server/apiserver/models/project"
 	"github.com/nitrous-io/rise-server/apiserver/models/user"
+	"github.com/nitrous-io/rise-server/shared"
 	"github.com/nitrous-io/rise-server/testhelper"
 	"github.com/nitrous-io/rise-server/testhelper/factories"
 
@@ -94,7 +94,7 @@ var _ = Describe("Project", func() {
 				domainNames, err := proj.DomainNames(db)
 				Expect(err).To(BeNil())
 				Expect(domainNames).To(Equal([]string{
-					fmt.Sprintf("%s.%s", proj.Name, common.DefaultDomain),
+					fmt.Sprintf("%s.%s", proj.Name, shared.DefaultDomain),
 				}))
 			})
 		})
@@ -120,7 +120,7 @@ var _ = Describe("Project", func() {
 				domainNames, err := proj.DomainNames(db)
 				Expect(err).To(BeNil())
 				Expect(domainNames).To(Equal([]string{
-					fmt.Sprintf("%s.%s", proj.Name, common.DefaultDomain),
+					fmt.Sprintf("%s.%s", proj.Name, shared.DefaultDomain),
 					"foo-bar-express.com",
 					"foobarexpress.com",
 				}))
@@ -132,12 +132,12 @@ var _ = Describe("Project", func() {
 		var origMaxDomains int
 
 		BeforeEach(func() {
-			origMaxDomains = common.MaxDomainsPerProject
-			common.MaxDomainsPerProject = 2
+			origMaxDomains = shared.MaxDomainsPerProject
+			shared.MaxDomainsPerProject = 2
 		})
 
 		AfterEach(func() {
-			common.MaxDomainsPerProject = origMaxDomains
+			shared.MaxDomainsPerProject = origMaxDomains
 		})
 
 		Context("when the project has fewer than the max number of custom domains allowed", func() {
@@ -150,7 +150,7 @@ var _ = Describe("Project", func() {
 
 		Context("when the project already has the max number of custom domains allowed", func() {
 			BeforeEach(func() {
-				for i := 0; i < common.MaxDomainsPerProject; i++ {
+				for i := 0; i < shared.MaxDomainsPerProject; i++ {
 					factories.Domain(db, proj)
 				}
 			})

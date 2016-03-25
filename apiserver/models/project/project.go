@@ -4,8 +4,8 @@ import (
 	"regexp"
 	"sort"
 
-	"github.com/nitrous-io/rise-server/apiserver/common"
 	"github.com/nitrous-io/rise-server/apiserver/models/domain"
+	"github.com/nitrous-io/rise-server/shared"
 
 	"github.com/jinzhu/gorm"
 )
@@ -63,7 +63,7 @@ func (p *Project) DomainNames(db *gorm.DB) ([]string, error) {
 		domNames[i+1] = dom.Name
 	}
 	sort.Sort(sort.StringSlice(domNames))
-	domNames[0] = p.Name + "." + common.DefaultDomain
+	domNames[0] = p.Name + "." + shared.DefaultDomain
 
 	return domNames, nil
 }
@@ -89,7 +89,7 @@ func (p *Project) CanAddDomain(db *gorm.DB) (bool, error) {
 		return false, err
 	}
 
-	if domainCount < common.MaxDomainsPerProject {
+	if domainCount < shared.MaxDomainsPerProject {
 		return true, nil
 	}
 

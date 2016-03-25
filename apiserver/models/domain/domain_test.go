@@ -5,11 +5,11 @@ import (
 	"testing"
 
 	"github.com/jinzhu/gorm"
-	"github.com/nitrous-io/rise-server/apiserver/common"
 	"github.com/nitrous-io/rise-server/apiserver/dbconn"
 	"github.com/nitrous-io/rise-server/apiserver/models/domain"
 	"github.com/nitrous-io/rise-server/apiserver/models/project"
 	"github.com/nitrous-io/rise-server/apiserver/models/user"
+	"github.com/nitrous-io/rise-server/shared"
 	"github.com/nitrous-io/rise-server/testhelper"
 	"github.com/nitrous-io/rise-server/testhelper/factories"
 
@@ -77,8 +77,8 @@ var _ = Describe("Domain", func() {
 			Entry("disallows ending with a hyphen", "abc-.com", "is invalid"),
 			Entry("disallows spaces", "good one.com", "is invalid"),
 			Entry("disallows special characters", "good&one.com", "is invalid"),
-			Entry("disallows default domain", common.DefaultDomain, "is invalid"),
-			Entry("disallows default subdomain", "abc."+common.DefaultDomain, "is invalid"),
+			Entry("disallows default domain", shared.DefaultDomain, "is invalid"),
+			Entry("disallows default subdomain", "abc."+shared.DefaultDomain, "is invalid"),
 			Entry("disallows multiline regex attack", "abc.com\ndef.com", "is invalid"),
 			Entry("disallows names shorter than 3 characters", "co", "is too short (min. 3 characters)"),
 			Entry("disallows names longer than 255 characters", strings.Repeat("a", 252)+".com", "is too long (max. 255 characters)"),
