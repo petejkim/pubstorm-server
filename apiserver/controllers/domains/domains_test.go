@@ -18,10 +18,14 @@ import (
 	"github.com/nitrous-io/rise-server/apiserver/models/project"
 	"github.com/nitrous-io/rise-server/apiserver/models/user"
 	"github.com/nitrous-io/rise-server/apiserver/server"
+	"github.com/nitrous-io/rise-server/pkg/filetransfer"
 	"github.com/nitrous-io/rise-server/pkg/mqconn"
+	"github.com/nitrous-io/rise-server/shared/exchanges"
 	"github.com/nitrous-io/rise-server/shared/queues"
+	"github.com/nitrous-io/rise-server/shared/s3client"
 	"github.com/nitrous-io/rise-server/testhelper"
 	"github.com/nitrous-io/rise-server/testhelper/factories"
+	"github.com/nitrous-io/rise-server/testhelper/fake"
 	"github.com/nitrous-io/rise-server/testhelper/shared"
 	. "github.com/onsi/ginkgo"
 	. "github.com/onsi/gomega"
@@ -35,6 +39,9 @@ func Test(t *testing.T) {
 
 var _ = Describe("Domains", func() {
 	var (
+		fakeS3 *fake.S3
+		origS3 filetransfer.FileTransfer
+
 		db *gorm.DB
 		mq *amqp.Connection
 
@@ -51,6 +58,10 @@ var _ = Describe("Domains", func() {
 	)
 
 	BeforeEach(func() {
+		origS3 = s3client.S3
+		fakeS3 = &fake.S3{}
+		s3client.S3 = fakeS3
+
 		db, err = dbconn.DB()
 		Expect(err).To(BeNil())
 
@@ -59,6 +70,7 @@ var _ = Describe("Domains", func() {
 
 		testhelper.TruncateTables(db.DB())
 		testhelper.DeleteQueue(mq, queues.All...)
+		testhelper.DeleteExchange(mq, exchanges.All...)
 
 		u, oc, t = factories.AuthTrio(db)
 
@@ -74,6 +86,8 @@ var _ = Describe("Domains", func() {
 	})
 
 	AfterEach(func() {
+		s3client.S3 = origS3
+
 		if res != nil {
 			res.Body.Close()
 		}
@@ -365,11 +379,13 @@ var _ = Describe("Domains", func() {
 		var (
 			domainName string
 			d          *domain.Domain
+			qName      string // invalidation queue
 		)
 
 		BeforeEach(func() {
 			d = factories.Domain(db, proj)
 			domainName = d.Name
+			qName = testhelper.StartQueueWithExchange(mq, exchanges.Edges, exchanges.RouteV1Invalidation)
 		})
 
 		doRequest := func() {
@@ -387,6 +403,29 @@ var _ = Describe("Domains", func() {
 			err = db.Model(domain.Domain{}).Where("id = ?", d.ID).Count(&count).Error
 			Expect(err).To(BeNil())
 			Expect(count).To(BeZero())
+		})
+
+		It("deletes the meta.json for the domain from s3", func() {
+			doRequest()
+
+			Expect(fakeS3.DeleteCalls.Count()).To(Equal(1))
+
+			deleteCall := fakeS3.DeleteCalls.NthCall(1)
+			Expect(deleteCall).NotTo(BeNil())
+			Expect(deleteCall.Arguments[0]).To(Equal(s3client.BucketRegion))
+			Expect(deleteCall.Arguments[1]).To(Equal(s3client.BucketName))
+			Expect(deleteCall.Arguments[2]).To(Equal("/domains/" + domainName + "/meta.json"))
+			Expect(deleteCall.ReturnValues[0]).To(BeNil())
+		})
+
+		It("publishes invalidation message for the domain", func() {
+			doRequest()
+
+			d := testhelper.ConsumeQueue(mq, qName)
+			Expect(d).NotTo(BeNil())
+			Expect(d.Body).To(MatchJSON(fmt.Sprintf(`{
+				"domains": ["%s"]
+			}`, domainName)))
 		})
 
 		shared.ItRequiresAuthentication(func() (*gorm.DB, *user.User, *http.Header) {

@@ -64,3 +64,14 @@ func (s *S3) Download(region, bucket, key string, out io.WriterAt) (err error) {
 	})
 	return
 }
+
+func (s *S3) Delete(region, bucket, key string) (err error) {
+	svc := s3.New(session.New(&aws.Config{Region: aws.String(region)}))
+
+	_, err = svc.DeleteObject(&s3.DeleteObjectInput{
+		Bucket: aws.String(bucket),
+		Key:    aws.String(key),
+	})
+
+	return err
+}

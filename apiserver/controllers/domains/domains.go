@@ -9,8 +9,11 @@ import (
 	"github.com/nitrous-io/rise-server/apiserver/dbconn"
 	"github.com/nitrous-io/rise-server/apiserver/models/domain"
 	"github.com/nitrous-io/rise-server/pkg/job"
+	"github.com/nitrous-io/rise-server/pkg/pubsub"
+	"github.com/nitrous-io/rise-server/shared/exchanges"
 	"github.com/nitrous-io/rise-server/shared/messages"
 	"github.com/nitrous-io/rise-server/shared/queues"
+	"github.com/nitrous-io/rise-server/shared/s3client"
 )
 
 func Index(c *gin.Context) {
@@ -116,6 +119,24 @@ func Destroy(c *gin.Context) {
 	}
 
 	if err := db.Where("name = ?", domainName).Delete(domain.Domain{}).Error; err != nil {
+		controllers.InternalServerError(c, err)
+		return
+	}
+
+	if err := s3client.Delete("/domains/" + domainName + "/meta.json"); err != nil {
+		controllers.InternalServerError(c, err)
+		return
+	}
+
+	m, err := pubsub.NewMessageWithJSON(exchanges.Edges, exchanges.RouteV1Invalidation, &messages.V1InvalidationMessageData{
+		Domains: []string{domainName},
+	})
+	if err != nil {
+		controllers.InternalServerError(c, err)
+		return
+	}
+
+	if err := m.Publish(); err != nil {
 		controllers.InternalServerError(c, err)
 		return
 	}

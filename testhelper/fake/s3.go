@@ -44,3 +44,9 @@ func (s *S3) Download(region, bucket, key string, out io.WriterAt) (err error) {
 
 	return err
 }
+
+func (s *S3) Delete(region, bucket, key string) (err error) {
+	err = s.DeleteError
+	s.DeleteCalls.Add(List{region, bucket, key}, List{err}, nil)
+	return err
+}
