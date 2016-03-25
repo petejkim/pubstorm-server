@@ -13,7 +13,7 @@ import (
 	"github.com/nitrous-io/rise-server/pkg/job"
 	"github.com/nitrous-io/rise-server/shared/messages"
 	"github.com/nitrous-io/rise-server/shared/queues"
-	"github.com/nitrous-io/rise-server/shared/s3"
+	"github.com/nitrous-io/rise-server/shared/s3client"
 )
 
 func Create(c *gin.Context) {
@@ -41,7 +41,7 @@ func Create(c *gin.Context) {
 		UserID:    u.ID,
 	}
 
-	if n, err := strconv.ParseInt(c.Request.Header.Get("Content-Length"), 10, 64); err != nil || n > s3.MaxUploadSize {
+	if n, err := strconv.ParseInt(c.Request.Header.Get("Content-Length"), 10, 64); err != nil || n > s3client.MaxUploadSize {
 		if err != nil {
 			c.JSON(http.StatusBadRequest, gin.H{
 				"error":             "invalid_request",
@@ -77,7 +77,7 @@ func Create(c *gin.Context) {
 
 			uploadKey := fmt.Sprintf("deployments/%s-%d/raw-bundle.tar.gz", depl.Prefix, depl.ID)
 
-			if err := s3.Upload(uploadKey, part, "", "private"); err != nil {
+			if err := s3client.Upload(uploadKey, part, "", "private"); err != nil {
 				controllers.InternalServerError(c, err)
 				return
 			}

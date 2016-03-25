@@ -1,4 +1,4 @@
-package s3
+package s3client
 
 import (
 	"io"
@@ -36,4 +36,8 @@ func Upload(path string, body io.Reader, contentType, acl string) (err error) {
 
 func Download(path string, out io.WriterAt) (err error) {
 	return S3.Download(BucketRegion, BucketName, path, out)
+}
+
+func Delete(path string) (err error) {
+	return S3.Delete(BucketRegion, BucketName, path)
 }

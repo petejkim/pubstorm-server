@@ -22,7 +22,7 @@ import (
 	"github.com/nitrous-io/rise-server/pkg/pubsub"
 	"github.com/nitrous-io/rise-server/shared/exchanges"
 	"github.com/nitrous-io/rise-server/shared/messages"
-	"github.com/nitrous-io/rise-server/shared/s3"
+	"github.com/nitrous-io/rise-server/shared/s3client"
 )
 
 func init() {
@@ -38,7 +38,7 @@ func init() {
 	}
 }
 
-var S3 filetransfer.FileTransfer = filetransfer.NewS3(s3.PartSize, s3.MaxUploadParts)
+var S3 filetransfer.FileTransfer = filetransfer.NewS3(s3client.PartSize, s3client.MaxUploadParts)
 
 func Work(data []byte) error {
 	d := &messages.DeployJobData{}
@@ -72,7 +72,7 @@ func Work(data []byte) error {
 			os.Remove(f.Name())
 		}()
 
-		if err := S3.Download(s3.BucketRegion, s3.BucketName, rawBundle, f); err != nil {
+		if err := S3.Download(s3client.BucketRegion, s3client.BucketName, rawBundle, f); err != nil {
 			return err
 		}
 
@@ -109,7 +109,7 @@ func Work(data []byte) error {
 				contentType = contentType[:i]
 			}
 
-			if err := S3.Upload(s3.BucketRegion, s3.BucketName, remotePath, tr, contentType, "public-read"); err != nil {
+			if err := S3.Upload(s3client.BucketRegion, s3client.BucketName, remotePath, tr, contentType, "public-read"); err != nil {
 				return err
 			}
 		}
@@ -137,7 +137,7 @@ func Work(data []byte) error {
 
 	for _, domain := range domainNames {
 		reader.Seek(0, 0)
-		if err := S3.Upload(s3.BucketRegion, s3.BucketName, "domains/"+domain+"/meta.json", reader, "application/json", "public-read"); err != nil {
+		if err := S3.Upload(s3client.BucketRegion, s3client.BucketName, "domains/"+domain+"/meta.json", reader, "application/json", "public-read"); err != nil {
 			return err
 		}
 	}

@@ -14,7 +14,7 @@ import (
 	"github.com/nitrous-io/rise-server/pkg/filetransfer"
 	"github.com/nitrous-io/rise-server/pkg/mqconn"
 	"github.com/nitrous-io/rise-server/shared/exchanges"
-	"github.com/nitrous-io/rise-server/shared/s3"
+	"github.com/nitrous-io/rise-server/shared/s3client"
 	"github.com/nitrous-io/rise-server/testhelper"
 	"github.com/nitrous-io/rise-server/testhelper/factories"
 	"github.com/nitrous-io/rise-server/testhelper/fake"
@@ -30,7 +30,7 @@ func Test(t *testing.T) {
 
 var _ = Describe("Deployer", func() {
 	var (
-		fakeS3 *fake.FileTransfer
+		fakeS3 *fake.S3
 		origS3 filetransfer.FileTransfer
 		err    error
 
@@ -44,8 +44,8 @@ var _ = Describe("Deployer", func() {
 	)
 
 	BeforeEach(func() {
-		origS3 = s3.S3
-		fakeS3 = &fake.FileTransfer{}
+		origS3 = s3client.S3
+		fakeS3 = &fake.S3{}
 		deployer.S3 = fakeS3
 
 		db, err = dbconn.DB()
@@ -72,8 +72,8 @@ var _ = Describe("Deployer", func() {
 	assertUpload := func(nthUpload int, uploadPath, contentType string, content []byte) {
 		uploadCall := fakeS3.UploadCalls.NthCall(nthUpload)
 		Expect(uploadCall).NotTo(BeNil())
-		Expect(uploadCall.Arguments[0]).To(Equal(s3.BucketRegion))
-		Expect(uploadCall.Arguments[1]).To(Equal(s3.BucketName))
+		Expect(uploadCall.Arguments[0]).To(Equal(s3client.BucketRegion))
+		Expect(uploadCall.Arguments[1]).To(Equal(s3client.BucketName))
 		Expect(uploadCall.Arguments[2]).To(Equal(uploadPath))
 		Expect(uploadCall.Arguments[4]).To(Equal(contentType))
 		Expect(uploadCall.Arguments[5]).To(Equal("public-read"))
@@ -106,8 +106,8 @@ var _ = Describe("Deployer", func() {
 		Expect(fakeS3.DownloadCalls.Count()).To(Equal(1))
 		downloadCall := fakeS3.DownloadCalls.NthCall(1)
 		Expect(downloadCall).NotTo(BeNil())
-		Expect(downloadCall.Arguments[0]).To(Equal(s3.BucketRegion))
-		Expect(downloadCall.Arguments[1]).To(Equal(s3.BucketName))
+		Expect(downloadCall.Arguments[0]).To(Equal(s3client.BucketRegion))
+		Expect(downloadCall.Arguments[1]).To(Equal(s3client.BucketName))
 		Expect(downloadCall.Arguments[2]).To(Equal(fmt.Sprintf("deployments/%s/raw-bundle.tar.gz", depl.PrefixID())))
 		Expect(downloadCall.ReturnValues[0]).To(BeNil())
 

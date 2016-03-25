@@ -19,7 +19,7 @@ import (
 	"github.com/nitrous-io/rise-server/pkg/filetransfer"
 	"github.com/nitrous-io/rise-server/pkg/mqconn"
 	"github.com/nitrous-io/rise-server/shared/queues"
-	"github.com/nitrous-io/rise-server/shared/s3"
+	"github.com/nitrous-io/rise-server/shared/s3client"
 	"github.com/nitrous-io/rise-server/testhelper"
 	"github.com/nitrous-io/rise-server/testhelper/factories"
 	"github.com/nitrous-io/rise-server/testhelper/fake"
@@ -64,7 +64,7 @@ var _ = Describe("Deployments", func() {
 
 	Describe("POST /projects/:name/deployments", func() {
 		var (
-			fakeS3 *fake.FileTransfer
+			fakeS3 *fake.S3
 			origS3 filetransfer.FileTransfer
 			err    error
 
@@ -77,9 +77,9 @@ var _ = Describe("Deployments", func() {
 		)
 
 		BeforeEach(func() {
-			origS3 = s3.S3
-			fakeS3 = &fake.FileTransfer{}
-			s3.S3 = fakeS3
+			origS3 = s3client.S3
+			fakeS3 = &fake.S3{}
+			s3client.S3 = fakeS3
 
 			u, oc, t = factories.AuthTrio(db)
 
@@ -95,7 +95,7 @@ var _ = Describe("Deployments", func() {
 		})
 
 		AfterEach(func() {
-			s3.S3 = origS3
+			s3client.S3 = origS3
 		})
 
 		doRequestWithMultipart := func(partName string) {
@@ -207,13 +207,13 @@ var _ = Describe("Deployments", func() {
 				var origMaxUploadSize int64
 
 				BeforeEach(func() {
-					origMaxUploadSize = s3.MaxUploadSize
-					s3.MaxUploadSize = 10
+					origMaxUploadSize = s3client.MaxUploadSize
+					s3client.MaxUploadSize = 10
 					doRequest()
 				})
 
 				AfterEach(func() {
-					s3.MaxUploadSize = origMaxUploadSize
+					s3client.MaxUploadSize = origMaxUploadSize
 				})
 
 				It("returns 400 with invalid_request", func() {
@@ -266,8 +266,8 @@ var _ = Describe("Deployments", func() {
 					Expect(fakeS3.UploadCalls.Count()).To(Equal(1))
 					call := fakeS3.UploadCalls.NthCall(1)
 					Expect(call).NotTo(BeNil())
-					Expect(call.Arguments[0]).To(Equal(s3.BucketRegion))
-					Expect(call.Arguments[1]).To(Equal(s3.BucketName))
+					Expect(call.Arguments[0]).To(Equal(s3client.BucketRegion))
+					Expect(call.Arguments[1]).To(Equal(s3client.BucketName))
 					Expect(call.Arguments[2]).To(Equal(fmt.Sprintf("deployments/%s-%d/raw-bundle.tar.gz", depl.Prefix, depl.ID)))
 					Expect(call.Arguments[4]).To(Equal(""))
 					Expect(call.Arguments[5]).To(Equal("private"))
