@@ -118,8 +118,15 @@ func Destroy(c *gin.Context) {
 		return
 	}
 
-	if err := db.Where("name = ?", domainName).Delete(domain.Domain{}).Error; err != nil {
+	q := db.Where("name = ?", domainName).Delete(domain.Domain{})
+	if err := q.Error; err != nil {
 		controllers.InternalServerError(c, err)
+		return
+	} else if q.RowsAffected == 0 {
+		c.JSON(http.StatusNotFound, gin.H{
+			"error":             "not_found",
+			"error_description": "domain could not be found",
+		})
 		return
 	}
 

@@ -394,38 +394,68 @@ var _ = Describe("Domains", func() {
 			Expect(err).To(BeNil())
 		}
 
-		It("deletes the domain from the project", func() {
-			doRequest()
+		Context("when a given domain does not exist", func() {
+			BeforeEach(func() {
+				domainName += "xx"
+			})
 
-			Expect(res.StatusCode).To(Equal(http.StatusOK))
+			It("returns 404 error", func() {
+				doRequest()
 
-			var count int
-			err = db.Model(domain.Domain{}).Where("id = ?", d.ID).Count(&count).Error
-			Expect(err).To(BeNil())
-			Expect(count).To(BeZero())
+				b := &bytes.Buffer{}
+				_, err := b.ReadFrom(res.Body)
+				Expect(err).To(BeNil())
+
+				Expect(res.StatusCode).To(Equal(http.StatusNotFound))
+
+				Expect(b.String()).To(MatchJSON(`{
+					"error": "not_found",
+					"error_description": "domain could not be found"
+				}`))
+			})
 		})
 
-		It("deletes the meta.json for the domain from s3", func() {
-			doRequest()
+		Context("when a given domain exists", func() {
+			It("deletes the domain from the project", func() {
+				doRequest()
 
-			Expect(fakeS3.DeleteCalls.Count()).To(Equal(1))
+				b := &bytes.Buffer{}
+				_, err := b.ReadFrom(res.Body)
+				Expect(err).To(BeNil())
 
-			deleteCall := fakeS3.DeleteCalls.NthCall(1)
-			Expect(deleteCall).NotTo(BeNil())
-			Expect(deleteCall.Arguments[0]).To(Equal(s3client.BucketRegion))
-			Expect(deleteCall.Arguments[1]).To(Equal(s3client.BucketName))
-			Expect(deleteCall.Arguments[2]).To(Equal("/domains/" + domainName + "/meta.json"))
-			Expect(deleteCall.ReturnValues[0]).To(BeNil())
-		})
+				Expect(res.StatusCode).To(Equal(http.StatusOK))
+				Expect(b.String()).To(MatchJSON(`{
+					"deleted": true
+				}`))
 
-		It("publishes invalidation message for the domain", func() {
-			doRequest()
+				var count int
+				err = db.Model(domain.Domain{}).Where("id = ?", d.ID).Count(&count).Error
+				Expect(err).To(BeNil())
+				Expect(count).To(BeZero())
+			})
 
-			d := testhelper.ConsumeQueue(mq, qName)
-			Expect(d).NotTo(BeNil())
-			Expect(d.Body).To(MatchJSON(fmt.Sprintf(`{
-				"domains": ["%s"]
-			}`, domainName)))
+			It("deletes the meta.json for the domain from s3", func() {
+				doRequest()
+
+				Expect(fakeS3.DeleteCalls.Count()).To(Equal(1))
+
+				deleteCall := fakeS3.DeleteCalls.NthCall(1)
+				Expect(deleteCall).NotTo(BeNil())
+				Expect(deleteCall.Arguments[0]).To(Equal(s3client.BucketRegion))
+				Expect(deleteCall.Arguments[1]).To(Equal(s3client.BucketName))
+				Expect(deleteCall.Arguments[2]).To(Equal("/domains/" + domainName + "/meta.json"))
+				Expect(deleteCall.ReturnValues[0]).To(BeNil())
+			})
+
+			It("publishes invalidation message for the domain", func() {
+				doRequest()
+
+				d := testhelper.ConsumeQueue(mq, qName)
+				Expect(d).NotTo(BeNil())
+				Expect(d.Body).To(MatchJSON(fmt.Sprintf(`{
+					"domains": ["%s"]
+				}`, domainName)))
+			})
 		})
 
 		shared.ItRequiresAuthentication(func() (*gorm.DB, *user.User, *http.Header) {
