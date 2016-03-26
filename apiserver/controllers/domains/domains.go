@@ -44,6 +44,8 @@ func Create(c *gin.Context) {
 		ProjectID: proj.ID,
 	}
 
+	dom.Sanitize()
+
 	if errs := dom.Validate(); errs != nil {
 		c.JSON(422, gin.H{
 			"error":  "invalid_params",

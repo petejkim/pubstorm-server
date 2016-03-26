@@ -17,6 +17,15 @@ type Domain struct {
 	Name      string
 }
 
+// Sanitizes domain, e.g. Prepends www if an apex domain is given
+func (d *Domain) Sanitize() {
+	d.Name = strings.TrimSpace(d.Name)
+	labels := strings.Split(d.Name, ".")
+	if len(labels) == 2 {
+		d.Name = "www." + d.Name
+	}
+}
+
 // Validates Domain, if there are invalid fields, it returns a map of
 // <field, errors> and returns nil if valid
 func (d *Domain) Validate() map[string]string {

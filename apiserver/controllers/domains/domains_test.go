@@ -95,7 +95,6 @@ var _ = Describe("Domains", func() {
 	})
 
 	Describe("GET /projects/:name/domains", func() {
-
 		doRequest := func() {
 			s = httptest.NewServer(server.New())
 			res, err = testhelper.MakeRequest("GET", s.URL+"/projects/foo-bar-express/domains", nil, headers, nil)
@@ -355,6 +354,28 @@ var _ = Describe("Domains", func() {
 					It("does not enqueue any job", func() {
 						d := testhelper.ConsumeQueue(mq, queues.Deploy)
 						Expect(d).To(BeNil())
+					})
+				})
+
+				Context("when an apex domain is given", func() {
+					BeforeEach(func() {
+						params.Set("name", "foo-bar-express.com")
+					})
+
+					It("prepends www. prefix to the domain name given", func() {
+						b := &bytes.Buffer{}
+						_, err := b.ReadFrom(res.Body)
+						Expect(err).To(BeNil())
+
+						Expect(res.StatusCode).To(Equal(http.StatusCreated))
+						Expect(b.String()).To(MatchJSON(`{
+							"domain": {
+								"name": "www.foo-bar-express.com"
+							}
+						}`))
+
+						Expect(dom.Name).To(Equal("www.foo-bar-express.com"))
+						Expect(dom.ProjectID).To(Equal(proj.ID))
 					})
 				})
 			})
