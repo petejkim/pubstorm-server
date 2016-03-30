@@ -22,6 +22,7 @@ import (
 	"github.com/nitrous-io/rise-server/pkg/pubsub"
 	"github.com/nitrous-io/rise-server/shared/exchanges"
 	"github.com/nitrous-io/rise-server/shared/messages"
+	"github.com/nitrous-io/rise-server/shared/mimetypes"
 	"github.com/nitrous-io/rise-server/shared/s3client"
 )
 
@@ -36,6 +37,8 @@ func init() {
 			log.Fatal("AWS_ACCESS_KEY_ID and AWS_SECRET_ACCESS_KEY environment variables are required!")
 		}
 	}
+
+	mimetypes.Register()
 }
 
 var S3 filetransfer.FileTransfer = filetransfer.NewS3(s3client.PartSize, s3client.MaxUploadParts)

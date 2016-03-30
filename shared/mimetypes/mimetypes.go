@@ -1,8 +1,8 @@
-package common
+package mimetypes
 
 import "mime"
 
-func init() {
+func Register() {
 	mime.AddExtensionType(".htm", "text/html")
 	mime.AddExtensionType(".html", "text/html")
 	mime.AddExtensionType(".xml", "application/xml")

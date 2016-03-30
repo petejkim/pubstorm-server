@@ -48,11 +48,13 @@ func init() {
 		DefaultDomain = "rise.cloud"
 	}
 
-	n, err := strconv.Atoi(os.Getenv("MAX_DOMAINS"))
-	if err != nil {
-		log.Warn("Ignoring MAX_DOMAINS, not a valid numeric value!")
-	} else {
-		MaxDomainsPerProject = n
+	if maxDomainsEnv := os.Getenv("MAX_DOMAINS"); maxDomainsEnv != "" {
+		n, err := strconv.Atoi(maxDomainsEnv)
+		if err != nil {
+			log.Warn("Ignoring MAX_DOMAINS, not a valid numeric value!")
+		} else {
+			MaxDomainsPerProject = n
+		}
 	}
 
 	if riseEnv != "test" {
