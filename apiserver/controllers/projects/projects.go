@@ -51,3 +51,11 @@ func Create(c *gin.Context) {
 		"project": proj.AsJSON(),
 	})
 }
+
+func Get(c *gin.Context) {
+	proj := controllers.CurrentProject(c)
+
+	c.JSON(http.StatusOK, gin.H{
+		"project": proj.AsJSON(),
+	})
+}

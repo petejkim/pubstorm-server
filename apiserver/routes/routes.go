@@ -24,12 +24,13 @@ func Draw(r *gin.Engine) {
 	r.POST("/oauth/token", oauth.CreateToken)
 
 	{
-		r2 := r.Group("/", middleware.RequireToken)
+		r2 := r.Group("", middleware.RequireToken)
 		r2.DELETE("/oauth/token", oauth.DestroyToken)
 		r2.POST("/projects", projects.Create)
 
 		{
 			r3 := r2.Group("/projects/:project_name", middleware.RequireProject)
+			r3.GET("", projects.Get)
 			r3.POST("/deployments", deployments.Create)
 			r3.GET("/deployments/:id", deployments.Show)
 			r3.GET("/domains", domains.Index)

@@ -2,6 +2,7 @@ package projects_test
 
 import (
 	"bytes"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -175,6 +176,56 @@ var _ = Describe("Projects", func() {
 
 		shared.ItRequiresAuthentication(func() (*gorm.DB, *user.User, *http.Header) {
 			return db, u, &headers
+		}, func() *http.Response {
+			doRequest()
+			return res
+		}, nil)
+	})
+
+	Describe("GET /projects/:projectName", func() {
+		var (
+			proj *project.Project
+
+			headers http.Header
+		)
+
+		BeforeEach(func() {
+			proj = factories.Project(db, u)
+			headers = http.Header{
+				"Authorization": {"Bearer " + t.Token},
+			}
+		})
+
+		doRequest := func() {
+			s = httptest.NewServer(server.New())
+			res, err = testhelper.MakeRequest("GET", s.URL+"/projects/"+proj.Name, nil, headers, nil)
+			Expect(err).To(BeNil())
+		}
+
+		It("returns 200 OK and project json", func() {
+			doRequest()
+
+			b := &bytes.Buffer{}
+			_, err := b.ReadFrom(res.Body)
+			Expect(err).To(BeNil())
+
+			Expect(res.StatusCode).To(Equal(http.StatusOK))
+			Expect(b.String()).To(MatchJSON(fmt.Sprintf(`{
+				"project": {
+					"name": "%s"
+				}
+			}`, proj.Name)))
+		})
+
+		shared.ItRequiresAuthentication(func() (*gorm.DB, *user.User, *http.Header) {
+			return db, u, &headers
+		}, func() *http.Response {
+			doRequest()
+			return res
+		}, nil)
+
+		shared.ItRequiresProject(func() (*gorm.DB, *project.Project) {
+			return db, proj
 		}, func() *http.Response {
 			doRequest()
 			return res
