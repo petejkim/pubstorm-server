@@ -10,4 +10,4 @@ CREATE TABLE domains (
 );
 
 CREATE INDEX index_domains_on_project_id ON domains USING btree (project_id);
-CREATE UNIQUE INDEX index_domains_on_name ON domains USING btree (name);
+CREATE UNIQUE INDEX index_domains_on_name ON domains USING btree (name) WHERE deleted_at IS NULL;

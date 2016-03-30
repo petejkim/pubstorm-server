@@ -12,7 +12,7 @@ CREATE TABLE users (
   deleted_at timestamp without time zone
 );
 
-CREATE UNIQUE INDEX index_users_on_email ON users USING btree (email);
+CREATE UNIQUE INDEX index_users_on_email ON users USING btree (email) WHERE deleted_at IS NULL;
 
 INSERT INTO users (
   email,

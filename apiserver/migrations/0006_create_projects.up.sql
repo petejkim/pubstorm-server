@@ -10,4 +10,4 @@ CREATE TABLE projects (
 );
 
 CREATE INDEX index_projects_on_user_id ON projects USING btree (user_id);
-CREATE UNIQUE INDEX index_projects_on_name ON projects USING btree (name);
+CREATE UNIQUE INDEX index_projects_on_name ON projects USING btree (name) WHERE deleted_at IS NULL;
