@@ -80,3 +80,5 @@ tramp
 
 # Vagrant
 .vagrant
+
+jenkins.properties
