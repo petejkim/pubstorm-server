@@ -97,6 +97,8 @@ run_tests() {
   ./script/migrate up
   ./script/prepare-test-db
   ./script/test
+
+  cp -r /opt/src/github.com/nitrous-io/rise-server/apiserver/migrations /opt/bin
 }
 
 # Remove old builds
@@ -114,6 +116,6 @@ build edged
 build deployer
 
 # TODO: Perform release to s3
-bundle_binary apiserver
+bundle_binary apiserver migrate migrations/*
 bundle_binary edged
 bundle_binary deployer
