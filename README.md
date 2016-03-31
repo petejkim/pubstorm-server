@@ -18,7 +18,7 @@ sudo su postgres -c 'createuser --superuser nitrous && createdb rise_development
 
 ```shell
 # Install RabbitMQ 3.6.1
-sudo echo 'deb http://www.rabbitmq.com/debian/ testing main' >> /etc/apt/sources.list
+echo 'deb http://www.rabbitmq.com/debian/ testing main' | sudo tee -a /etc/apt/sources.list
 wget https://www.rabbitmq.com/rabbitmq-signing-key-public.asc
 sudo apt-key add rabbitmq-signing-key-public.asc
 sudo apt-get update
@@ -32,12 +32,18 @@ sudo rabbitmqctl add_vhost rise_development
 sudo rabbitmqctl add_vhost rise_test
 sudo rabbitmqctl set_permissions -p rise_development admin ".*" ".*" ".*"
 sudo rabbitmqctl set_permissions -p rise_test admin ".*" ".*" ".*"
+
+# Enable management plugin
+sudo rabbitmq-plugins enable rabbitmq_management
+
+# You can open rabbitmq management page via 15672
 ```
 
 ### Redis
 
 ```shell
 # Install Redis 3.0
+# If you see `add-apt-repository: command not found`, please run `sudo apt-get install software-properties-common` first
 sudo add-apt-repository ppa:chris-lea/redis-server
 sudo apt-get update
 sudo apt-get install redis-server
@@ -79,11 +85,23 @@ go get -u github.com/onsi/ginkgo/ginkgo
 go get -u github.com/onsi/gomega
 
 # Prepare test DB
-script/migrate # Make sure dev DB is up to date
+script/migrate up # Make sure dev DB is up to date
 script/prepare-test-db # Copy dev DB's schema to test DB
 
 # Run tests
 script/test
+```
+
+## Run Server
+```shell
+# Create .env file from .env-example and edit AWS_ACCESS_KEY_ID and AWS_SECRET_ACCESS_KEY
+cp .env-example .env
+
+# Install forego
+go get -u github.com/ddollar/forego
+
+# Run server and workers
+forego start
 ```
 
 - - -
