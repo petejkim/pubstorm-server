@@ -30,6 +30,7 @@ func init() {
 	riseEnv := os.Getenv("RISE_ENV")
 	if riseEnv == "" {
 		riseEnv = "development"
+		os.Setenv("RISE_ENV", riseEnv)
 	}
 
 	if riseEnv != "test" {

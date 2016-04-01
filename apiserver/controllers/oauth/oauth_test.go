@@ -15,7 +15,7 @@ import (
 	"github.com/nitrous-io/rise-server/apiserver/server"
 	"github.com/nitrous-io/rise-server/testhelper"
 	"github.com/nitrous-io/rise-server/testhelper/factories"
-	"github.com/nitrous-io/rise-server/testhelper/shared"
+	"github.com/nitrous-io/rise-server/testhelper/sharedexamples"
 	. "github.com/onsi/ginkgo"
 	. "github.com/onsi/ginkgo/extensions/table"
 	. "github.com/onsi/gomega"
@@ -293,7 +293,7 @@ var _ = Describe("OAuth", func() {
 			})
 		})
 
-		shared.ItRequiresAuthentication(func() (*gorm.DB, *user.User, *http.Header) {
+		sharedexamples.ItRequiresAuthentication(func() (*gorm.DB, *user.User, *http.Header) {
 			return db, u, &headers
 		}, func() *http.Response {
 			doRequest()

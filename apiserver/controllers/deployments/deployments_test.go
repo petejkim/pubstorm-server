@@ -23,7 +23,7 @@ import (
 	"github.com/nitrous-io/rise-server/testhelper"
 	"github.com/nitrous-io/rise-server/testhelper/factories"
 	"github.com/nitrous-io/rise-server/testhelper/fake"
-	"github.com/nitrous-io/rise-server/testhelper/shared"
+	"github.com/nitrous-io/rise-server/testhelper/sharedexamples"
 	. "github.com/onsi/ginkgo"
 	. "github.com/onsi/gomega"
 	"github.com/streadway/amqp"
@@ -143,14 +143,14 @@ var _ = Describe("Deployments", func() {
 			Expect(err).To(BeNil())
 		}
 
-		shared.ItRequiresAuthentication(func() (*gorm.DB, *user.User, *http.Header) {
+		sharedexamples.ItRequiresAuthentication(func() (*gorm.DB, *user.User, *http.Header) {
 			return db, u, &headers
 		}, func() *http.Response {
 			doRequest()
 			return res
 		}, nil)
 
-		shared.ItRequiresProject(func() (*gorm.DB, *project.Project) {
+		sharedexamples.ItRequiresProject(func() (*gorm.DB, *project.Project) {
 			return db, proj
 		}, func() *http.Response {
 			doRequest()
@@ -331,14 +331,14 @@ var _ = Describe("Deployments", func() {
 			Expect(err).To(BeNil())
 		}
 
-		shared.ItRequiresAuthentication(func() (*gorm.DB, *user.User, *http.Header) {
+		sharedexamples.ItRequiresAuthentication(func() (*gorm.DB, *user.User, *http.Header) {
 			return db, u, &headers
 		}, func() *http.Response {
 			doRequest()
 			return res
 		}, nil)
 
-		shared.ItRequiresProject(func() (*gorm.DB, *project.Project) {
+		sharedexamples.ItRequiresProject(func() (*gorm.DB, *project.Project) {
 			return db, proj
 		}, func() *http.Response {
 			doRequest()

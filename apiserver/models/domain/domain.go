@@ -5,7 +5,7 @@ import (
 	"strings"
 
 	"github.com/jinzhu/gorm"
-	"github.com/nitrous-io/rise-server/apiserver/common"
+	"github.com/nitrous-io/rise-server/shared"
 )
 
 var domainLabelRe = regexp.MustCompile(`\A([A-Za-z0-9]|([A-Za-z0-9][A-Za-z0-9\-]*[A-Za-z0-9]))\z`)
@@ -38,7 +38,7 @@ func (d *Domain) Validate() map[string]string {
 	} else if len(d.Name) > 255 {
 		errors["name"] = "is too long (max. 255 characters)"
 	} else {
-		if d.Name == common.DefaultDomain || strings.HasSuffix(d.Name, "."+common.DefaultDomain) {
+		if d.Name == shared.DefaultDomain || strings.HasSuffix(d.Name, "."+shared.DefaultDomain) {
 			errors["name"] = "is invalid"
 		} else {
 			labels := strings.Split(d.Name, ".")
