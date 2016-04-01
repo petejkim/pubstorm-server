@@ -99,6 +99,8 @@ run_tests() {
   ./script/test
 
   cp -r /opt/src/github.com/nitrous-io/rise-server/apiserver/migrations /opt/bin
+  chmod 777 /opt/bin/migrations
+  chmod 666 /opt/bin/migrations/*
 }
 
 # Remove old builds
