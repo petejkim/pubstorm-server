@@ -36,7 +36,7 @@ var _ = Describe("Invalidator", func() {
 		It("makes invalidation request", func() {
 			server.AppendHandlers(
 				ghttp.CombineHandlers(
-					ghttp.VerifyRequest("POST", "/invalidate/foo-bar-express.rise.cloud"),
+					ghttp.VerifyRequest("POST", "/invalidate/foo-bar-express.pubstorm.site"),
 					ghttp.RespondWith(http.StatusOK, `{ "invalidated": true }`),
 				),
 				ghttp.CombineHandlers(
@@ -47,7 +47,7 @@ var _ = Describe("Invalidator", func() {
 
 			err := invalidator.Work([]byte(`{
 				"domains": [
-					"foo-bar-express.rise.cloud",
+					"foo-bar-express.pubstorm.site",
 					"www.foo-bar-express.com"
 				]
 			}`))

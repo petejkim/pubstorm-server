@@ -41,11 +41,11 @@ func init() {
 	}
 
 	if MailerEmail == "" {
-		MailerEmail = "Rise.sh <support@rise.sh>"
+		MailerEmail = "PubStorm <support@pubstorm.com>"
 	}
 
 	if DefaultDomain == "" {
-		DefaultDomain = "rise.cloud"
+		DefaultDomain = "pubstorm.site"
 	}
 
 	if maxDomainsEnv := os.Getenv("MAX_DOMAINS"); maxDomainsEnv != "" {

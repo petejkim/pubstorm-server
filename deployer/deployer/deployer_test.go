@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	"github.com/jinzhu/gorm"
+	"github.com/nitrous-io/rise-server/apiserver/common"
 	"github.com/nitrous-io/rise-server/apiserver/dbconn"
 	"github.com/nitrous-io/rise-server/apiserver/models/deployment"
 	"github.com/nitrous-io/rise-server/apiserver/models/project"
@@ -138,7 +139,7 @@ var _ = Describe("Deployer", func() {
 
 		// it should upload meta.json for each domain
 		for i, domain := range []string{
-			proj.Name + ".rise.cloud",
+			proj.Name + "." + common.DefaultDomain,
 			"www.foo-bar-express.com",
 		} {
 			assertUpload(
@@ -156,10 +157,10 @@ var _ = Describe("Deployer", func() {
 		Expect(d).NotTo(BeNil())
 		Expect(d.Body).To(MatchJSON(fmt.Sprintf(`{
 			"domains": [
-				"%s.rise.cloud",
+				"%s.%s",
 				"www.foo-bar-express.com"
 			]
-		}`, proj.Name)))
+		}`, proj.Name, common.DefaultDomain)))
 
 		// it should update deployment's state to deployed
 		err = db.First(depl, depl.ID).Error
@@ -176,7 +177,7 @@ var _ = Describe("Deployer", func() {
 			Expect(fakeS3.UploadCalls.Count()).To(Equal(2)) // 2 metadata files (2 domains)
 
 			for i, domain := range []string{
-				proj.Name + ".rise.cloud",
+				proj.Name + "." + common.DefaultDomain,
 				"www.foo-bar-express.com",
 			} {
 				assertUpload(
@@ -207,10 +208,10 @@ var _ = Describe("Deployer", func() {
 			Expect(d).NotTo(BeNil())
 			Expect(d.Body).To(MatchJSON(fmt.Sprintf(`{
 				"domains": [
-					"%s.rise.cloud",
+					"%s.%s",
 					"www.foo-bar-express.com"
 				]
-			}`, proj.Name)))
+			}`, proj.Name, common.DefaultDomain)))
 
 			// it should set project's active deployment to current deployment id
 			assertActiveDeploymentIDUpdate()

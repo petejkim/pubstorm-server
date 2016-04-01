@@ -147,19 +147,19 @@ func ResendConfirmationCode(c *gin.Context) {
 }
 
 func sendConfirmationEmail(u *user.User) error {
-	subject := "Please confirm your Rise account email address"
+	subject := "Please confirm your PubStorm account email address"
 
-	txt := "Welcome to Rise!\n\n" +
+	txt := "Welcome to PubStorm!\n\n" +
 		"To complete sign up, please confirm your email address by entering the following confirmation code when logging in for the first time:\n\n" +
 		u.ConfirmationCode + "\n\n" +
 		"Thanks,\n" +
-		"Rise"
+		"PubStorm"
 
-	html := "<p>Welcome to Rise!</p>" +
+	html := "<p>Welcome to PubStorm!</p>" +
 		"<p>To complete sign up, please confirm your email address by entering the following confirmation code when logging in for the first time:</p>" +
 		"<p><strong>" + u.ConfirmationCode + "</strong></p>" +
 		"<p>Thanks,<br />" +
-		"Rise</p>"
+		"PubStorm</p>"
 
 	return common.SendMail(
 		[]string{u.Email}, // tos

@@ -21,7 +21,7 @@ INSERT INTO oauth_clients (
   organization
 ) VALUES (
   'admin@nitrous.io',
-  'Rise CLI',
+  'PubStorm CLI',
   'Nitrous, Inc.'
 );
 
@@ -31,6 +31,6 @@ INSERT INTO oauth_clients (
   organization
 ) VALUES (
   'admin@nitrous.io',
-  'Rise Web',
+  'PubStorm Web',
   'Nitrous, Inc.'
 );
