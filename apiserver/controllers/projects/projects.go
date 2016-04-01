@@ -7,6 +7,7 @@ import (
 	"github.com/lib/pq"
 	"github.com/nitrous-io/rise-server/apiserver/controllers"
 	"github.com/nitrous-io/rise-server/apiserver/dbconn"
+	"github.com/nitrous-io/rise-server/apiserver/models/disallowed_project_name"
 	"github.com/nitrous-io/rise-server/apiserver/models/project"
 )
 
@@ -29,6 +30,22 @@ func Create(c *gin.Context) {
 	db, err := dbconn.DB()
 	if err != nil {
 		controllers.InternalServerError(c, err)
+		return
+	}
+
+	blacklisted, err := disallowed_project_name.IsBlacklisted(db, proj.Name)
+	if err != nil {
+		controllers.InternalServerError(c, err)
+		return
+	}
+
+	if blacklisted {
+		c.JSON(422, gin.H{
+			"error": "invalid_params",
+			"errors": map[string]interface{}{
+				"name": "is not allowed",
+			},
+		})
 		return
 	}
 

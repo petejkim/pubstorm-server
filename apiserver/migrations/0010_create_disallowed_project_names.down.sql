@@ -1,0 +1,2 @@
+DROP INDEX index_disallowed_project_names_on_name;
+DROP TABLE disallowed_project_names;

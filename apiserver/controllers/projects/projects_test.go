@@ -146,6 +146,27 @@ var _ = Describe("Projects", func() {
 			})
 		})
 
+		Context("when the project name is blacklisted", func() {
+			BeforeEach(func() {
+				factories.DisallowedProjectName(db, "foo-bar-express")
+				doRequest()
+			})
+
+			It("returns 422 unprocessable entity", func() {
+				b := &bytes.Buffer{}
+				_, err := b.ReadFrom(res.Body)
+				Expect(err).To(BeNil())
+
+				Expect(res.StatusCode).To(Equal(422))
+				Expect(b.String()).To(MatchJSON(`{
+					"error": "invalid_params",
+					"errors": {
+						"name": "is not allowed"
+					}
+				}`))
+			})
+		})
+
 		Context("when a valid project name is given", func() {
 			var proj *project.Project
 
