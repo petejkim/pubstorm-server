@@ -2,4 +2,8 @@
 DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
 cd $DIR/../apiserver
 
+if [ "$1" == "down" ]; then
+  echo "$0"' down is not allowed because it will undo all migrations! do `'"$0"' migrate -1` instead!'
+  exit 1
+fi
 $DIR/env migrate -url '$POSTGRES_URL' -path ./migrations "$@"
