@@ -27,6 +27,7 @@ func Draw(r *gin.Engine) {
 		r2 := r.Group("", middleware.RequireToken)
 		r2.DELETE("/oauth/token", oauth.DestroyToken)
 		r2.POST("/projects", projects.Create)
+		r2.GET("/projects", projects.Index)
 
 		{
 			r3 := r2.Group("/projects/:project_name", middleware.RequireProject)

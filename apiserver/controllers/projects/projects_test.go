@@ -252,4 +252,64 @@ var _ = Describe("Projects", func() {
 			return res
 		}, nil)
 	})
+
+	Describe("GET /projects", func() {
+		var (
+			params  url.Values
+			headers http.Header
+
+			anotherU *user.User
+			proj     *project.Project
+			proj2    *project.Project
+			proj3    *project.Project
+		)
+
+		BeforeEach(func() {
+			params = url.Values{
+				"name": {"foo-bar-express"},
+			}
+			headers = http.Header{
+				"Authorization": {"Bearer " + t.Token},
+			}
+
+			anotherU = factories.User(db)
+
+			proj = factories.Project(db, u)
+			proj2 = factories.Project(db, anotherU)
+			proj3 = factories.Project(db, u)
+		})
+
+		doRequest := func() {
+			s = httptest.NewServer(server.New())
+			res, err = testhelper.MakeRequest("GET", s.URL+"/projects", nil, headers, nil)
+			Expect(err).To(BeNil())
+		}
+
+		It("returns current user's projects", func() {
+			doRequest()
+
+			b := &bytes.Buffer{}
+			_, err := b.ReadFrom(res.Body)
+			Expect(err).To(BeNil())
+
+			Expect(res.StatusCode).To(Equal(http.StatusOK))
+			Expect(b.String()).To(MatchJSON(fmt.Sprintf(`{
+				"projects": [
+					{
+						"name": "%s"
+					},
+					{
+						"name": "%s"
+					}
+				]
+			}`, proj.Name, proj3.Name)))
+		})
+
+		sharedexamples.ItRequiresAuthentication(func() (*gorm.DB, *user.User, *http.Header) {
+			return db, u, &headers
+		}, func() *http.Response {
+			doRequest()
+			return res
+		}, nil)
+	})
 })

@@ -76,3 +76,28 @@ func Get(c *gin.Context) {
 		"project": proj.AsJSON(),
 	})
 }
+
+func Index(c *gin.Context) {
+	u := controllers.CurrentUser(c)
+
+	db, err := dbconn.DB()
+	if err != nil {
+		controllers.InternalServerError(c, err)
+		return
+	}
+
+	projects := []*project.Project{}
+	if err := db.Where("user_id = ?", u.ID).Find(&projects).Order("id ASC").Error; err != nil {
+		controllers.InternalServerError(c, err)
+		return
+	}
+
+	var projectsAsJson []interface{}
+	for _, proj := range projects {
+		projectsAsJson = append(projectsAsJson, proj.AsJSON())
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"projects": projectsAsJson,
+	})
+}
