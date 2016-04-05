@@ -285,7 +285,7 @@ var _ = Describe("Projects", func() {
 			Expect(err).To(BeNil())
 		}
 
-		It("returns current user's projects", func() {
+		It("returns current user's projects ordered by name", func() {
 			doRequest()
 
 			b := &bytes.Buffer{}
