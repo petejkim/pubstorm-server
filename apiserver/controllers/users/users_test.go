@@ -10,11 +10,15 @@ import (
 	"github.com/jinzhu/gorm"
 	"github.com/nitrous-io/rise-server/apiserver/common"
 	"github.com/nitrous-io/rise-server/apiserver/dbconn"
+	"github.com/nitrous-io/rise-server/apiserver/models/oauthclient"
+	"github.com/nitrous-io/rise-server/apiserver/models/oauthtoken"
 	"github.com/nitrous-io/rise-server/apiserver/models/user"
 	"github.com/nitrous-io/rise-server/apiserver/server"
 	"github.com/nitrous-io/rise-server/pkg/mailer"
 	"github.com/nitrous-io/rise-server/testhelper"
+	"github.com/nitrous-io/rise-server/testhelper/factories"
 	"github.com/nitrous-io/rise-server/testhelper/fake"
+	"github.com/nitrous-io/rise-server/testhelper/sharedexamples"
 
 	. "github.com/onsi/ginkgo"
 	. "github.com/onsi/ginkgo/extensions/table"
@@ -467,6 +471,145 @@ var _ = Describe("Users", func() {
 					Expect(fakeMailer.SendMailCalled).To(BeFalse())
 				})
 			})
+		})
+	})
+
+	Describe("PUT /users/change_password", func() {
+		var (
+			u                *user.User
+			oc               *oauthclient.OauthClient
+			t                *oauthtoken.OauthToken
+			existingPassword string
+			newPassword      string
+			params           url.Values
+			headers          http.Header
+		)
+
+		BeforeEach(func() {
+			existingPassword = "123456"
+			newPassword = "a1b2c3"
+			u = factories.UserWithPassword(db, existingPassword)
+			oc = factories.OauthClient(db)
+			t = &oauthtoken.OauthToken{
+				UserID:        u.ID,
+				OauthClientID: oc.ID,
+			}
+
+			err := db.Create(t).Error
+			Expect(err).To(BeNil())
+
+			headers = http.Header{
+				"Authorization": {"Bearer " + t.Token},
+			}
+
+			params = url.Values{
+				"existing_password": {existingPassword},
+				"password":          {newPassword},
+			}
+		})
+
+		doRequest := func() {
+			s = httptest.NewServer(server.New())
+			res, err = testhelper.MakeRequest("PUT", s.URL+"/user", params, headers, nil)
+			Expect(err).To(BeNil())
+		}
+
+		sharedexamples.ItRequiresAuthentication(func() (*gorm.DB, *user.User, *http.Header) {
+			return db, u, &headers
+		}, func() *http.Response {
+			doRequest()
+			return res
+		}, nil)
+
+		Context("when invalid params are provided", func() {
+			DescribeTable("it returns 422 and does not update password",
+				func(setUp func(), expectedBody string) {
+					setUp()
+					doRequest()
+
+					b := &bytes.Buffer{}
+					_, err := b.ReadFrom(res.Body)
+					Expect(err).To(BeNil())
+
+					Expect(res.StatusCode).To(Equal(422))
+					Expect(b.String()).To(MatchJSON(expectedBody))
+
+					err = db.First(u, u.ID).Error
+					Expect(err).To(BeNil())
+
+					// old password should still work.
+					existingUser, err := user.Authenticate(db, u.Email, existingPassword)
+					Expect(err).To(BeNil())
+					Expect(existingUser.ID).To(Equal(u.ID))
+				},
+
+				Entry("require existing_password", func() {
+					params.Del("existing_password")
+				}, `{
+					"error": "invalid_params",
+					"error_description": "existing_password is required"
+				}`),
+
+				Entry("require password", func() {
+					params.Del("password")
+				}, `{
+					"error": "invalid_params",
+					"error_description": "password is required"
+				}`),
+
+				Entry("validate password", func() {
+					params.Set("password", "123")
+				}, `{
+					"error": "invalid_params",
+					"errors": { "password": "is too short (min. 6 characters)" }
+				}`),
+
+				Entry("validate existing_password", func() {
+					params.Set("existing_password", "foogoo")
+				}, `{
+					"error": "invalid_params",
+					"error_description": "existing_password is incorrect"
+				}`),
+
+				Entry("check if existing_password and password are same", func() {
+					params.Set("password", existingPassword)
+				}, `{
+					"error": "invalid_params",
+					"error_description": "password is same as existing_password"
+				}`),
+			)
+		})
+
+		It("returns 200 OK and updates the password", func() {
+			doRequest()
+			b := &bytes.Buffer{}
+			_, err := b.ReadFrom(res.Body)
+			Expect(err).To(BeNil())
+
+			Expect(res.StatusCode).To(Equal(http.StatusOK))
+			Expect(b.String()).To(MatchJSON(`{ "changed": true }`))
+
+			existingUser, err := user.Authenticate(db, u.Email, newPassword)
+			Expect(err).To(BeNil())
+			Expect(existingUser.ID).To(Equal(u.ID))
+		})
+
+		It("deletes old token", func() {
+			t1 := &oauthtoken.OauthToken{
+				UserID:        u.ID,
+				OauthClientID: oc.ID,
+			}
+			err := db.Create(t1).Error
+			Expect(err).To(BeNil())
+
+			// To make sure it does not delete other users' tokens
+			_, _, t2 := factories.AuthTrio(db)
+
+			doRequest()
+			var currentToken oauthtoken.OauthToken
+			Expect(db.First(&currentToken, t.ID).Error).To(Equal(gorm.RecordNotFound))
+			Expect(db.First(&currentToken, t1.ID).Error).To(Equal(gorm.RecordNotFound))
+			Expect(db.First(&currentToken, t2.ID).Error).To(BeNil())
 		})
 	})
 })
