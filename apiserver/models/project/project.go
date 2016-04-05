@@ -3,6 +3,7 @@ package project
 import (
 	"regexp"
 	"sort"
+	"time"
 
 	"github.com/nitrous-io/rise-server/apiserver/models/domain"
 	"github.com/nitrous-io/rise-server/shared"
@@ -19,6 +20,8 @@ type Project struct {
 	UserID uint
 
 	ActiveDeploymentID *uint // pointer to be nullable. remember to dereference by using *ActiveDeploymentID to get actual value
+
+	LockedAt *time.Time
 }
 
 // Validates Project, if there are invalid fields, it returns a map of
@@ -54,7 +57,7 @@ func (p *Project) AsJSON() interface{} {
 // Returns list of domain names for this project
 func (p *Project) DomainNames(db *gorm.DB) ([]string, error) {
 	doms := []*domain.Domain{}
-	if err := db.Where("project_id = ?", p.ID).Find(&doms).Error; err != nil {
+	if err := db.Where("project_id = ?", p.ID).Order("name ASC").Find(&doms).Error; err != nil {
 		return nil, err
 	}
 
@@ -94,4 +97,40 @@ func (p *Project) CanAddDomain(db *gorm.DB) (bool, error) {
 	}
 
 	return false, nil
+}
+
+// Acquire a lock from the project for concurrent update
+func (p *Project) Lock(db *gorm.DB) (bool, error) {
+	q := db.Exec(`
+		UPDATE projects
+		SET locked_at = now()
+		WHERE id IN (
+			SELECT id FROM projects
+			WHERE id = ? AND locked_at IS NULL
+			FOR UPDATE
+		);
+	`, p.ID)
+
+	if q.Error != nil {
+		return false, q.Error
+	}
+
+	if q.RowsAffected == 0 {
+		return false, nil
+	}
+
+	return true, nil
+}
+
+// Release the lock from the project for concurrent update
+func (p *Project) Unlock(db *gorm.DB) error {
+	return db.Exec(`
+		UPDATE projects
+		SET locked_at = NULL
+		WHERE id IN (
+			SELECT id FROM projects
+			WHERE id = ? AND locked_at IS NOT NULL
+			FOR UPDATE
+		);
+	`, p.ID).Error
 }

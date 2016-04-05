@@ -394,6 +394,13 @@ var _ = Describe("Domains", func() {
 			doRequest()
 			return res
 		}, nil)
+
+		sharedexamples.ItLocksProject(func() (*gorm.DB, *project.Project) {
+			return db, proj
+		}, func() *http.Response {
+			doRequest()
+			return res
+		}, nil)
 	})
 
 	Describe("DELETE /projects/:project_name/domains/:name", func() {
@@ -487,6 +494,13 @@ var _ = Describe("Domains", func() {
 		}, nil)
 
 		sharedexamples.ItRequiresProject(func() (*gorm.DB, *project.Project) {
+			return db, proj
+		}, func() *http.Response {
+			doRequest()
+			return res
+		}, nil)
+
+		sharedexamples.ItLocksProject(func() (*gorm.DB, *project.Project) {
 			return db, proj
 		}, func() *http.Response {
 			doRequest()

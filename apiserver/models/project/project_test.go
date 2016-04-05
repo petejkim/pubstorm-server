@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/jinzhu/gorm"
 	"github.com/nitrous-io/rise-server/apiserver/dbconn"
@@ -160,6 +161,45 @@ var _ = Describe("Project", func() {
 				Expect(err).To(BeNil())
 				Expect(canCreate).To(BeFalse())
 			})
+		})
+	})
+
+	Describe("Lock()", func() {
+		It("returns true if it successfully acquires a lock from the project", func() {
+			proj.LockedAt = nil
+			Expect(db.Save(proj).Error).To(BeNil())
+
+			success, err := proj.Lock(db)
+			Expect(err).To(BeNil())
+			Expect(success).To(BeTrue())
+
+			var updatedProj project.Project
+			Expect(db.First(&updatedProj, proj.ID).Error).To(BeNil())
+			Expect(updatedProj.LockedAt).NotTo(BeNil())
+		})
+
+		It("returns false if it fails acquires a lock from the project", func() {
+			currentTime := time.Now()
+			proj.LockedAt = &currentTime
+			Expect(db.Save(proj).Error).To(BeNil())
+
+			success, err := proj.Lock(db)
+			Expect(err).To(BeNil())
+			Expect(success).To(BeFalse())
+		})
+	})
+
+	Describe("Unlock()", func() {
+		It("unlocks the project", func() {
+			currentTime := time.Now()
+			proj.LockedAt = &currentTime
+			Expect(db.Save(proj).Error).To(BeNil())
+
+			Expect(proj.Unlock(db)).To(BeNil())
+
+			var updatedProj project.Project
+			Expect(db.First(&updatedProj, proj.ID).Error).To(BeNil())
+			Expect(updatedProj.LockedAt).To(BeNil())
 		})
 	})
 })

@@ -32,11 +32,15 @@ func Draw(r *gin.Engine) {
 		{
 			r3 := r2.Group("/projects/:project_name", middleware.RequireProject)
 			r3.GET("", projects.Get)
-			r3.POST("/deployments", deployments.Create)
 			r3.GET("/deployments/:id", deployments.Show)
 			r3.GET("/domains", domains.Index)
-			r3.POST("/domains", domains.Create)
-			r3.DELETE("/domains/:name", domains.Destroy)
+
+			{
+				r4 := r3.Group("", middleware.LockProject)
+				r4.POST("/deployments", deployments.Create)
+				r4.POST("/domains", domains.Create)
+				r4.DELETE("/domains/:name", domains.Destroy)
+			}
 		}
 	}
 }

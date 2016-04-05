@@ -162,6 +162,18 @@ var _ = Describe("Deployments", func() {
 			Expect(db.Last(depl).Error).To(Equal(gorm.RecordNotFound))
 		})
 
+		sharedexamples.ItLocksProject(func() (*gorm.DB, *project.Project) {
+			return db, proj
+		}, func() *http.Response {
+			doRequest()
+			return res
+		}, func() {
+			// should not deploy anything if project is locked
+			Expect(fakeS3.UploadCalls.Count()).To(Equal(0))
+			depl := &deployment.Deployment{}
+			Expect(db.Last(depl).Error).To(Equal(gorm.RecordNotFound))
+		})
+
 		Context("when the project belongs to current user", func() {
 			Context("when the request is not multipart", func() {
 				It("returns 400 with invalid_request", func() {
