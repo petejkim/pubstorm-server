@@ -19,7 +19,7 @@ func init() {
 	}
 
 	if DefaultDomain == "" {
-		DefaultDomain = "rise.cloud"
+		DefaultDomain = "risecloud.dev"
 	}
 
 	if maxDomainsEnv := os.Getenv("MAX_DOMAINS"); maxDomainsEnv != "" {
