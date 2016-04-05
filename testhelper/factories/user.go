@@ -11,11 +11,15 @@ import (
 var userN = 0
 
 func User(db *gorm.DB) (u *user.User) {
+	return UserWithPassword(db, "foobar")
+}
+
+func UserWithPassword(db *gorm.DB, password string) (u *user.User) {
 	userN++
 
 	u = &user.User{
 		Email:    fmt.Sprintf("foo%d@example.com", userN),
-		Password: "foobar",
+		Password: password,
 	}
 	err := u.Insert(db)
 	Expect(err).To(BeNil())
