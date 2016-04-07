@@ -10,14 +10,23 @@ import (
 
 	"github.com/jinzhu/gorm"
 	"github.com/nitrous-io/rise-server/apiserver/dbconn"
+	"github.com/nitrous-io/rise-server/apiserver/models/domain"
 	"github.com/nitrous-io/rise-server/apiserver/models/oauthclient"
 	"github.com/nitrous-io/rise-server/apiserver/models/oauthtoken"
 	"github.com/nitrous-io/rise-server/apiserver/models/project"
 	"github.com/nitrous-io/rise-server/apiserver/models/user"
 	"github.com/nitrous-io/rise-server/apiserver/server"
+	"github.com/nitrous-io/rise-server/pkg/filetransfer"
+	"github.com/nitrous-io/rise-server/pkg/mqconn"
+	"github.com/nitrous-io/rise-server/shared"
+	"github.com/nitrous-io/rise-server/shared/exchanges"
+	"github.com/nitrous-io/rise-server/shared/queues"
+	"github.com/nitrous-io/rise-server/shared/s3client"
 	"github.com/nitrous-io/rise-server/testhelper"
 	"github.com/nitrous-io/rise-server/testhelper/factories"
+	"github.com/nitrous-io/rise-server/testhelper/fake"
 	"github.com/nitrous-io/rise-server/testhelper/sharedexamples"
+	"github.com/streadway/amqp"
 
 	. "github.com/onsi/ginkgo"
 	. "github.com/onsi/gomega"
@@ -307,6 +316,135 @@ var _ = Describe("Projects", func() {
 
 		sharedexamples.ItRequiresAuthentication(func() (*gorm.DB, *user.User, *http.Header) {
 			return db, u, &headers
+		}, func() *http.Response {
+			doRequest()
+			return res
+		}, nil)
+	})
+
+	Describe("DELETE /projects/:name", func() {
+		var (
+			fakeS3                *fake.S3
+			origS3                filetransfer.FileTransfer
+			mq                    *amqp.Connection
+			invalidationQueueName string
+
+			proj *project.Project
+			dm1  *domain.Domain
+			dm2  *domain.Domain
+
+			proj2   *project.Project
+			dm3     *domain.Domain
+			headers http.Header
+		)
+
+		BeforeEach(func() {
+			origS3 = s3client.S3
+			fakeS3 = &fake.S3{}
+			s3client.S3 = fakeS3
+
+			mq, err = mqconn.MQ()
+			Expect(err).To(BeNil())
+
+			testhelper.DeleteQueue(mq, queues.All...)
+			testhelper.DeleteExchange(mq, exchanges.All...)
+
+			invalidationQueueName = testhelper.StartQueueWithExchange(mq, exchanges.Edges, exchanges.RouteV1Invalidation)
+
+			headers = http.Header{
+				"Authorization": {"Bearer " + t.Token},
+			}
+
+			proj = factories.Project(db, u)
+			dm1 = factories.Domain(db, proj)
+			dm2 = factories.Domain(db, proj)
+
+			proj2 = factories.Project(db, u)
+			dm3 = factories.Domain(db, proj2)
+		})
+
+		AfterEach(func() {
+			s3client.S3 = origS3
+		})
+
+		doRequest := func() {
+			s = httptest.NewServer(server.New())
+			res, err = testhelper.MakeRequest("DELETE", s.URL+"/projects/"+proj.Name, nil, headers, nil)
+			Expect(err).To(BeNil())
+		}
+
+		It("returns 200 with OK", func() {
+			doRequest()
+			b := &bytes.Buffer{}
+			_, err := b.ReadFrom(res.Body)
+			Expect(err).To(BeNil())
+
+			Expect(res.StatusCode).To(Equal(http.StatusOK))
+			Expect(b.String()).To(MatchJSON(`{
+				"deleted": true
+			}`))
+		})
+
+		It("deletes associated domains", func() {
+			doRequest()
+			var dms []domain.Domain
+
+			err := db.Where("project_id = ?", proj.ID).Find(&dms).Error
+			Expect(err).To(BeNil())
+			Expect(len(dms)).To(Equal(0))
+
+			// Make sure it does not delete other project's domains
+			Expect(db.First(&domain.Domain{}, dm3.ID).Error).To(BeNil())
+		})
+
+		It("deletes the given project", func() {
+			doRequest()
+			Expect(db.First(&project.Project{}, proj.ID).Error).To(Equal(gorm.RecordNotFound))
+			// Make sure it does not delete other projects
+			Expect(db.First(&project.Project{}, proj2.ID).Error).To(BeNil())
+		})
+
+		It("deletes the meta.json for the associated domains from s3", func() {
+			doRequest()
+
+			Expect(fakeS3.DeleteCalls.Count()).To(Equal(3))
+
+			for i, domainName := range []string{proj.Name + "." + shared.DefaultDomain, dm1.Name, dm2.Name} {
+				deleteCall := fakeS3.DeleteCalls.NthCall(i + 1)
+				Expect(deleteCall).NotTo(BeNil())
+				Expect(deleteCall.Arguments[0]).To(Equal(s3client.BucketRegion))
+				Expect(deleteCall.Arguments[1]).To(Equal(s3client.BucketName))
+				Expect(deleteCall.Arguments[2]).To(Equal("/domains/" + domainName + "/meta.json"))
+				Expect(deleteCall.ReturnValues[0]).To(BeNil())
+			}
+		})
+
+		It("publishes invalidation message for the domain", func() {
+			doRequest()
+
+			d := testhelper.ConsumeQueue(mq, invalidationQueueName)
+			Expect(d).NotTo(BeNil())
+			Expect(d.Body).To(MatchJSON(fmt.Sprintf(`{
+				"domains": ["%s", "%s", "%s"]
+			}`, proj.Name+"."+shared.DefaultDomain, dm1.Name, dm2.Name)))
+		})
+
+		sharedexamples.ItRequiresAuthentication(func() (*gorm.DB, *user.User, *http.Header) {
+			return db, u, &headers
+		}, func() *http.Response {
+			doRequest()
+			return res
+		}, nil)
+
+		sharedexamples.ItRequiresProject(func() (*gorm.DB, *project.Project) {
+			return db, proj
+		}, func() *http.Response {
+			doRequest()
+			return res
+		}, nil)
+
+		sharedexamples.ItLocksProject(func() (*gorm.DB, *project.Project) {
+			return db, proj
 		}, func() *http.Response {
 			doRequest()
 			return res
