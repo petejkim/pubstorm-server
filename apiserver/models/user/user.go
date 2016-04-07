@@ -1,6 +1,8 @@
 package user
 
 import (
+	"crypto/rand"
+	"encoding/base64"
 	"errors"
 	"regexp"
 	"time"
@@ -12,7 +14,9 @@ import (
 var (
 	emailRe = regexp.MustCompile(`\A[^@\s]+@([^@\s]+\.)+[^@\s]+\z`)
 
-	ErrEmailTaken = errors.New("email is taken")
+	ErrEmailTaken                  = errors.New("email is taken")
+	ErrPasswordResetTokenRequired  = errors.New("password reset token is required")
+	ErrPasswordResetTokenIncorrect = errors.New("password reset token incorrect")
 )
 
 type User struct {
@@ -25,6 +29,9 @@ type User struct {
 
 	ConfirmationCode string `sql:"default:lpad((floor(random() * 999999) + 1)::text, 6, '0')"`
 	ConfirmedAt      *time.Time
+
+	PasswordResetToken          string
+	PasswordResetTokenCreatedAt *time.Time
 }
 
 // Returns a struct that can be converted to JSON
@@ -81,15 +88,64 @@ func (u *User) Insert(db *gorm.DB) error {
 	return err
 }
 
-// Encrypts and saves new password in the DB
 func (u *User) SavePassword(db *gorm.DB) error {
 	return db.Exec("UPDATE users SET encrypted_password = crypt(?, gen_salt('bf')) WHERE id = ?;", u.Password, u.ID).Error
 }
 
+// GeneratePasswordResetToken generates a unique token for the user to be used
+// for resetting their password (without requiring them to authenticate via
+// their password).
+func (u *User) GeneratePasswordResetToken(db *gorm.DB) error {
+	// Generate a random string.
+	b := make([]byte, 48)
+	if _, err := rand.Read(b); err != nil {
+		return err
+	}
+
+	token := base64.URLEncoding.EncodeToString(b)
+	now := time.Now()
+
+	return db.Model(u).Updates(User{
+		PasswordResetToken:          token,
+		PasswordResetTokenCreatedAt: &now,
+	}).Error
+}
+
+// ResetPassword attempts to set a user's password to the new password. The
+// resetToken must not be empty, and must match the password reset token. If
+// successful, the password reset token will be cleared (so that the token
+// cannot be re-used).
+func (u *User) ResetPassword(db *gorm.DB, newPassword, resetToken string) error {
+	// Explicitly disallow an empty token (since a user will not have a password
+	// reset token by default).
+	if resetToken == "" {
+		return ErrPasswordResetTokenRequired
+	}
+
+	// TODO We should check password_reset_token_created_at.
+
+	q := db.Raw(`UPDATE users
+        SET
+            encrypted_password = crypt(?, gen_salt('bf')),
+            password_reset_token = NULL,
+            password_reset_token_created_at = NULL
+        WHERE id = ? AND password_reset_token = ?
+        RETURNING *;`, newPassword, u.ID, resetToken).Scan(u)
+
+	if err := q.Error; err != nil {
+		if err == gorm.RecordNotFound {
+			return ErrPasswordResetTokenIncorrect
+		}
+		return err
+	}
+
+	return nil
+}
+
 // Checks email and password and return user if credentials are valid
-func Authenticate(db *gorm.DB, email, password string) (u *User, err error) {
-	u = &User{}
-	if err = db.Where(
+func Authenticate(db *gorm.DB, email, password string) (*User, error) {
+	u := &User{}
+	if err := db.Where(
 		"email = ? AND encrypted_password = crypt(?, encrypted_password)",
 		email, password).First(u).Error; err != nil {
 		// don't treat record not found as error
@@ -99,7 +155,7 @@ func Authenticate(db *gorm.DB, email, password string) (u *User, err error) {
 		return nil, err
 	}
 
-	return u, err
+	return u, nil
 }
 
 // Finds user by email and confirmation code and confirms user if found

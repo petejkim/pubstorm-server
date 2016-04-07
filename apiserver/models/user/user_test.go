@@ -95,6 +95,108 @@ var _ = Describe("User", func() {
 		})
 	})
 
+	Describe("GeneratePasswordResetToken()", func() {
+		var u *user.User
+
+		BeforeEach(func() {
+			u = &user.User{
+				Email:    "harry.potter@gmail.com",
+				Password: "123456",
+			}
+			Expect(u.Insert(db)).To(BeNil())
+		})
+
+		It("generates a random password reset token and saves it", func() {
+			Expect(u.PasswordResetToken).To(Equal(""))
+			Expect(u.PasswordResetTokenCreatedAt).To(BeNil())
+
+			err := u.GeneratePasswordResetToken(db)
+			Expect(err).To(BeNil())
+
+			Expect(u.PasswordResetToken).NotTo(BeEmpty())
+			Expect(u.PasswordResetTokenCreatedAt).NotTo(BeNil())
+		})
+
+		It("re-generates and replaces the password reset token if the user already has one", func() {
+			err := u.GeneratePasswordResetToken(db)
+			Expect(err).To(BeNil())
+			Expect(u.PasswordResetToken).NotTo(BeEmpty())
+			Expect(u.PasswordResetTokenCreatedAt).NotTo(BeNil())
+
+			origToken := u.PasswordResetToken
+			origCreatedAt := u.PasswordResetTokenCreatedAt
+
+			err = u.GeneratePasswordResetToken(db)
+			Expect(err).To(BeNil())
+			Expect(u.PasswordResetToken).NotTo(BeEmpty())
+			Expect(u.PasswordResetTokenCreatedAt).NotTo(BeNil())
+
+			Expect(u.PasswordResetToken).NotTo(Equal(origToken))
+			Expect(*u.PasswordResetTokenCreatedAt).To(BeTemporally(">", *origCreatedAt))
+		})
+	})
+
+	Describe("ResetPassword()", func() {
+		var u *user.User
+
+		BeforeEach(func() {
+			u = &user.User{
+				Email:    "harry.potter@gmail.com",
+				Password: "123456",
+			}
+			Expect(u.Insert(db)).To(BeNil())
+		})
+
+		It("returns an error when an empty token is used", func() {
+			resetToken := ""
+			err := u.ResetPassword(db, "new-password", resetToken)
+			Expect(err).To(Equal(user.ErrPasswordResetTokenRequired))
+		})
+
+		It("returns an error when the user does not have a password reset token", func() {
+			resetToken := "this-wont-work"
+			err := u.ResetPassword(db, "new-password", resetToken)
+			Expect(err).To(Equal(user.ErrPasswordResetTokenIncorrect))
+
+			// Verify that password is unchanged.
+			u2, err := user.Authenticate(db, u.Email, "123456")
+			Expect(err).To(BeNil())
+			Expect(u2).NotTo(BeNil())
+			Expect(u2.ID).To(Equal(u.ID))
+		})
+
+		Context("when user has requested for a password reset", func() {
+			BeforeEach(func() {
+				err := u.GeneratePasswordResetToken(db)
+				Expect(err).To(BeNil())
+				Expect(u.PasswordResetToken).NotTo(BeEmpty())
+			})
+
+			It("returns an error when the token is incorrect", func() {
+				resetToken := "this-wont-work"
+				err := u.ResetPassword(db, "new-password", resetToken)
+				Expect(err).To(Equal(user.ErrPasswordResetTokenIncorrect))
+
+				// Verify that password is unchanged.
+				u2, err := user.Authenticate(db, u.Email, "123456")
+				Expect(err).To(BeNil())
+				Expect(u2).NotTo(BeNil())
+				Expect(u2.ID).To(Equal(u.ID))
+			})
+
+			It("sets the user's password to the new password when the token is correct", func() {
+				err := u.ResetPassword(db, "new-password", u.PasswordResetToken)
+				Expect(err).To(BeNil())
+
+				// Verify that password has been changed.
+				u2, err := user.Authenticate(db, u.Email, "new-password")
+				Expect(err).To(BeNil())
+				Expect(u2).NotTo(BeNil())
+				Expect(u2.ID).To(Equal(u.ID))
+			})
+		})
+	})
+
 	Describe("Authenticate()", func() {
 		var u *user.User
 
