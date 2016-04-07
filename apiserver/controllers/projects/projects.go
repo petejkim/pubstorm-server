@@ -8,7 +8,12 @@ import (
 	"github.com/nitrous-io/rise-server/apiserver/controllers"
 	"github.com/nitrous-io/rise-server/apiserver/dbconn"
 	"github.com/nitrous-io/rise-server/apiserver/models/blacklistedname"
+	"github.com/nitrous-io/rise-server/apiserver/models/domain"
 	"github.com/nitrous-io/rise-server/apiserver/models/project"
+	"github.com/nitrous-io/rise-server/pkg/pubsub"
+	"github.com/nitrous-io/rise-server/shared/exchanges"
+	"github.com/nitrous-io/rise-server/shared/messages"
+	"github.com/nitrous-io/rise-server/shared/s3client"
 )
 
 func Create(c *gin.Context) {
@@ -99,5 +104,68 @@ func Index(c *gin.Context) {
 
 	c.JSON(http.StatusOK, gin.H{
 		"projects": projectsAsJson,
+	})
+}
+
+func Destroy(c *gin.Context) {
+	proj := controllers.CurrentProject(c)
+
+	db, err := dbconn.DB()
+	if err != nil {
+		controllers.InternalServerError(c, err)
+		return
+	}
+
+	tx := db.Begin()
+	if err := tx.Error; err != nil {
+		controllers.InternalServerError(c, err)
+		return
+	}
+	defer tx.Rollback()
+
+	domainNames, err := proj.DomainNames(db)
+	if err != nil {
+		controllers.InternalServerError(c, err)
+		return
+	}
+
+	for _, domainName := range domainNames {
+		if err := s3client.Delete("/domains/" + domainName + "/meta.json"); err != nil {
+			controllers.InternalServerError(c, err)
+			return
+		}
+	}
+
+	m, err := pubsub.NewMessageWithJSON(exchanges.Edges, exchanges.RouteV1Invalidation, &messages.V1InvalidationMessageData{
+		Domains: domainNames,
+	})
+
+	if err != nil {
+		controllers.InternalServerError(c, err)
+		return
+	}
+
+	if err := m.Publish(); err != nil {
+		controllers.InternalServerError(c, err)
+		return
+	}
+
+	if err := tx.Delete(domain.Domain{}, "project_id = ?", proj.ID).Error; err != nil {
+		controllers.InternalServerError(c, err)
+		return
+	}
+
+	if err := tx.Delete(proj).Error; err != nil {
+		controllers.InternalServerError(c, err)
+		return
+	}
+
+	if err := tx.Commit().Error; err != nil {
+		controllers.InternalServerError(c, err)
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"deleted": true,
 	})
 }
