@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"io/ioutil"
 	"testing"
+	"time"
 
 	"github.com/jinzhu/gorm"
 	"github.com/nitrous-io/rise-server/apiserver/dbconn"
@@ -13,7 +14,6 @@ import (
 	"github.com/nitrous-io/rise-server/deployer/deployer"
 	"github.com/nitrous-io/rise-server/pkg/filetransfer"
 	"github.com/nitrous-io/rise-server/pkg/mqconn"
-	"github.com/nitrous-io/rise-server/shared"
 	"github.com/nitrous-io/rise-server/shared/exchanges"
 	"github.com/nitrous-io/rise-server/shared/s3client"
 	"github.com/nitrous-io/rise-server/testhelper"
@@ -139,7 +139,7 @@ var _ = Describe("Deployer", func() {
 
 		// it should upload meta.json for each domain
 		for i, domain := range []string{
-			proj.Name + "." + shared.DefaultDomain,
+			proj.DefaultDomainName(),
 			"www.foo-bar-express.com",
 		} {
 			assertUpload(
@@ -157,16 +157,18 @@ var _ = Describe("Deployer", func() {
 		Expect(d).NotTo(BeNil())
 		Expect(d.Body).To(MatchJSON(fmt.Sprintf(`{
 			"domains": [
-				"%s.%s",
+				"%s",
 				"www.foo-bar-express.com"
 			]
-		}`, proj.Name, shared.DefaultDomain)))
+		}`, proj.DefaultDomainName())))
 
 		// it should update deployment's state to deployed
 		err = db.First(depl, depl.ID).Error
 		Expect(err).To(BeNil())
 
 		Expect(depl.State).To(Equal(deployment.StateDeployed))
+		Expect(depl.DeployedAt).NotTo(BeNil())
+		Expect(depl.DeployedAt.Unix()).To(BeNumerically("~", time.Now().Unix(), 1))
 
 		// it should set project's active deployment to current deployment id
 		assertActiveDeploymentIDUpdate()
@@ -177,7 +179,7 @@ var _ = Describe("Deployer", func() {
 			Expect(fakeS3.UploadCalls.Count()).To(Equal(2)) // 2 metadata files (2 domains)
 
 			for i, domain := range []string{
-				proj.Name + "." + shared.DefaultDomain,
+				proj.DefaultDomainName(),
 				"www.foo-bar-express.com",
 			} {
 				assertUpload(
@@ -208,10 +210,10 @@ var _ = Describe("Deployer", func() {
 			Expect(d).NotTo(BeNil())
 			Expect(d.Body).To(MatchJSON(fmt.Sprintf(`{
 				"domains": [
-					"%s.%s",
+					"%s",
 					"www.foo-bar-express.com"
 				]
-			}`, proj.Name, shared.DefaultDomain)))
+			}`, proj.DefaultDomainName())))
 
 			// it should set project's active deployment to current deployment id
 			assertActiveDeploymentIDUpdate()

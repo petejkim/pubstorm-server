@@ -111,7 +111,7 @@ var _ = Describe("Domains", func() {
 				Expect(res.StatusCode).To(Equal(http.StatusOK))
 				Expect(b.String()).To(MatchJSON(`{
 					"domains": [
-						"foo-bar-express.` + shared.DefaultDomain + `"
+						"` + proj.DefaultDomainName() + `"
 					]
 				}`))
 			})
@@ -139,7 +139,7 @@ var _ = Describe("Domains", func() {
 				Expect(res.StatusCode).To(Equal(http.StatusOK))
 				Expect(b.String()).To(MatchJSON(`{
 					"domains": [
-						"foo-bar-express.` + shared.DefaultDomain + `",
+						"` + proj.DefaultDomainName() + `",
 						"www.foo-bar-express.com",
 						"www.foobarexpress.com"
 					]

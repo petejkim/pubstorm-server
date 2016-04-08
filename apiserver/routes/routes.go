@@ -41,6 +41,7 @@ func Draw(r *gin.Engine) {
 				r4.POST("/deployments", deployments.Create)
 				r4.POST("/domains", domains.Create)
 				r4.DELETE("/domains/:name", domains.Destroy)
+				r4.POST("/deployments/rollback", deployments.Rollback)
 			}
 		}
 	}

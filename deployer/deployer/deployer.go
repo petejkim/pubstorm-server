@@ -172,7 +172,7 @@ func Work(data []byte) error {
 		return err
 	}
 
-	if err := tx.Model(depl).Update("state", deployment.StateDeployed).Error; err != nil {
+	if err := depl.UpdateState(tx, deployment.StateDeployed); err != nil {
 		return err
 	}
 
