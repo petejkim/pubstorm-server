@@ -57,7 +57,7 @@ func (p *Project) AsJSON() interface{} {
 // Returns list of domain names for this project
 func (p *Project) DomainNames(db *gorm.DB) ([]string, error) {
 	doms := []*domain.Domain{}
-	if err := db.Where("project_id = ?", p.ID).Order("name ASC").Find(&doms).Error; err != nil {
+	if err := db.Order("name ASC").Where("project_id = ?", p.ID).Find(&doms).Error; err != nil {
 		return nil, err
 	}
 

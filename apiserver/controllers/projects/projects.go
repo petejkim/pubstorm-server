@@ -87,7 +87,7 @@ func Index(c *gin.Context) {
 	}
 
 	projects := []*project.Project{}
-	if err := db.Where("user_id = ?", u.ID).Find(&projects).Order("name ASC").Error; err != nil {
+	if err := db.Order("name ASC").Where("user_id = ?", u.ID).Find(&projects).Error; err != nil {
 		controllers.InternalServerError(c, err)
 		return
 	}
