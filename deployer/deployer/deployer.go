@@ -5,6 +5,7 @@ import (
 	"bytes"
 	"compress/gzip"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"io/ioutil"
@@ -42,7 +43,11 @@ func init() {
 	mimetypes.Register()
 }
 
-var S3 filetransfer.FileTransfer = filetransfer.NewS3(s3client.PartSize, s3client.MaxUploadParts)
+var (
+	S3 filetransfer.FileTransfer = filetransfer.NewS3(s3client.PartSize, s3client.MaxUploadParts)
+
+	errUnexpectedState = errors.New("deployment is in unexpected state")
+)
 
 func Work(data []byte) error {
 	d := &messages.DeployJobData{}
@@ -61,9 +66,19 @@ func Work(data []byte) error {
 		return err
 	}
 
+	// Return error if the deployment is in a state that bundle is not uploaded or not prepared for deploying
+	if depl.State == deployment.StateUploaded || depl.State == deployment.StatePendingUpload {
+		return errUnexpectedState
+	}
+
 	prefixID := depl.PrefixID()
 
 	if !d.SkipWebrootUpload {
+		// We should not allow to re-upload for deployed project
+		if depl.State == deployment.StateDeployed {
+			return errUnexpectedState
+		}
+
 		rawBundle := "deployments/" + prefixID + "/raw-bundle.tar.gz"
 		tmpFileName := prefixID + "-raw-bundle.tar.gz"
 
@@ -165,18 +180,11 @@ func Work(data []byte) error {
 	}
 	defer tx.Rollback()
 
-	if err := tx.Model(deployment.Deployment{}).
-		Where("id = ?", d.DeploymentID).
-		Update("state", deployment.StateDeployed).
-		Error; err != nil {
+	if err := depl.UpdateState(tx, deployment.StateDeployed); err != nil {
 		return err
 	}
 
-	if err := tx.Model(depl).Update("state", deployment.StateDeployed).Error; err != nil {
-		return err
-	}
-
-	if err := tx.Model(proj).Update("active_deployment_id", &depl.ID).Error; err != nil {
+	if err := tx.Model(project.Project{}).Where("id = ?", proj.ID).Update("active_deployment_id", &depl.ID).Error; err != nil {
 		return err
 	}
 

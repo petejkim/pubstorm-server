@@ -2,15 +2,19 @@ package deployments_test
 
 import (
 	"bytes"
+	"encoding/json"
 	"fmt"
 	"mime/multipart"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"testing"
+	"time"
 
 	"github.com/jinzhu/gorm"
 	"github.com/nitrous-io/rise-server/apiserver/dbconn"
 	"github.com/nitrous-io/rise-server/apiserver/models/deployment"
+	"github.com/nitrous-io/rise-server/apiserver/models/domain"
 	"github.com/nitrous-io/rise-server/apiserver/models/oauthclient"
 	"github.com/nitrous-io/rise-server/apiserver/models/oauthtoken"
 	"github.com/nitrous-io/rise-server/apiserver/models/project"
@@ -43,6 +47,12 @@ var _ = Describe("Deployments", func() {
 		res *http.Response
 		err error
 	)
+
+	timeAgo := func(ago time.Duration) *time.Time {
+		currentTime := time.Now()
+		result := currentTime.Add(-ago)
+		return &result
+	}
 
 	BeforeEach(func() {
 		db, err = dbconn.DB()
@@ -257,13 +267,15 @@ var _ = Describe("Deployments", func() {
 					b := &bytes.Buffer{}
 					_, err = b.ReadFrom(res.Body)
 
-					Expect(res.StatusCode).To(Equal(http.StatusAccepted))
-					Expect(b.String()).To(MatchJSON(fmt.Sprintf(`{
-						"deployment": {
-							"id": %d,
-							"state": "%s"
-						}
-					}`, depl.ID, deployment.StatePendingDeploy)))
+					j := map[string]interface{}{
+						"deployment": map[string]interface{}{
+							"id":    depl.ID,
+							"state": deployment.StatePendingDeploy,
+						},
+					}
+					expectedJSON, err := json.Marshal(j)
+					Expect(err).To(BeNil())
+					Expect(b.String()).To(MatchJSON(expectedJSON))
 				})
 
 				It("creates a deployment record", func() {
@@ -328,10 +340,11 @@ var _ = Describe("Deployments", func() {
 			}
 
 			depl = &deployment.Deployment{
-				Prefix:    "a1b2c3",
-				State:     deployment.StatePendingDeploy,
-				ProjectID: proj.ID,
-				UserID:    u.ID,
+				Prefix:     "a1b2c3",
+				State:      deployment.StatePendingDeploy,
+				ProjectID:  proj.ID,
+				UserID:     u.ID,
+				DeployedAt: timeAgo(-1 * time.Hour),
 			}
 			Expect(db.Create(depl).Error).To(BeNil())
 		})
@@ -364,12 +377,19 @@ var _ = Describe("Deployments", func() {
 				_, err = b.ReadFrom(res.Body)
 
 				Expect(res.StatusCode).To(Equal(http.StatusOK))
-				Expect(b.String()).To(MatchJSON(fmt.Sprintf(`{
-					"deployment": {
-						"id": %d,
-						"state": "%s"
-					}
-				}`, depl.ID, deployment.StatePendingDeploy)))
+
+				var d deployment.Deployment
+				Expect(db.First(&d, depl.ID).Error).To(BeNil())
+				j := map[string]interface{}{
+					"deployment": map[string]interface{}{
+						"id":          d.ID,
+						"state":       deployment.StatePendingDeploy,
+						"deployed_at": d.DeployedAt,
+					},
+				}
+				expectedJSON, err := json.Marshal(j)
+				Expect(err).To(BeNil())
+				Expect(b.String()).To(MatchJSON(expectedJSON))
 			})
 		})
 
@@ -387,6 +407,375 @@ var _ = Describe("Deployments", func() {
 				Expect(b.String()).To(MatchJSON(`{
 					"error": "not_found",
 					"error_description": "deployment could not be found"
+				}`))
+			})
+		})
+
+		Context("the deployment id is not a number", func() {
+			BeforeEach(func() {
+				s = httptest.NewServer(server.New())
+				url := fmt.Sprintf("%s/projects/foo-bar-express/deployments/cafebabe", s.URL)
+				res, err = testhelper.MakeRequest("GET", url, nil, headers, nil)
+				Expect(err).To(BeNil())
+			})
+
+			It("returns 404 not found", func() {
+				b := &bytes.Buffer{}
+				_, err = b.ReadFrom(res.Body)
+
+				Expect(res.StatusCode).To(Equal(http.StatusNotFound))
+				Expect(b.String()).To(MatchJSON(`{
+					"error": "not_found",
+					"error_description": "deployment could not be found"
+				}`))
+			})
+		})
+	})
+
+	Describe("POST /projects/:project_name/rollback", func() {
+		var (
+			err error
+
+			fakeS3 *fake.S3
+			origS3 filetransfer.FileTransfer
+
+			mq *amqp.Connection
+
+			u  *user.User
+			oc *oauthclient.OauthClient
+			t  *oauthtoken.OauthToken
+
+			params  url.Values
+			headers http.Header
+			proj    *project.Project
+
+			dm1 *domain.Domain
+			dm2 *domain.Domain
+
+			depl1 *deployment.Deployment
+			depl2 *deployment.Deployment
+			depl3 *deployment.Deployment
+		)
+
+		BeforeEach(func() {
+			origS3 = s3client.S3
+			fakeS3 = &fake.S3{}
+			s3client.S3 = fakeS3
+
+			mq, err = mqconn.MQ()
+			Expect(err).To(BeNil())
+
+			testhelper.DeleteQueue(mq, queues.All...)
+
+			u, oc, t = factories.AuthTrio(db)
+
+			proj = &project.Project{
+				Name:   "foo-bar-express",
+				UserID: u.ID,
+			}
+			Expect(db.Create(proj).Error).To(BeNil())
+
+			dm1 = factories.Domain(db, proj)
+			dm2 = factories.Domain(db, proj)
+
+			headers = http.Header{
+				"Authorization": {"Bearer " + t.Token},
+			}
+
+			depl1 = &deployment.Deployment{
+				Prefix:     "a1b2c3",
+				State:      deployment.StateDeployed,
+				ProjectID:  proj.ID,
+				UserID:     u.ID,
+				DeployedAt: timeAgo(3 * time.Hour),
+			}
+			Expect(db.Create(depl1).Error).To(BeNil())
+
+			depl2 = &deployment.Deployment{
+				Prefix:    "a7b8c9",
+				State:     deployment.StateUploaded,
+				ProjectID: proj.ID,
+				UserID:    u.ID,
+			}
+			Expect(db.Create(depl2).Error).To(BeNil())
+
+			depl3 = &deployment.Deployment{
+				Prefix:     "d1e2f3",
+				State:      deployment.StateDeployed,
+				ProjectID:  proj.ID,
+				UserID:     u.ID,
+				DeployedAt: timeAgo(1 * time.Hour),
+			}
+			Expect(db.Create(depl3).Error).To(BeNil())
+
+			var currentDeplID = depl3.ID
+			proj.ActiveDeploymentID = &currentDeplID
+			Expect(db.Save(proj).Error).To(BeNil())
+		})
+
+		AfterEach(func() {
+			s3client.S3 = origS3
+		})
+
+		doRequest := func() {
+			s = httptest.NewServer(server.New())
+			url := fmt.Sprintf("%s/projects/foo-bar-express/rollback", s.URL)
+			res, err = testhelper.MakeRequest("POST", url, params, headers, nil)
+			Expect(err).To(BeNil())
+		}
+
+		sharedexamples.ItRequiresAuthentication(func() (*gorm.DB, *user.User, *http.Header) {
+			return db, u, &headers
+		}, func() *http.Response {
+			doRequest()
+			return res
+		}, nil)
+
+		sharedexamples.ItRequiresProject(func() (*gorm.DB, *project.Project) {
+			return db, proj
+		}, func() *http.Response {
+			doRequest()
+			return res
+		}, nil)
+
+		sharedexamples.ItLocksProject(func() (*gorm.DB, *project.Project) {
+			return db, proj
+		}, func() *http.Response {
+			doRequest()
+			return res
+		}, nil)
+
+		Context("when the deployment id is not specified", func() {
+			It("returns 202 accepted", func() {
+				doRequest()
+				b := &bytes.Buffer{}
+				_, err = b.ReadFrom(res.Body)
+				Expect(err).To(BeNil())
+
+				Expect(res.StatusCode).To(Equal(http.StatusAccepted))
+
+				var d deployment.Deployment
+				Expect(db.First(&d, depl1.ID).Error).To(BeNil())
+				j := map[string]interface{}{
+					"deployment": map[string]interface{}{
+						"id":          d.ID,
+						"state":       deployment.StatePendingRollback,
+						"deployed_at": d.DeployedAt,
+					},
+				}
+				expectedJSON, err := json.Marshal(j)
+				Expect(err).To(BeNil())
+				Expect(b.String()).To(MatchJSON(expectedJSON))
+			})
+
+			It("enqueues a deploy job", func() {
+				doRequest()
+
+				d := testhelper.ConsumeQueue(mq, queues.Deploy)
+				Expect(d).NotTo(BeNil())
+				Expect(d.Body).To(MatchJSON(fmt.Sprintf(`
+					{
+						"deployment_id": %d,
+						"skip_webroot_upload": true,
+						"skip_invalidation": false
+					}
+				`, depl1.ID)))
+			})
+
+			It("marks the deployment as 'pending_rollback'", func() {
+				doRequest()
+
+				var updatedDeployment deployment.Deployment
+				Expect(db.First(&updatedDeployment, depl1.ID).Error).To(BeNil())
+				Expect(updatedDeployment.State).To(Equal(deployment.StatePendingRollback))
+			})
+		})
+
+		Context("when the deployment id is specified", func() {
+			var depl4 *deployment.Deployment
+
+			BeforeEach(func() {
+				depl4 = &deployment.Deployment{
+					Prefix:     "x0y1z2",
+					State:      deployment.StateDeployed,
+					ProjectID:  proj.ID,
+					UserID:     u.ID,
+					DeployedAt: timeAgo(2 * time.Hour),
+				}
+				Expect(db.Create(depl4).Error).To(BeNil())
+
+				params = url.Values{
+					"deployment_id": {fmt.Sprintf("%d", depl4.ID)},
+				}
+			})
+
+			AfterEach(func() {
+				params = url.Values{}
+			})
+
+			It("returns 202 accepted", func() {
+				doRequest()
+				b := &bytes.Buffer{}
+				_, err = b.ReadFrom(res.Body)
+				Expect(err).To(BeNil())
+
+				Expect(res.StatusCode).To(Equal(http.StatusAccepted))
+
+				var d deployment.Deployment
+				Expect(db.First(&d, depl4.ID).Error).To(BeNil())
+				j := map[string]interface{}{
+					"deployment": map[string]interface{}{
+						"id":          d.ID,
+						"state":       deployment.StatePendingRollback,
+						"deployed_at": d.DeployedAt,
+					},
+				}
+				expectedJSON, err := json.Marshal(j)
+				Expect(err).To(BeNil())
+				Expect(b.String()).To(MatchJSON(expectedJSON))
+			})
+
+			It("enqueues a deploy job", func() {
+				doRequest()
+
+				d := testhelper.ConsumeQueue(mq, queues.Deploy)
+				Expect(d).NotTo(BeNil())
+				Expect(d.Body).To(MatchJSON(fmt.Sprintf(`
+				{
+					"deployment_id": %d,
+					"skip_webroot_upload": true,
+					"skip_invalidation": false
+				}
+			`, depl4.ID)))
+			})
+
+			It("marks the deployment as 'pending_rollback'", func() {
+				doRequest()
+
+				var updatedDeployment deployment.Deployment
+				Expect(db.First(&updatedDeployment, depl4.ID).Error).To(BeNil())
+				Expect(updatedDeployment.State).To(Equal(deployment.StatePendingRollback))
+			})
+
+			Context("when the deployment does not exist", func() {
+				BeforeEach(func() {
+					Expect(db.Delete(depl4).Error).To(BeNil())
+				})
+
+				It("returns 422 with invalid_request", func() {
+					doRequest()
+					b := &bytes.Buffer{}
+					_, err = b.ReadFrom(res.Body)
+					Expect(err).To(BeNil())
+
+					Expect(res.StatusCode).To(Equal(422))
+					Expect(b.String()).To(MatchJSON(`{
+						"error": "invalid_request",
+						"error_description": "complete deployment with given id could not be found"
+					}`))
+				})
+			})
+
+			Context("when the deployment is already active", func() {
+				BeforeEach(func() {
+					proj.ActiveDeploymentID = &depl4.ID
+					Expect(db.Save(proj).Error).To(BeNil())
+				})
+
+				It("returns 422 with invalid_request", func() {
+					doRequest()
+					b := &bytes.Buffer{}
+					_, err = b.ReadFrom(res.Body)
+					Expect(err).To(BeNil())
+
+					Expect(res.StatusCode).To(Equal(422))
+					Expect(b.String()).To(MatchJSON(`{
+						"error": "invalid_request",
+						"error_description": "the specified deployment is already active"
+					}`))
+				})
+			})
+
+			Context("when the deployment is not in deployed state", func() {
+				BeforeEach(func() {
+					depl4.State = deployment.StatePendingUpload
+					Expect(db.Save(depl4).Error).To(BeNil())
+				})
+
+				It("returns 422 with invalid_request", func() {
+					doRequest()
+					b := &bytes.Buffer{}
+					_, err = b.ReadFrom(res.Body)
+					Expect(err).To(BeNil())
+
+					Expect(res.StatusCode).To(Equal(422))
+					Expect(b.String()).To(MatchJSON(`{
+						"error": "invalid_request",
+						"error_description": "complete deployment with given id could not be found"
+					}`))
+				})
+			})
+
+			Context("when the deployment does not belong to the project", func() {
+				BeforeEach(func() {
+					proj2 := factories.Project(db, u)
+					depl4.ProjectID = proj2.ID
+					Expect(db.Save(depl4).Error).To(BeNil())
+				})
+
+				It("returns 422 with invalid_request", func() {
+					doRequest()
+					b := &bytes.Buffer{}
+					_, err = b.ReadFrom(res.Body)
+					Expect(err).To(BeNil())
+
+					Expect(res.StatusCode).To(Equal(422))
+					Expect(b.String()).To(MatchJSON(`{
+						"error": "invalid_request",
+						"error_description": "complete deployment with given id could not be found"
+					}`))
+				})
+			})
+		})
+
+		Context("when active_deployment_id is nil", func() {
+			BeforeEach(func() {
+				proj.ActiveDeploymentID = nil
+				Expect(db.Save(proj).Error).To(BeNil())
+			})
+
+			It("returns 412 with precondition_failed", func() {
+				doRequest()
+				b := &bytes.Buffer{}
+				_, err = b.ReadFrom(res.Body)
+				Expect(err).To(BeNil())
+
+				Expect(res.StatusCode).To(Equal(http.StatusPreconditionFailed))
+				Expect(err).To(BeNil())
+				Expect(b.String()).To(MatchJSON(`{
+					"error": "precondition_failed",
+					"error_description": "active deployment could not be found"
+				}`))
+			})
+		})
+
+		Context("when there is no previous completed deployment", func() {
+			BeforeEach(func() {
+				proj.ActiveDeploymentID = &depl1.ID
+				Expect(db.Save(proj).Error).To(BeNil())
+			})
+
+			It("returns 412 with precondition_failed", func() {
+				doRequest()
+				b := &bytes.Buffer{}
+				_, err = b.ReadFrom(res.Body)
+				Expect(err).To(BeNil())
+
+				Expect(res.StatusCode).To(Equal(http.StatusPreconditionFailed))
+				Expect(err).To(BeNil())
+				Expect(b.String()).To(MatchJSON(`{
+					"error": "precondition_failed",
+					"error_description": "previous completed deployment could not be found"
 				}`))
 			})
 		})

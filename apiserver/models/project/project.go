@@ -76,10 +76,17 @@ func (p *Project) DomainNames(db *gorm.DB) ([]string, error) {
 	for i, dom := range doms {
 		domNames[i+1] = dom.Name
 	}
+
+	// We assume that nil is always sorted first.
 	sort.Sort(sort.StringSlice(domNames))
-	domNames[0] = p.Name + "." + shared.DefaultDomain
+	domNames[0] = p.DefaultDomainName()
 
 	return domNames, nil
+}
+
+// Return Default domain
+func (p *Project) DefaultDomainName() string {
+	return p.Name + "." + shared.DefaultDomain
 }
 
 // Find project by name

@@ -1,6 +1,8 @@
 package factories
 
 import (
+	"time"
+
 	"github.com/jinzhu/gorm"
 	"github.com/nitrous-io/rise-server/apiserver/models/deployment"
 	"github.com/nitrous-io/rise-server/apiserver/models/project"
@@ -22,6 +24,11 @@ func Deployment(db *gorm.DB, proj *project.Project, u *user.User, state string) 
 		ProjectID: proj.ID,
 		UserID:    u.ID,
 		State:     state,
+	}
+
+	if state == deployment.StateDeployed {
+		currentTime := time.Now()
+		d.DeployedAt = &currentTime
 	}
 
 	err := db.Create(d).Error
