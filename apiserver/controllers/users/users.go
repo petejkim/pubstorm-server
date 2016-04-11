@@ -7,6 +7,7 @@ import (
 	"github.com/nitrous-io/rise-server/apiserver/common"
 	"github.com/nitrous-io/rise-server/apiserver/controllers"
 	"github.com/nitrous-io/rise-server/apiserver/dbconn"
+	"github.com/nitrous-io/rise-server/apiserver/models/oauthtoken"
 	"github.com/nitrous-io/rise-server/apiserver/models/user"
 )
 
@@ -249,6 +250,14 @@ func ResetPassword(c *gin.Context) {
 			return
 		}
 
+		controllers.InternalServerError(c, err)
+		return
+	}
+
+	// Invalidate all tokens for the user for security - user should be required
+	// to login with their new password.
+	delQuery := db.Where("user_id = ?", u.ID).Delete(oauthtoken.OauthToken{})
+	if delQuery.Error != nil {
 		controllers.InternalServerError(c, err)
 		return
 	}

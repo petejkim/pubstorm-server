@@ -11,6 +11,7 @@ import (
 	"github.com/jinzhu/gorm"
 	"github.com/nitrous-io/rise-server/apiserver/common"
 	"github.com/nitrous-io/rise-server/apiserver/dbconn"
+	"github.com/nitrous-io/rise-server/apiserver/models/oauthtoken"
 	"github.com/nitrous-io/rise-server/apiserver/models/user"
 	"github.com/nitrous-io/rise-server/apiserver/server"
 	"github.com/nitrous-io/rise-server/pkg/mailer"
@@ -570,10 +571,13 @@ var _ = Describe("Users", func() {
 	})
 
 	Describe("POST /user/password/reset", func() {
-		var u *user.User
+		var (
+			u *user.User
+			t *oauthtoken.OauthToken
+		)
 
 		BeforeEach(func() {
-			u = factories.User(db)
+			u, _, t = factories.AuthTrio(db)
 		})
 
 		doRequest := func(params url.Values) {
@@ -737,6 +741,24 @@ var _ = Describe("Users", func() {
 				Expect(err).To(BeNil())
 				Expect(u2).NotTo(BeNil())
 				Expect(u2.ID).To(Equal(u.ID))
+			})
+
+			It("invalidates all of the user's OAuth tokens", func() {
+				var tokens []*oauthtoken.OauthToken
+				err := db.Where("user_id = ?", u.ID).Find(&tokens).Error
+				Expect(err).To(BeNil())
+				Expect(tokens).To(HaveLen(1))
+				Expect(tokens[0].ID).To(Equal(t.ID))
+
+				doRequest(url.Values{
+					"email":        {u.Email},
+					"reset_token":  {u.PasswordResetToken},
+					"new_password": {"new-password"},
+				})
+
+				err = db.Where("user_id = ?", u.ID).Find(&tokens).Error
+				Expect(err).To(BeNil())
+				Expect(tokens).To(HaveLen(0))
 			})
 		})
 	})
