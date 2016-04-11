@@ -14,7 +14,7 @@ func User(db *gorm.DB) (u *user.User) {
 	userN++
 
 	u = &user.User{
-		Email:    fmt.Sprintf("foo%d@example.com", userN),
+		Email:    fmt.Sprintf("factory%d@example.com", userN),
 		Password: "foobar",
 	}
 	err := u.Insert(db)

@@ -21,6 +21,8 @@ func Draw(r *gin.Engine) {
 	r.POST("/users", users.Create)
 	r.POST("/user/confirm", users.Confirm)
 	r.POST("/user/confirm/resend", users.ResendConfirmationCode)
+	r.POST("/user/password/forgot", users.ForgotPassword)
+	r.POST("/user/password/reset", users.ResetPassword)
 	r.POST("/oauth/token", oauth.CreateToken)
 
 	{
