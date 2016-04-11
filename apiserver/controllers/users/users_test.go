@@ -2,6 +2,7 @@ package users_test
 
 import (
 	"bytes"
+	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -10,10 +11,12 @@ import (
 	"github.com/jinzhu/gorm"
 	"github.com/nitrous-io/rise-server/apiserver/common"
 	"github.com/nitrous-io/rise-server/apiserver/dbconn"
+	"github.com/nitrous-io/rise-server/apiserver/models/oauthtoken"
 	"github.com/nitrous-io/rise-server/apiserver/models/user"
 	"github.com/nitrous-io/rise-server/apiserver/server"
 	"github.com/nitrous-io/rise-server/pkg/mailer"
 	"github.com/nitrous-io/rise-server/testhelper"
+	"github.com/nitrous-io/rise-server/testhelper/factories"
 	"github.com/nitrous-io/rise-server/testhelper/fake"
 
 	. "github.com/onsi/ginkgo"
@@ -466,6 +469,296 @@ var _ = Describe("Users", func() {
 
 					Expect(fakeMailer.SendMailCalled).To(BeFalse())
 				})
+			})
+		})
+	})
+
+	Describe("POST /user/password/forgot", func() {
+		var (
+			fakeMailer *fake.Mailer
+			origMailer mailer.Mailer
+			u          *user.User
+		)
+
+		BeforeEach(func() {
+			origMailer = common.Mailer
+			fakeMailer = &fake.Mailer{}
+			common.Mailer = fakeMailer
+			u = factories.User(db)
+		})
+
+		AfterEach(func() {
+			common.Mailer = origMailer
+		})
+
+		doRequest := func(params url.Values) {
+			s = httptest.NewServer(server.New())
+			res, err = http.PostForm(s.URL+"/user/password/forgot", params)
+			Expect(err).To(BeNil())
+		}
+
+		It("returns 200 OK", func() {
+			doRequest(url.Values{"email": {u.Email}})
+
+			b := &bytes.Buffer{}
+			_, err := b.ReadFrom(res.Body)
+			Expect(err).To(BeNil())
+
+			Expect(res.StatusCode).To(Equal(http.StatusOK))
+			Expect(b.String()).To(MatchJSON(`{
+				"sent": true
+			}`))
+		})
+
+		It("sends an email with a newly generated password reset token to the user", func() {
+			Expect(u.PasswordResetToken).To(BeEmpty())
+
+			doRequest(url.Values{"email": {u.Email}})
+
+			u2 := &user.User{}
+			err := db.First(&u2, u.ID).Error
+			Expect(err).To(BeNil())
+
+			Expect(u2.ID).To(Equal(u.ID))
+			Expect(u2.PasswordResetToken).NotTo(BeEmpty())
+
+			Expect(fakeMailer.SendMailCalled).To(BeTrue())
+
+			Expect(fakeMailer.From).To(Equal(common.MailerEmail))
+			Expect(fakeMailer.Tos).To(Equal([]string{u.Email}))
+			Expect(fakeMailer.ReplyTo).To(Equal(common.MailerEmail))
+
+			Expect(fakeMailer.Subject).To(ContainSubstring("password reset"))
+			Expect(fakeMailer.Body).To(ContainSubstring(u.PasswordResetToken))
+			Expect(fakeMailer.HTML).To(ContainSubstring(u.PasswordResetToken))
+		})
+
+		Context("when email address is not provided", func() {
+			It("returns 422 and does not send password reset token via email", func() {
+				doRequest(url.Values{})
+
+				b := &bytes.Buffer{}
+				_, err := b.ReadFrom(res.Body)
+				Expect(err).To(BeNil())
+
+				Expect(res.StatusCode).To(Equal(422))
+				Expect(b.String()).To(MatchJSON(`{
+					"error": "invalid_params",
+					"error_description": "email is required",
+					"sent": false
+				}`))
+
+				Expect(fakeMailer.SendMailCalled).To(BeFalse())
+			})
+		})
+
+		Context("when there's no user with the given email address", func() {
+			It("returns 200 OK but does not send a password reset token", func() {
+				doRequest(url.Values{"email": {u.Email + "x"}})
+
+				b := &bytes.Buffer{}
+				_, err := b.ReadFrom(res.Body)
+				Expect(err).To(BeNil())
+
+				Expect(res.StatusCode).To(Equal(http.StatusOK))
+				Expect(b.String()).To(MatchJSON(`{
+					"sent": true
+				}`))
+
+				Expect(fakeMailer.SendMailCalled).To(BeFalse())
+			})
+		})
+	})
+
+	Describe("POST /user/password/reset", func() {
+		var (
+			u *user.User
+			t *oauthtoken.OauthToken
+		)
+
+		BeforeEach(func() {
+			u, _, t = factories.AuthTrio(db)
+		})
+
+		doRequest := func(params url.Values) {
+			s = httptest.NewServer(server.New())
+			res, err = http.PostForm(s.URL+"/user/password/reset", params)
+			Expect(err).To(BeNil())
+		}
+
+		Context("when any invalid params are provided", func() {
+			var params url.Values
+
+			BeforeEach(func() {
+				params = url.Values{
+					"email":        {u.Email},
+					"reset_token":  {"some-reset-token"},
+					"new_password": {"new-password"},
+				}
+			})
+
+			DescribeTable("it returns 422 and does not change the user's password",
+				func(setUp func(), message string) {
+					origPassword := u.Password
+
+					setUp()
+					doRequest(params)
+
+					b := &bytes.Buffer{}
+					_, err := b.ReadFrom(res.Body)
+					Expect(err).To(BeNil())
+
+					Expect(res.StatusCode).To(Equal(422))
+					Expect(b.String()).To(MatchJSON(`{
+						"error": "invalid_params",
+						"error_description": "` + message + `",
+						"reset": false
+					}`))
+
+					err = db.First(u, u.ID).Error
+					Expect(err).To(BeNil())
+
+					u2, err := user.Authenticate(db, u.Email, origPassword)
+					Expect(err).To(BeNil())
+					Expect(u2).NotTo(BeNil())
+					Expect(u2.ID).To(Equal(u.ID))
+				},
+
+				Entry("requires email", func() {
+					params.Del("email")
+				}, "email is required"),
+
+				Entry("validates presence of user with given email", func() {
+					params.Set("email", u.Email+"x")
+				}, "email is not found"),
+
+				Entry("requires password reset token", func() {
+					params.Del("reset_token")
+				}, "reset_token is required"),
+
+				Entry("requires new password", func() {
+					params.Del("new_password")
+				}, "new_password is required"),
+			)
+		})
+
+		Context("when the new password is in an invalid format", func() {
+			It("returns 422 and does not change the user's password", func() {
+				origPassword := u.Password
+				newPassword := "x"
+
+				doRequest(url.Values{
+					"email":        {u.Email},
+					"reset_token":  {"some-reset-token"},
+					"new_password": {newPassword},
+				})
+
+				b := &bytes.Buffer{}
+				_, err := b.ReadFrom(res.Body)
+				Expect(err).To(BeNil())
+				Expect(res.StatusCode).To(Equal(422))
+
+				// I'm not sure how to test this in a cleaner fashion.
+				u.Password = newPassword
+				j := map[string]interface{}{
+					"error":  "invalid_params",
+					"errors": u.Validate(),
+					"reset":  false,
+				}
+				expectedJSON, err := json.Marshal(j)
+				Expect(err).To(BeNil())
+				Expect(b.String()).To(MatchJSON(expectedJSON))
+
+				u2, err := user.Authenticate(db, u.Email, origPassword)
+				Expect(err).To(BeNil())
+				Expect(u2).NotTo(BeNil())
+				Expect(u2.ID).To(Equal(u.ID))
+			})
+		})
+
+		Context("when user has not requested a password reset", func() {
+			BeforeEach(func() {
+				Expect(u.PasswordResetToken).To(BeEmpty())
+			})
+
+			It("returns 403 and does not change the user's password", func() {
+				origPassword := u.Password
+
+				doRequest(url.Values{
+					"email":        {u.Email},
+					"reset_token":  {"some-reset-token"},
+					"new_password": {"new-password"},
+				})
+
+				b := &bytes.Buffer{}
+				_, err := b.ReadFrom(res.Body)
+				Expect(err).To(BeNil())
+
+				Expect(res.StatusCode).To(Equal(http.StatusForbidden))
+				Expect(b.String()).To(MatchJSON(`{
+					"error": "invalid_params",
+					"error_description": "reset_token is incorrect",
+					"reset": false
+				}`))
+
+				err = db.First(u, u.ID).Error
+				Expect(err).To(BeNil())
+
+				u2, err := user.Authenticate(db, u.Email, origPassword)
+				Expect(err).To(BeNil())
+				Expect(u2).NotTo(BeNil())
+				Expect(u2.ID).To(Equal(u.ID))
+			})
+		})
+
+		Context("when user has requested a password reset", func() {
+			BeforeEach(func() {
+				err := u.GeneratePasswordResetToken(db)
+				Expect(err).To(BeNil())
+				Expect(u.PasswordResetToken).NotTo(BeEmpty())
+			})
+
+			It("returns 200 and changes the user's password", func() {
+				newPassword := "new-password"
+
+				doRequest(url.Values{
+					"email":        {u.Email},
+					"reset_token":  {u.PasswordResetToken},
+					"new_password": {newPassword},
+				})
+
+				b := &bytes.Buffer{}
+				_, err := b.ReadFrom(res.Body)
+				Expect(err).To(BeNil())
+
+				Expect(res.StatusCode).To(Equal(http.StatusOK))
+				Expect(b.String()).To(MatchJSON(`{ "reset": true }`))
+
+				err = db.First(u, u.ID).Error
+				Expect(err).To(BeNil())
+
+				u2, err := user.Authenticate(db, u.Email, newPassword)
+				Expect(err).To(BeNil())
+				Expect(u2).NotTo(BeNil())
+				Expect(u2.ID).To(Equal(u.ID))
+			})
+
+			It("invalidates all of the user's OAuth tokens", func() {
+				var tokens []*oauthtoken.OauthToken
+				err := db.Where("user_id = ?", u.ID).Find(&tokens).Error
+				Expect(err).To(BeNil())
+				Expect(tokens).To(HaveLen(1))
+				Expect(tokens[0].ID).To(Equal(t.ID))
+
+				doRequest(url.Values{
+					"email":        {u.Email},
+					"reset_token":  {u.PasswordResetToken},
+					"new_password": {"new-password"},
+				})
+
+				err = db.Where("user_id = ?", u.ID).Find(&tokens).Error
+				Expect(err).To(BeNil())
+				Expect(tokens).To(HaveLen(0))
 			})
 		})
 	})
