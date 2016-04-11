@@ -172,10 +172,11 @@ func ForgotPassword(c *gin.Context) {
 		return
 	}
 	if u == nil {
-		c.JSON(422, gin.H{
-			"error":             "invalid_params",
-			"error_description": "email is not found",
-			"sent":              false,
+		// If no user with the given email exists, pretend that it does.
+		// This is to prevent abusers from figuring out what email addresses
+		// are valid.
+		c.JSON(http.StatusOK, gin.H{
+			"sent": true,
 		})
 		return
 	}

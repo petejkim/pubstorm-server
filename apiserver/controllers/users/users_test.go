@@ -550,6 +550,23 @@ var _ = Describe("Users", func() {
 				Expect(fakeMailer.SendMailCalled).To(BeFalse())
 			})
 		})
+
+		Context("when there's no user with the given email address", func() {
+			It("returns 200 OK but does not send a password reset token", func() {
+				doRequest(url.Values{"email": {u.Email + "x"}})
+
+				b := &bytes.Buffer{}
+				_, err := b.ReadFrom(res.Body)
+				Expect(err).To(BeNil())
+
+				Expect(res.StatusCode).To(Equal(http.StatusOK))
+				Expect(b.String()).To(MatchJSON(`{
+					"sent": true
+				}`))
+
+				Expect(fakeMailer.SendMailCalled).To(BeFalse())
+			})
+		})
 	})
 
 	Describe("POST /user/password/reset", func() {
