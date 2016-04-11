@@ -17,8 +17,12 @@ func User(db *gorm.DB) (u *user.User) {
 func UserWithPassword(db *gorm.DB, password string) (u *user.User) {
 	userN++
 
+	if password == "" {
+		password = "foobar"
+	}
+
 	u = &user.User{
-		Email:    fmt.Sprintf("foo%d@example.com", userN),
+		Email:    fmt.Sprintf("factory%d@example.com", userN),
 		Password: password,
 	}
 	err := u.Insert(db)
