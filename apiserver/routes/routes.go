@@ -34,6 +34,7 @@ func Draw(r *gin.Engine) {
 			r3 := r2.Group("/projects/:project_name", middleware.RequireProject)
 			r3.GET("", projects.Get)
 			r3.GET("/deployments/:id", deployments.Show)
+			r3.GET("/deployments", deployments.Index)
 			r3.GET("/domains", domains.Index)
 
 			{

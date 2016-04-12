@@ -840,4 +840,143 @@ var _ = Describe("Deployments", func() {
 			})
 		})
 	})
+
+	Describe("GET /projects/:name/deployments", func() {
+		var (
+			err error
+
+			u  *user.User
+			oc *oauthclient.OauthClient
+			t  *oauthtoken.OauthToken
+
+			headers http.Header
+			proj    *project.Project
+			depl1   *deployment.Deployment
+			depl2   *deployment.Deployment
+			depl3   *deployment.Deployment
+			depl4   *deployment.Deployment
+		)
+
+		BeforeEach(func() {
+			u, oc, t = factories.AuthTrio(db)
+
+			proj = &project.Project{
+				Name:   "foo-bar-express",
+				UserID: u.ID,
+			}
+			Expect(db.Create(proj).Error).To(BeNil())
+
+			headers = http.Header{
+				"Authorization": {"Bearer " + t.Token},
+			}
+
+			depl1 = &deployment.Deployment{
+				Prefix:     "a1b2c3",
+				State:      deployment.StateDeployed,
+				ProjectID:  proj.ID,
+				UserID:     u.ID,
+				DeployedAt: timeAgo(3 * time.Hour),
+			}
+			Expect(db.Create(depl1).Error).To(BeNil())
+
+			depl2 = &deployment.Deployment{
+				Prefix:     "d0e1f2",
+				State:      deployment.StateDeployed,
+				ProjectID:  proj.ID,
+				UserID:     u.ID,
+				DeployedAt: timeAgo(2 * time.Hour),
+			}
+			Expect(db.Create(depl2).Error).To(BeNil())
+
+			depl3 = &deployment.Deployment{
+				Prefix:    "x0y1z2",
+				State:     deployment.StatePendingDeploy,
+				ProjectID: proj.ID,
+				UserID:    u.ID,
+			}
+			Expect(db.Create(depl3).Error).To(BeNil())
+
+			depl4 = &deployment.Deployment{
+				Prefix:     "u0v1w2",
+				State:      deployment.StateDeployed,
+				ProjectID:  proj.ID,
+				UserID:     u.ID,
+				DeployedAt: timeAgo(4 * time.Hour),
+			}
+			Expect(db.Create(depl4).Error).To(BeNil())
+
+			proj.ActiveDeploymentID = &depl2.ID
+			Expect(db.Save(proj).Error).To(BeNil())
+		})
+
+		doRequest := func() {
+			s = httptest.NewServer(server.New())
+			url := fmt.Sprintf("%s/projects/foo-bar-express/deployments", s.URL)
+			res, err = testhelper.MakeRequest("GET", url, nil, headers, nil)
+			Expect(err).To(BeNil())
+		}
+
+		formattedTimeForJSON := func(t *time.Time) string {
+			formattedTime, err := t.MarshalJSON()
+			Expect(err).To(BeNil())
+			return string(formattedTime)
+		}
+
+		reloadDeployment := func(d *deployment.Deployment) *deployment.Deployment {
+			var reloadedDepl deployment.Deployment
+			Expect(db.First(&reloadedDepl, d.ID).Error).To(BeNil())
+			return &reloadedDepl
+		}
+
+		sharedexamples.ItRequiresAuthentication(func() (*gorm.DB, *user.User, *http.Header) {
+			return db, u, &headers
+		}, func() *http.Response {
+			doRequest()
+			return res
+		}, nil)
+
+		sharedexamples.ItRequiresProject(func() (*gorm.DB, *project.Project) {
+			return db, proj
+		}, func() *http.Response {
+			doRequest()
+			return res
+		}, nil)
+
+		It("returns all active deployments", func() {
+			doRequest()
+
+			b := &bytes.Buffer{}
+			_, err = b.ReadFrom(res.Body)
+			Expect(err).To(BeNil())
+			Expect(res.StatusCode).To(Equal(http.StatusOK))
+
+			depl1 = reloadDeployment(depl1)
+			depl2 = reloadDeployment(depl2)
+			depl4 = reloadDeployment(depl4)
+
+			Expect(b.String()).To(MatchJSON(fmt.Sprintf(`{
+				"deployments": [
+					{
+						"id": %d,
+						"state": "%s",
+						"active": true,
+						"deployed_at": %s
+					},
+					{
+						"id": %d,
+						"state": "%s",
+						"deployed_at": %s
+					},
+					{
+						"id": %d,
+						"state": "%s",
+						"deployed_at": %s
+					}
+				]
+			}`, depl2.ID, depl2.State, formattedTimeForJSON(depl2.DeployedAt),
+				depl1.ID, depl1.State, formattedTimeForJSON(depl1.DeployedAt),
+				depl4.ID, depl4.State, formattedTimeForJSON(depl4.DeployedAt),
+			)))
+		})
+	})
 })
