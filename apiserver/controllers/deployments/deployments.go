@@ -247,3 +247,30 @@ func Rollback(c *gin.Context) {
 		"deployment": depl.AsJSON(),
 	})
 }
+
+func Index(c *gin.Context) {
+	proj := controllers.CurrentProject(c)
+
+	db, err := dbconn.DB()
+	if err != nil {
+		controllers.InternalServerError(c, err)
+		return
+	}
+
+	depls, err := deployment.AllCompletedDeployments(db, proj.ID)
+	if err != nil {
+		controllers.InternalServerError(c, err)
+		return
+	}
+
+	var deplsToJSON []interface{}
+	for _, depl := range depls {
+		deplJSON := depl.AsJSON()
+		deplJSON.Active = depl.ID == *proj.ActiveDeploymentID
+		deplsToJSON = append(deplsToJSON, deplJSON)
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"deployments": deplsToJSON,
+	})
+}
