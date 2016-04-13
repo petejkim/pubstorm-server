@@ -37,6 +37,9 @@ func Draw(r *gin.Engine) {
 			r3.GET("", projects.Get)
 			r3.GET("/deployments/:id", deployments.Show)
 			r3.GET("/domains", domains.Index)
+			r3.GET("/collaborators", projects.ListCollaborators)
+			r3.POST("/collaborators", projects.AddCollaborator)
+			r3.DELETE("/collaborators/:email", projects.RemoveCollaborator)
 
 			{
 				r4 := r3.Group("", middleware.LockProject)
