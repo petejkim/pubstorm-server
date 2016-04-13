@@ -18,7 +18,7 @@ POST /projects/:projectName/deployments
 **Possible responses**
 
 * **202** - Deployment accepted
-  Example:
+  * Example:
   ```json
   {
     "deployment": {
@@ -29,7 +29,7 @@ POST /projects/:projectName/deployments
   ```
 
 * **422** - Invalid params
-  Example:
+  * Example:
   ```json
   {
     "error": "invalid_params",
@@ -40,11 +40,132 @@ POST /projects/:projectName/deployments
   ```
 
 * **400** - Invalid request
+  * Example:
   ```json
   {
     "error": "invalid_request",
     "errors": {
       "name": "request body is too large"
     }
+  }
+  ```
+
+## Fetching a deployment
+
+```
+GET /projects/:projectName/deployments/:id
+```
+
+**Possible responses**
+
+* **200** - Deployment fetched
+  * Example:
+  ```json
+  {
+    "deployment": {
+      "id": 123,
+      "state": "deployed",
+      "deployed_at": 2016-04-23T18:25:43.511Z
+    }
+  }
+  ```
+
+* **404** - Project not found
+  * Example:
+  ```json
+  {
+    "error": "not_found",
+    "error_description": "project could not be found"
+  }
+  ```
+
+## Rolling back to a deployment
+
+```
+POST /projects/:projectName/deployments/rollback
+```
+
+**POST Form Params**
+
+| Key            | Type | Required? | Description               |
+| -------------- | ---- | --------- | --------------------------|
+| deployment\_id | int  | Optional  | deployment id to rollback |
+
+
+**Possible responses**
+
+* **200** - Deployment rolled back
+  * Example:
+  ```json
+  {
+    "deployment": {
+      "id": 123,
+      "state": "deployed",
+      "deployed_at": 2016-04-23T18:25:43.511Z
+    }
+  }
+  ```
+
+* **404** - Project not found
+  * Example:
+  ```json
+  {
+    "error": "not_found",
+    "error_description": "project could not be found"
+  }
+  ```
+
+* **404** - Deployment not found
+  * Example:
+  ```json
+  {
+    "error": "not_found",
+    "error_description": "deployment could not be found"
+  }
+  ```
+
+* **422** - Deployment is already active
+  * Example:
+  ```json
+  {
+    "error": "invalid_request",
+    "error_description": "the deployment is not in deployed state"
+  }
+  ```
+
+## Fetch list of completed deployments
+
+```
+GET /projects/:projectName/deployments
+```
+
+**Possible responses**
+
+* **200** - Deployments fetched
+  * Example:
+  ```json
+  {
+    "deployments": [
+      {
+        "id": 123,
+        "state": "deployed",
+        "active": true,
+        "deployed_at": 2016-04-23T18:25:43.511Z
+      },
+      {
+        "id": 456,
+        "state": "deployed",
+        "deployed_at": 2016-04-22T18:25:43.511Z
+      },
+    ]
+  }
+  ```
+
+* **404** - Project not found
+  * Example:
+  ```json
+  {
+    "error": "not_found",
+    "error_description": "project could not be found"
   }
   ```
