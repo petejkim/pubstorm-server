@@ -7,6 +7,7 @@ import (
 	"github.com/nitrous-io/rise-server/apiserver/common"
 	"github.com/nitrous-io/rise-server/apiserver/controllers"
 	"github.com/nitrous-io/rise-server/apiserver/dbconn"
+	"github.com/nitrous-io/rise-server/apiserver/models/oauthtoken"
 	"github.com/nitrous-io/rise-server/apiserver/models/user"
 )
 
@@ -143,6 +144,85 @@ func ResendConfirmationCode(c *gin.Context) {
 
 	c.JSON(http.StatusOK, gin.H{
 		"sent": true,
+	})
+}
+
+func Update(c *gin.Context) {
+	currentUser := controllers.CurrentUser(c)
+	for _, k := range []string{"existing_password", "password"} {
+		if c.PostForm(k) == "" {
+			c.JSON(422, gin.H{
+				"error":             "invalid_params",
+				"error_description": k + " is required",
+			})
+			return
+		}
+	}
+
+	db, err := dbconn.DB()
+	if err != nil {
+		controllers.InternalServerError(c, err)
+		return
+	}
+
+	existingPassword := c.PostForm("existing_password")
+	password := c.PostForm("password")
+
+	u, err := user.Authenticate(db, currentUser.Email, existingPassword)
+	if err != nil {
+		controllers.InternalServerError(c, err)
+		return
+	}
+
+	if u == nil {
+		c.JSON(422, gin.H{
+			"error":             "invalid_params",
+			"error_description": "existing_password is incorrect",
+		})
+		return
+	}
+
+	if existingPassword == password {
+		c.JSON(422, gin.H{
+			"error":             "invalid_params",
+			"error_description": "password is same as existing_password",
+		})
+		return
+	}
+
+	u.Password = password
+	if errs := u.Validate(); errs != nil {
+		c.JSON(422, gin.H{
+			"error":  "invalid_params",
+			"errors": errs,
+		})
+		return
+	}
+
+	tx := db.Begin()
+	if err := tx.Error; err != nil {
+		controllers.InternalServerError(c, err)
+		return
+	}
+	defer tx.Rollback()
+
+	if err := u.UpdatePassword(db); err != nil {
+		controllers.InternalServerError(c, err)
+		return
+	}
+
+	if err := db.Where("user_id = ?", u.ID).Delete(oauthtoken.OauthToken{}).Error; err != nil {
+		controllers.InternalServerError(c, err)
+		return
+	}
+
+	if err := tx.Commit().Error; err != nil {
+		controllers.InternalServerError(c, err)
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"changed": true,
 	})
 }
 

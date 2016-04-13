@@ -81,6 +81,11 @@ func (u *User) Insert(db *gorm.DB) error {
 	return err
 }
 
+// Updates the record into the DB, encrypting the Password field
+func (u *User) UpdatePassword(db *gorm.DB) error {
+	return db.Exec("UPDATE users SET encrypted_password = crypt(?, gen_salt('bf')) WHERE id = ?;", u.Password, u.ID).Error
+}
+
 // Checks email and password and return user if credentials are valid
 func Authenticate(db *gorm.DB, email, password string) (u *User, err error) {
 	u = &User{}
