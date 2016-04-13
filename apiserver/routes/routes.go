@@ -38,6 +38,7 @@ func Draw(r *gin.Engine) {
 
 			{
 				r4 := r3.Group("", middleware.LockProject)
+				r4.DELETE("", projects.Destroy)
 				r4.POST("/deployments", deployments.Create)
 				r4.POST("/domains", domains.Create)
 				r4.DELETE("/domains/:name", domains.Destroy)

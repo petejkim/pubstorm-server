@@ -75,8 +75,12 @@ func ItLocksProject(
 		It("does not leave the project as locked", func() {
 			reqFn()
 			var updatedProj project.Project
-			Expect(db.First(&updatedProj, proj.ID).Error).To(BeNil())
-			Expect(updatedProj.LockedAt).To(BeNil())
+			err := db.First(&updatedProj, proj.ID).Error
+			if err != nil {
+				Expect(err).To(Equal(gorm.RecordNotFound))
+			} else {
+				Expect(updatedProj.LockedAt).To(BeNil())
+			}
 		})
 	})
 }
