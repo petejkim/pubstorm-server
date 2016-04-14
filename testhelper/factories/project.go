@@ -12,16 +12,22 @@ import (
 
 var projectN = 0
 
-func Project(db *gorm.DB, u *user.User) (proj *project.Project) {
-	projectN++
-
+func Project(db *gorm.DB, u *user.User, name ...string) (proj *project.Project) {
 	if u == nil {
 		u = User(db)
 	}
 
+	var pName string
+	if len(name) > 0 {
+		pName = name[0]
+	} else {
+		projectN++
+		pName = fmt.Sprintf("project%d", projectN)
+	}
+
 	proj = &project.Project{
 		UserID: u.ID,
-		Name:   fmt.Sprintf("project%d", projectN),
+		Name:   pName,
 	}
 
 	err := db.Create(proj).Error

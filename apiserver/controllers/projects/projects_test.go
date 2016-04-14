@@ -283,9 +283,9 @@ var _ = Describe("Projects", func() {
 
 			anotherU = factories.User(db)
 
-			proj = factories.Project(db, u)
-			proj2 = factories.Project(db, anotherU)
-			proj3 = factories.Project(db, u)
+			proj = factories.Project(db, u, "site-1")
+			proj2 = factories.Project(db, anotherU, "site-2")
+			proj3 = factories.Project(db, u, "site-3")
 		})
 
 		doRequest := func() {
@@ -310,8 +310,59 @@ var _ = Describe("Projects", func() {
 					{
 						"name": "%s"
 					}
-				]
+				],
+				"shared_projects": []
 			}`, proj.Name, proj3.Name)))
+		})
+
+		Context("when user is a collaborator of other users' projects", func() {
+			var (
+				yetAnotherU *user.User
+				proj4       *project.Project
+				proj5       *project.Project
+				proj6       *project.Project
+			)
+
+			BeforeEach(func() {
+				yetAnotherU = factories.User(db)
+
+				proj4 = factories.Project(db, anotherU, "site-4")
+				proj5 = factories.Project(db, yetAnotherU, "site-5")
+				proj6 = factories.Project(db, yetAnotherU, "site-6")
+
+				err := proj4.AddCollaborator(db, u)
+				Expect(err).To(BeNil())
+				err = proj5.AddCollaborator(db, u)
+				Expect(err).To(BeNil())
+			})
+
+			It("returns the shared projects ordered by name", func() {
+				doRequest()
+
+				b := &bytes.Buffer{}
+				_, err := b.ReadFrom(res.Body)
+				Expect(err).To(BeNil())
+
+				Expect(res.StatusCode).To(Equal(http.StatusOK))
+				Expect(b.String()).To(MatchJSON(fmt.Sprintf(`{
+					"projects": [
+						{
+							"name": "%s"
+						},
+						{
+							"name": "%s"
+						}
+					],
+					"shared_projects": [
+						{
+							"name": "%s"
+						},
+						{
+							"name": "%s"
+						}
+					]
+				}`, proj.Name, proj3.Name, proj4.Name, proj5.Name)))
+			})
 		})
 
 		sharedexamples.ItRequiresAuthentication(func() (*gorm.DB, *user.User, *http.Header) {

@@ -100,13 +100,29 @@ func Index(c *gin.Context) {
 		return
 	}
 
-	var projectsAsJson []interface{}
+	projectsAsJson := []interface{}{}
 	for _, proj := range projects {
 		projectsAsJson = append(projectsAsJson, proj.AsJSON())
 	}
 
+	sharedProjects := []*project.Project{}
+	if err := db.Order("projects.name ASC").
+		Joins("JOIN users ON users.id = collabs.user_id").
+		Joins("JOIN collabs ON collabs.project_id = projects.id").
+		Where("collabs.user_id = ?", u.ID).
+		Find(&sharedProjects).Error; err != nil {
+		controllers.InternalServerError(c, err)
+		return
+	}
+
+	sharedProjectsAsJson := []interface{}{}
+	for _, proj := range sharedProjects {
+		sharedProjectsAsJson = append(sharedProjectsAsJson, proj.AsJSON())
+	}
+
 	c.JSON(http.StatusOK, gin.H{
-		"projects": projectsAsJson,
+		"projects":        projectsAsJson,
+		"shared_projects": sharedProjectsAsJson,
 	})
 }
 
