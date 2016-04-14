@@ -34,7 +34,7 @@ func ItRequiresProject(
 			res = reqFn()
 		})
 
-		It("returns 404 not found and does not upload", func() {
+		It("returns 404 not found", func() {
 			b := &bytes.Buffer{}
 			_, err := b.ReadFrom(res.Body)
 			Expect(err).To(BeNil())
@@ -59,7 +59,7 @@ func ItRequiresProject(
 			res = reqFn()
 		})
 
-		It("returns 404 not found and does not upload", func() {
+		It("returns 404 not found", func() {
 			b := &bytes.Buffer{}
 			_, err := b.ReadFrom(res.Body)
 			Expect(err).To(BeNil())

@@ -98,7 +98,6 @@ var _ = Describe("Project collaborators", func() {
 		})
 
 		Context("when there are no collaborators", func() {
-
 			It("returns 200 OK with no collaborators", func() {
 				doRequest()
 
@@ -120,8 +119,8 @@ var _ = Describe("Project collaborators", func() {
 			return res
 		}, nil)
 
-		sharedexamples.ItRequiresProject(func() (*gorm.DB, *project.Project) {
-			return db, proj
+		sharedexamples.ItRequiresProjectCollab(func() (*gorm.DB, *user.User, *project.Project) {
+			return db, u, proj
 		}, func() *http.Response {
 			doRequest()
 			return res

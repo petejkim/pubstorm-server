@@ -150,8 +150,8 @@ var _ = Describe("Deployments", func() {
 			return res
 		}, nil)
 
-		sharedexamples.ItRequiresProject(func() (*gorm.DB, *project.Project) {
-			return db, proj
+		sharedexamples.ItRequiresProjectCollab(func() (*gorm.DB, *user.User, *project.Project) {
+			return db, u, proj
 		}, func() *http.Response {
 			doRequest()
 			return res
@@ -301,7 +301,7 @@ var _ = Describe("Deployments", func() {
 		})
 	})
 
-	Describe("POST /projects/:project_name/deployments/:id", func() {
+	Describe("GET /projects/:project_name/deployments/:id", func() {
 		var (
 			err error
 
@@ -350,8 +350,8 @@ var _ = Describe("Deployments", func() {
 			return res
 		}, nil)
 
-		sharedexamples.ItRequiresProject(func() (*gorm.DB, *project.Project) {
-			return db, proj
+		sharedexamples.ItRequiresProjectCollab(func() (*gorm.DB, *user.User, *project.Project) {
+			return db, u, proj
 		}, func() *http.Response {
 			doRequest()
 			return res

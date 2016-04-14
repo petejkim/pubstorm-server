@@ -25,28 +25,38 @@ func Draw(r *gin.Engine) {
 	r.POST("/user/password/reset", users.ResetPassword)
 	r.POST("/oauth/token", oauth.CreateToken)
 
-	{
-		r2 := r.Group("", middleware.RequireToken)
-		r2.DELETE("/oauth/token", oauth.DestroyToken)
-		r2.POST("/projects", projects.Create)
-		r2.GET("/projects", projects.Index)
-		r2.PUT("/user", users.Update)
+	{ // Routes that require a OAuth Token
+		authorized := r.Group("", middleware.RequireToken)
+		authorized.DELETE("/oauth/token", oauth.DestroyToken)
+		authorized.POST("/projects", projects.Create)
+		authorized.GET("/projects", projects.Index)
+		authorized.PUT("/user", users.Update)
 
-		{
-			r3 := r2.Group("/projects/:project_name", middleware.RequireProject)
-			r3.GET("", projects.Get)
-			r3.GET("/deployments/:id", deployments.Show)
-			r3.GET("/domains", domains.Index)
-			r3.GET("/collaborators", projects.ListCollaborators)
-			r3.POST("/collaborators", projects.AddCollaborator)
-			r3.DELETE("/collaborators/:email", projects.RemoveCollaborator)
+		{ // Routes that either project owners or collaborators can access
+			projCollab := authorized.Group("/projects/:project_name", middleware.RequireProjectCollab)
 
-			{
-				r4 := r3.Group("", middleware.LockProject)
-				r4.DELETE("", projects.Destroy) // DELETE /projects/:project_name
-				r4.POST("/deployments", deployments.Create)
-				r4.POST("/domains", domains.Create)
-				r4.DELETE("/domains/:name", domains.Destroy)
+			projCollab.GET("", projects.Get)
+			projCollab.GET("/deployments/:id", deployments.Show)
+			projCollab.GET("/domains", domains.Index)
+			projCollab.GET("/collaborators", projects.ListCollaborators)
+
+			{ // Routes that lock a project
+				lock := projCollab.Group("", middleware.LockProject)
+				lock.POST("/deployments", deployments.Create)
+				lock.POST("/domains", domains.Create)
+				lock.DELETE("/domains/:name", domains.Destroy)
+			}
+		}
+
+		{ // Routes that only project owners can access
+			projOwner := authorized.Group("/projects/:project_name", middleware.RequireProject)
+
+			projOwner.POST("/collaborators", projects.AddCollaborator)
+			projOwner.DELETE("/collaborators/:email", projects.RemoveCollaborator)
+
+			{ // Routes that lock a project
+				lock := projOwner.Group("", middleware.LockProject)
+				lock.DELETE("", projects.Destroy) // DELETE /projects/:project_name
 			}
 		}
 	}
