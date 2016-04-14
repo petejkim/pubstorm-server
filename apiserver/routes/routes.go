@@ -2,6 +2,7 @@ package routes
 
 import (
 	"github.com/gin-gonic/gin"
+	"github.com/nitrous-io/rise-server/apiserver/controllers/certs"
 	"github.com/nitrous-io/rise-server/apiserver/controllers/deployments"
 	"github.com/nitrous-io/rise-server/apiserver/controllers/domains"
 	"github.com/nitrous-io/rise-server/apiserver/controllers/oauth"
@@ -41,6 +42,7 @@ func Draw(r *gin.Engine) {
 			projCollab.GET("/deployments", deployments.Index)
 			projCollab.GET("/domains", domains.Index)
 			projCollab.GET("/collaborators", projects.ListCollaborators)
+			projCollab.POST("/domains/:name/cert", certs.Create)
 
 			{ // Routes that lock a project
 				lock := projCollab.Group("", middleware.LockProject)

@@ -9,6 +9,7 @@ import (
 
 var (
 	MailerEmail = os.Getenv("MAILER_EMAIL")
+	AesKey      = os.Getenv("AES_KEY")
 )
 
 func init() {
@@ -43,6 +44,10 @@ func init() {
 	if riseEnv != "test" {
 		if os.Getenv("AWS_ACCESS_KEY_ID") == "" || os.Getenv("AWS_SECRET_ACCESS_KEY") == "" {
 			log.Fatal("AWS_ACCESS_KEY_ID and AWS_SECRET_ACCESS_KEY environment variables are required!")
+		}
+
+		if aesKey := os.Getenv("AES_KEY"); aesKey == "" || len(aesKey) < 32 {
+			log.Fatal("AES_KEY environment variable containing a 256-bit (32 bytes) key is required!")
 		}
 	}
 }
