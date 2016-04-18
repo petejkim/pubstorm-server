@@ -234,12 +234,12 @@ func Update(c *gin.Context) {
 	}
 	defer tx.Rollback()
 
-	if err := u.SavePassword(db); err != nil {
+	if err := u.SavePassword(tx); err != nil {
 		controllers.InternalServerError(c, err)
 		return
 	}
 
-	if err := db.Where("user_id = ?", u.ID).Delete(oauthtoken.OauthToken{}).Error; err != nil {
+	if err := tx.Where("user_id = ?", u.ID).Delete(oauthtoken.OauthToken{}).Error; err != nil {
 		controllers.InternalServerError(c, err)
 		return
 	}
