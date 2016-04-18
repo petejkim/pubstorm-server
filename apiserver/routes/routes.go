@@ -30,6 +30,7 @@ func Draw(r *gin.Engine) {
 		authorized.DELETE("/oauth/token", oauth.DestroyToken)
 		authorized.POST("/projects", projects.Create)
 		authorized.GET("/projects", projects.Index)
+		authorized.GET("/user", users.Show)
 		authorized.PUT("/user", users.Update)
 
 		{ // Routes that either project owners or collaborators can access

@@ -474,6 +474,78 @@ var _ = Describe("Users", func() {
 			})
 		})
 	})
+
+	Describe("GET /user", func() {
+		var (
+			u       *user.User
+			t       *oauthtoken.OauthToken
+			headers http.Header
+		)
+
+		BeforeEach(func() {
+			u, _, t = factories.AuthTrio(db)
+
+			headers = http.Header{
+				"Authorization": {"Bearer " + t.Token},
+			}
+		})
+
+		doRequest := func() {
+			s = httptest.NewServer(server.New())
+			res, err = testhelper.MakeRequest("GET", s.URL+"/user", nil, headers, nil)
+			Expect(err).To(BeNil())
+		}
+
+		It("returns 200 OK and responds with the user's info", func() {
+			doRequest()
+
+			b := &bytes.Buffer{}
+			_, err := b.ReadFrom(res.Body)
+			Expect(err).To(BeNil())
+
+			Expect(res.StatusCode).To(Equal(http.StatusOK))
+			Expect(b.String()).To(MatchJSON(`{
+				"user": {
+					"email": "` + u.Email + `",
+					"name": "` + u.Name + `",
+					"organization": "` + u.Organization + `"
+				}
+			}`))
+		})
+
+		// This is also tested in the sharedexamples.ItRequiresAuthentication,
+		// but we repeat it here because this endpoint is expressly for the
+		// purpose of verifying access tokens.
+		Context("when access token is invalid", func() {
+			BeforeEach(func() {
+				headers = http.Header{
+					"Authorization": {"Bearer " + t.Token + "xxx"},
+				}
+			})
+
+			It("returns 401 Unauthorized", func() {
+				doRequest()
+
+				b := &bytes.Buffer{}
+				_, err := b.ReadFrom(res.Body)
+				Expect(err).To(BeNil())
+
+				Expect(res.StatusCode).To(Equal(http.StatusUnauthorized))
+				Expect(b.String()).To(MatchJSON(`{
+					"error": "invalid_token",
+					"error_description": "access token is invalid"
+				}`))
+			})
+		})
+
+		sharedexamples.ItRequiresAuthentication(func() (*gorm.DB, *user.User, *http.Header) {
+			return db, u, &headers
+		}, func() *http.Response {
+			doRequest()
+			return res
+		}, nil)
+	})
+
 	Describe("PUT /user", func() {
 		var (
 			u                *user.User
@@ -582,6 +654,7 @@ var _ = Describe("Users", func() {
 
 		It("returns 200 OK and updates the password", func() {
 			doRequest()
+
 			b := &bytes.Buffer{}
 			_, err := b.ReadFrom(res.Body)
 			Expect(err).To(BeNil())
