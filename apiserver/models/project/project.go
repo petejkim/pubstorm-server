@@ -16,8 +16,9 @@ var projectNameRe = regexp.MustCompile(`\A[A-Za-z0-9][A-Za-z0-9\-]{1,61}[A-Za-z0
 type Project struct {
 	gorm.Model
 
-	Name   string
-	UserID uint
+	Name                 string
+	UserID               uint
+	DefaultDomainEnabled bool
 
 	ActiveDeploymentID *uint // pointer to be nullable. remember to dereference by using *ActiveDeploymentID to get actual value
 
@@ -48,9 +49,11 @@ func (p *Project) Validate() map[string]string {
 // Returns a struct that can be converted to JSON
 func (p *Project) AsJSON() interface{} {
 	return struct {
-		Name string `json:"name"`
+		Name                 string `json:"name"`
+		DefaultDomainEnabled bool   `json:"default_domain_enabled"`
 	}{
 		p.Name,
+		p.DefaultDomainEnabled,
 	}
 }
 
@@ -61,12 +64,16 @@ func (p *Project) DomainNames(db *gorm.DB) ([]string, error) {
 		return nil, err
 	}
 
-	domNames := make([]string, len(doms)+1)
+	domNames := make([]string, len(doms))
 	for i, dom := range doms {
-		domNames[i+1] = dom.Name
+		domNames[i] = dom.Name
 	}
 	sort.Sort(sort.StringSlice(domNames))
-	domNames[0] = p.Name + "." + shared.DefaultDomain
+
+	// Always sort default domain at the front.
+	if p.DefaultDomainEnabled {
+		domNames = append([]string{p.Name + "." + shared.DefaultDomain}, domNames...)
+	}
 
 	return domNames, nil
 }

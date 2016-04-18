@@ -192,11 +192,12 @@ var _ = Describe("Projects", func() {
 				Expect(err).To(BeNil())
 
 				Expect(res.StatusCode).To(Equal(http.StatusCreated))
-				Expect(b.String()).To(MatchJSON(`{
+				Expect(b.String()).To(MatchJSON(fmt.Sprintf(`{
 					"project": {
-						"name": "foo-bar-express"
+						"name": "foo-bar-express",
+						"default_domain_enabled": %v
 					}
-				}`))
+				}`, proj.DefaultDomainEnabled)))
 			})
 
 			It("creates a project record in the DB", func() {
@@ -242,7 +243,8 @@ var _ = Describe("Projects", func() {
 			Expect(res.StatusCode).To(Equal(http.StatusOK))
 			Expect(b.String()).To(MatchJSON(fmt.Sprintf(`{
 				"project": {
-					"name": "%s"
+					"name": "%s",
+					"default_domain_enabled": true
 				}
 			}`, proj.Name)))
 		})
@@ -305,10 +307,12 @@ var _ = Describe("Projects", func() {
 			Expect(b.String()).To(MatchJSON(fmt.Sprintf(`{
 				"projects": [
 					{
-						"name": "%s"
+						"name": "%s",
+						"default_domain_enabled": true
 					},
 					{
-						"name": "%s"
+						"name": "%s",
+						"default_domain_enabled": true
 					}
 				]
 			}`, proj.Name, proj3.Name)))

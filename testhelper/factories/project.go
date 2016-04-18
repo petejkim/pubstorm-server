@@ -20,8 +20,9 @@ func Project(db *gorm.DB, u *user.User) (proj *project.Project) {
 	}
 
 	proj = &project.Project{
-		UserID: u.ID,
-		Name:   fmt.Sprintf("project%d", projectN),
+		UserID:               u.ID,
+		Name:                 fmt.Sprintf("project%d", projectN),
+		DefaultDomainEnabled: true,
 	}
 
 	err := db.Create(proj).Error

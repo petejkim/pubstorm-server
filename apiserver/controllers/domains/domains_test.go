@@ -12,7 +12,6 @@ import (
 	"github.com/nitrous-io/rise-server/apiserver/dbconn"
 	"github.com/nitrous-io/rise-server/apiserver/models/deployment"
 	"github.com/nitrous-io/rise-server/apiserver/models/domain"
-	"github.com/nitrous-io/rise-server/apiserver/models/oauthclient"
 	"github.com/nitrous-io/rise-server/apiserver/models/oauthtoken"
 	"github.com/nitrous-io/rise-server/apiserver/models/project"
 	"github.com/nitrous-io/rise-server/apiserver/models/user"
@@ -49,9 +48,8 @@ var _ = Describe("Domains", func() {
 		res *http.Response
 		err error
 
-		u  *user.User
-		oc *oauthclient.OauthClient
-		t  *oauthtoken.OauthToken
+		u *user.User
+		t *oauthtoken.OauthToken
 
 		headers http.Header
 		proj    *project.Project
@@ -72,11 +70,12 @@ var _ = Describe("Domains", func() {
 		testhelper.DeleteQueue(mq, queues.All...)
 		testhelper.DeleteExchange(mq, exchanges.All...)
 
-		u, oc, t = factories.AuthTrio(db)
+		u, _, t = factories.AuthTrio(db)
 
 		proj = &project.Project{
-			Name:   "foo-bar-express",
-			UserID: u.ID,
+			Name:                 "foo-bar-express",
+			UserID:               u.ID,
+			DefaultDomainEnabled: true,
 		}
 		Expect(db.Create(proj).Error).To(BeNil())
 
