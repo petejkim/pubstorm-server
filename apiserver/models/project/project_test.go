@@ -91,11 +91,24 @@ var _ = Describe("Project", func() {
 	})
 
 	Describe("DomainNames()", func() {
-		Context("there is no domains for the project", func() {
+		Context("there are no domains for the project", func() {
 			It("only returns the default subdomain", func() {
 				domainNames, err := proj.DomainNames(db)
 				Expect(err).To(BeNil())
 				Expect(domainNames).To(Equal([]string{proj.DefaultDomainName()}))
+			})
+
+			Context("when default domain is disabled", func() {
+				BeforeEach(func() {
+					proj.DefaultDomainEnabled = false
+					Expect(db.Save(proj).Error).To(BeNil())
+				})
+
+				It("returns an empty slice", func() {
+					domainNames, err := proj.DomainNames(db)
+					Expect(err).To(BeNil())
+					Expect(domainNames).To(BeEmpty())
+				})
 			})
 		})
 
@@ -116,7 +129,7 @@ var _ = Describe("Project", func() {
 				Expect(err).To(BeNil())
 			})
 
-			It("returns all domains", func() {
+			It("returns all domains, including the default domain", func() {
 				domainNames, err := proj.DomainNames(db)
 				Expect(err).To(BeNil())
 				Expect(domainNames).To(Equal([]string{
@@ -124,6 +137,22 @@ var _ = Describe("Project", func() {
 					"foo-bar-express.com",
 					"foobarexpress.com",
 				}))
+			})
+
+			Context("when default domain is disabled", func() {
+				BeforeEach(func() {
+					proj.DefaultDomainEnabled = false
+					Expect(db.Save(proj).Error).To(BeNil())
+				})
+
+				It("returns all domains, excluding the default domain", func() {
+					domainNames, err := proj.DomainNames(db)
+					Expect(err).To(BeNil())
+					Expect(domainNames).To(Equal([]string{
+						"foo-bar-express.com",
+						"foobarexpress.com",
+					}))
+				})
 			})
 		})
 	})

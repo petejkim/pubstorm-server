@@ -14,6 +14,7 @@ import (
 	"github.com/nitrous-io/rise-server/deployer/deployer"
 	"github.com/nitrous-io/rise-server/pkg/filetransfer"
 	"github.com/nitrous-io/rise-server/pkg/mqconn"
+	"github.com/nitrous-io/rise-server/shared"
 	"github.com/nitrous-io/rise-server/shared/exchanges"
 	"github.com/nitrous-io/rise-server/shared/s3client"
 	"github.com/nitrous-io/rise-server/testhelper"
@@ -192,7 +193,63 @@ var _ = Describe("Deployer", func() {
 		assertActiveDeploymentIDUpdate()
 	})
 
+	Context("when default domain is disabled", func() {
+		BeforeEach(func() {
+			proj.DefaultDomainEnabled = false
+			Expect(db.Save(proj).Error).To(BeNil())
+		})
+
+		It("does not deploy to the default domain", func() {
+			// mock download
+			fakeS3.DownloadContent, err = ioutil.ReadFile("../../testhelper/fixtures/website.tar.gz")
+			Expect(err).To(BeNil())
+
+			err = deployer.Work([]byte(fmt.Sprintf(`{
+				"deployment_id": %d
+			}`, depl.ID)))
+			Expect(err).To(BeNil())
+
+			// it should upload meta.json for each domain
+			for i, domain := range []string{
+				"www.foo-bar-express.com",
+			} {
+				assertUpload(
+					5+i,
+					"domains/"+domain+"/meta.json",
+					"application/json",
+					[]byte(fmt.Sprintf(`{
+						"prefix": "%s"
+					}`, depl.PrefixID())),
+				)
+			}
+
+			// it should publish invalidation message
+			d := testhelper.ConsumeQueue(mq, qName)
+			Expect(d).NotTo(BeNil())
+			Expect(d.Body).To(MatchJSON(`{
+				"domains": [
+					"www.foo-bar-express.com"
+				]
+			}`))
+		})
+	})
+
 	Context("when skip_webroot_upload is true", func() {
+		assertMetaDataUpload := func(doms []string) {
+			Expect(fakeS3.UploadCalls.Count()).To(Equal(len(doms)))
+
+			for i, domain := range doms {
+				assertUpload(
+					1+i,
+					"domains/"+domain+"/meta.json",
+					"application/json",
+					[]byte(fmt.Sprintf(`{
+						"prefix": "%s"
+					}`, depl.PrefixID())),
+				)
+			}
+		}
+
 		It("only uploads metadata to S3, and publishes invalidation message to edges", func() {
 			err = deployer.Work([]byte(fmt.Sprintf(`
 				{
@@ -203,7 +260,10 @@ var _ = Describe("Deployer", func() {
 			Expect(err).To(BeNil())
 
 			// it should upload meta.json for each domain
-			assertMetaDataUpload()
+			assertMetaDataUpload([]string{
+				proj.Name + "." + shared.DefaultDomain,
+				"www.foo-bar-express.com",
+			})
 
 			// it should publish invalidation message
 			d := testhelper.ConsumeQueue(mq, qName)
@@ -219,6 +279,35 @@ var _ = Describe("Deployer", func() {
 			assertActiveDeploymentIDUpdate()
 		})
 
+		Context("when default domain is disabled", func() {
+			BeforeEach(func() {
+				proj.DefaultDomainEnabled = false
+				Expect(db.Save(proj).Error).To(BeNil())
+			})
+
+			It("does not publish invalidation message for the default domain", func() {
+				err = deployer.Work([]byte(fmt.Sprintf(`
+					{
+						"deployment_id": %d,
+						"skip_webroot_upload": true
+					}
+				`, depl.ID)))
+				Expect(err).To(BeNil())
+
+				assertMetaDataUpload([]string{
+					"www.foo-bar-express.com",
+				})
+
+				d := testhelper.ConsumeQueue(mq, qName)
+				Expect(d).NotTo(BeNil())
+				Expect(d.Body).To(MatchJSON(`{
+					"domains": [
+						"www.foo-bar-express.com"
+					]
+				}`))
+			})
+		})
+
 		Context("when skip_invalidation is also true", func() {
 			It("only uploads metadata to s3, and does not publish invalidation message", func() {
 				err = deployer.Work([]byte(fmt.Sprintf(`
@@ -231,7 +320,10 @@ var _ = Describe("Deployer", func() {
 				Expect(err).To(BeNil())
 
 				// it should upload meta.json for each domain
-				assertMetaDataUpload()
+				assertMetaDataUpload([]string{
+					proj.Name + "." + shared.DefaultDomain,
+					"www.foo-bar-express.com",
+				})
 
 				// it should NOT publish invalidation message
 				d := testhelper.ConsumeQueue(mq, qName)
@@ -239,6 +331,29 @@ var _ = Describe("Deployer", func() {
 
 				// it should set project's active deployment to current deployment id
 				assertActiveDeploymentIDUpdate()
+			})
+
+			Context("when default domain is disabled", func() {
+				BeforeEach(func() {
+					proj.DefaultDomainEnabled = false
+					Expect(db.Save(proj).Error).To(BeNil())
+				})
+
+				It("does not upload meta.json for the default domain", func() {
+					err = deployer.Work([]byte(fmt.Sprintf(`
+						{
+							"deployment_id": %d,
+							"skip_webroot_upload": true,
+							"skip_invalidation": true
+						}
+					`, depl.ID)))
+					Expect(err).To(BeNil())
+
+					// it should upload meta.json
+					assertMetaDataUpload([]string{
+						"www.foo-bar-express.com",
+					})
+				})
 			})
 		})
 	})
