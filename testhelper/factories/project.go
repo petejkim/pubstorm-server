@@ -26,8 +26,9 @@ func Project(db *gorm.DB, u *user.User, name ...string) (proj *project.Project) 
 	}
 
 	proj = &project.Project{
-		UserID: u.ID,
-		Name:   pName,
+		UserID:               u.ID,
+		Name:                 pName,
+		DefaultDomainEnabled: true,
 	}
 
 	err := db.Create(proj).Error
