@@ -147,6 +147,12 @@ func ResendConfirmationCode(c *gin.Context) {
 	})
 }
 
+func Show(c *gin.Context) {
+	c.JSON(http.StatusOK, gin.H{
+		"user": controllers.CurrentUser(c).AsJSON(),
+	})
+}
+
 func Update(c *gin.Context) {
 	currentUser := controllers.CurrentUser(c)
 	for _, k := range []string{"existing_password", "password"} {
