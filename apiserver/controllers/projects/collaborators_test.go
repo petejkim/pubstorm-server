@@ -9,6 +9,7 @@ import (
 
 	"github.com/jinzhu/gorm"
 	"github.com/nitrous-io/rise-server/apiserver/dbconn"
+	"github.com/nitrous-io/rise-server/apiserver/models/collab"
 	"github.com/nitrous-io/rise-server/apiserver/models/oauthclient"
 	"github.com/nitrous-io/rise-server/apiserver/models/oauthtoken"
 	"github.com/nitrous-io/rise-server/apiserver/models/project"
@@ -69,12 +70,17 @@ var _ = Describe("Project collaborators", func() {
 		}
 
 		Context("when the project has collaborators", func() {
-			var anotherU *user.User
+			var (
+				u2 *user.User
+				u3 *user.User
+			)
 
 			BeforeEach(func() {
-				anotherU = factories.User(db)
-				err := proj.AddCollaborator(db, anotherU)
-				Expect(err).To(BeNil())
+				u2 = factories.User(db)
+				u3 = factories.User(db)
+				factories.Collab(db, proj, u2)
+				factories.Collab(db, proj, u3)
+				factories.Collab(db, nil, nil) // another project
 			})
 
 			It("returns 200 OK with the project's collaborators", func() {
@@ -88,12 +94,13 @@ var _ = Describe("Project collaborators", func() {
 				Expect(b.String()).To(MatchJSON(fmt.Sprintf(`{
 					"collaborators": [
 						{
-							"email": "%s",
-							"name": "%s",
-							"organization": "%s"
+							"email": "%s"
+						},
+						{
+							"email": "%s"
 						}
 					]
-				}`, anotherU.Email, anotherU.Name, anotherU.Organization)))
+				}`, u2.Email, u3.Email)))
 			})
 		})
 
@@ -145,8 +152,7 @@ var _ = Describe("Project collaborators", func() {
 				Expect(res.StatusCode).To(Equal(422))
 				Expect(b.String()).To(MatchJSON(`{
 					"error": "invalid_params",
-					"error_description": "email is not found",
-					"added": false
+					"error_description": "email is not found"
 				}`))
 			})
 		})
@@ -162,8 +168,7 @@ var _ = Describe("Project collaborators", func() {
 				Expect(res.StatusCode).To(Equal(422))
 				Expect(b.String()).To(MatchJSON(`{
 					"error": "invalid_request",
-					"error_description": "the owner of a project cannot be added as a collaborator",
-					"added": false
+					"error_description": "the owner of a project cannot be added as a collaborator"
 				}`))
 			})
 		})
@@ -173,8 +178,7 @@ var _ = Describe("Project collaborators", func() {
 
 			BeforeEach(func() {
 				anotherU = factories.User(db)
-				err := proj.AddCollaborator(db, anotherU)
-				Expect(err).To(BeNil())
+				factories.Collab(db, proj, anotherU)
 			})
 
 			It("returns 409 Conflict", func() {
@@ -187,8 +191,7 @@ var _ = Describe("Project collaborators", func() {
 				Expect(res.StatusCode).To(Equal(http.StatusConflict))
 				Expect(b.String()).To(MatchJSON(`{
 					"error": "already_exists",
-					"error_description": "user is already a collaborator",
-					"added": false
+					"error_description": "user is already a collaborator"
 				}`))
 			})
 		})
@@ -212,11 +215,12 @@ var _ = Describe("Project collaborators", func() {
 					"added": true
 				}`))
 
-				var p2 project.Project
-				err = db.Preload("Collaborators").First(&p2, proj.ID).Error
+				cols := []collab.Collab{}
+				err = db.Model(collab.Collab{}).Where("project_id = ?", proj.ID).Find(&cols).Error
 				Expect(err).To(BeNil())
-				Expect(p2.Collaborators).To(HaveLen(1))
-				Expect(p2.Collaborators[0].ID).To(Equal(anotherU.ID))
+				Expect(len(cols)).To(Equal(1))
+				Expect(cols[0].UserID).To(Equal(anotherU.ID))
+				Expect(cols[0].ProjectID).To(Equal(proj.ID))
 			})
 		})
 
@@ -279,11 +283,12 @@ var _ = Describe("Project collaborators", func() {
 
 		Context("when removing a user who is a collaborator", func() {
 			It("returns 200 OK and removes the user as a collaborator", func() {
-				anotherU := factories.User(db)
-				err := proj.AddCollaborator(db, anotherU)
-				Expect(err).To(BeNil())
+				u2 := factories.User(db)
+				u3 := factories.User(db)
+				factories.Collab(db, proj, u2)
+				factories.Collab(db, proj, u3)
 
-				doRequest(anotherU.Email)
+				doRequest(u2.Email)
 
 				b := &bytes.Buffer{}
 				_, err = b.ReadFrom(res.Body)
@@ -293,6 +298,13 @@ var _ = Describe("Project collaborators", func() {
 				Expect(b.String()).To(MatchJSON(`{
 					"removed": true
 				}`))
+
+				cols := []collab.Collab{}
+				err = db.Model(collab.Collab{}).Where("project_id = ?", proj.ID).Find(&cols).Error
+				Expect(err).To(BeNil())
+				Expect(len(cols)).To(Equal(1))
+				Expect(cols[0].UserID).To(Equal(u3.ID))
+				Expect(cols[0].ProjectID).To(Equal(proj.ID))
 			})
 		})
 

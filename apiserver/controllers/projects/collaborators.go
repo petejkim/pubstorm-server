@@ -1,11 +1,13 @@
 package projects
 
 import (
+	"fmt"
 	"net/http"
 
 	"github.com/gin-gonic/gin"
 	"github.com/nitrous-io/rise-server/apiserver/controllers"
 	"github.com/nitrous-io/rise-server/apiserver/dbconn"
+	"github.com/nitrous-io/rise-server/apiserver/models/collab"
 	"github.com/nitrous-io/rise-server/apiserver/models/project"
 	"github.com/nitrous-io/rise-server/apiserver/models/user"
 )
@@ -19,18 +21,18 @@ func ListCollaborators(c *gin.Context) {
 		return
 	}
 
-	if err := proj.LoadCollaborators(db); err != nil {
+	collaborators := []struct {
+		Email string `json:"email"`
+	}{}
+
+	if err := db.Model(collab.Collab{}).Select("users.email").Joins("JOIN projects ON projects.id = collabs.project_id JOIN users ON users.id = collabs.user_id").Where("collabs.project_id = ?", proj.ID).Order("users.email ASC").Scan(&collaborators).Error; err != nil {
+		fmt.Println(err)
 		controllers.InternalServerError(c, err)
 		return
 	}
 
-	collabsAsJSON := []interface{}{}
-	for _, collab := range proj.Collaborators {
-		collabsAsJSON = append(collabsAsJSON, collab.AsJSON())
-	}
-
 	c.JSON(http.StatusOK, gin.H{
-		"collaborators": collabsAsJSON,
+		"collaborators": collaborators,
 	})
 }
 
@@ -53,7 +55,6 @@ func AddCollaborator(c *gin.Context) {
 		c.JSON(422, gin.H{
 			"error":             "invalid_params",
 			"error_description": "email is not found",
-			"added":             false,
 		})
 		return
 	}
@@ -64,13 +65,11 @@ func AddCollaborator(c *gin.Context) {
 			c.JSON(422, gin.H{
 				"error":             "invalid_request",
 				"error_description": "the owner of a project cannot be added as a collaborator",
-				"added":             false,
 			})
 		case project.ErrCollaboratorAlreadyExists:
 			c.JSON(http.StatusConflict, gin.H{
 				"error":             "already_exists",
 				"error_description": "user is already a collaborator",
-				"added":             false,
 			})
 		default:
 			controllers.InternalServerError(c, err)

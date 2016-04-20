@@ -8,6 +8,7 @@ import (
 
 	"github.com/jinzhu/gorm"
 	"github.com/nitrous-io/rise-server/apiserver/dbconn"
+	"github.com/nitrous-io/rise-server/apiserver/models/collab"
 	"github.com/nitrous-io/rise-server/apiserver/models/domain"
 	"github.com/nitrous-io/rise-server/apiserver/models/project"
 	"github.com/nitrous-io/rise-server/apiserver/models/user"
@@ -204,6 +205,12 @@ var _ = Describe("Project", func() {
 	})
 
 	Describe("AddCollaborator()", func() {
+		var proj2 *project.Project
+
+		BeforeEach(func() {
+			proj2 = factories.Project(db, u)
+		})
+
 		It("returns an error when adding the project owner as a collaborator", func() {
 			err := proj.AddCollaborator(db, u)
 			Expect(err).To(Equal(project.ErrCollaboratorIsOwner))
@@ -214,7 +221,7 @@ var _ = Describe("Project", func() {
 
 			BeforeEach(func() {
 				anotherU = factories.User(db)
-				err := proj.AddCollaborator(db, anotherU)
+				factories.Collab(db, proj, anotherU)
 				Expect(err).To(BeNil())
 			})
 
@@ -234,101 +241,64 @@ var _ = Describe("Project", func() {
 			It("adds the user as a collaborator", func() {
 				err := proj.AddCollaborator(db, anotherU)
 				Expect(err).To(BeNil())
-				Expect(proj.Collaborators).To(HaveLen(1))
-				Expect(proj.Collaborators[0].ID).To(Equal(anotherU.ID))
 
-				var p2 project.Project
-				err = db.Preload("Collaborators").First(&p2, proj.ID).Error
+				cols := []collab.Collab{}
+				err = db.Model(collab.Collab{}).Where("project_id = ?", proj.ID).Find(&cols).Error
 				Expect(err).To(BeNil())
+				Expect(len(cols)).To(Equal(1))
+				Expect(cols[0].UserID).To(Equal(anotherU.ID))
+				Expect(cols[0].ProjectID).To(Equal(proj.ID))
 
-				Expect(p2.Collaborators).To(HaveLen(1))
-				Expect(p2.Collaborators[0].ID).To(Equal(anotherU.ID))
+				// it doesn't affect other projects
+				cols = []collab.Collab{}
+				err = db.Model(collab.Collab{}).Where("project_id = ?", proj2.ID).Find(&cols).Error
+				Expect(err).To(BeNil())
+				Expect(len(cols)).To(Equal(0))
 			})
 		})
 	})
 
 	Describe("RemoveCollaborator()", func() {
-		var collabU, anotherU *user.User
+		var (
+			u2, u3, u4 *user.User
+			proj2      *project.Project
+		)
 
 		BeforeEach(func() {
-			collabU = factories.User(db)
-			anotherU = factories.User(db)
+			proj2 = factories.Project(db, u)
 
-			err := proj.AddCollaborator(db, collabU)
-			Expect(err).To(BeNil())
+			u2 = factories.User(db)
+			u3 = factories.User(db)
+			u4 = factories.User(db)
+
+			factories.Collab(db, proj, u2)
+			factories.Collab(db, proj, u3)
+			factories.Collab(db, proj2, u2)
 		})
 
 		It("returns an error when removing a user who's not a collaborator", func() {
-			err := proj.RemoveCollaborator(db, anotherU)
+			err := proj.RemoveCollaborator(db, u4)
 			Expect(err).To(Equal(project.ErrNotCollaborator))
 		})
 
 		It("removes the user as a collaborator", func() {
-			var p2 project.Project
-			err = db.Preload("Collaborators").First(&p2, proj.ID).Error
-			Expect(err).To(BeNil())
-			Expect(p2.Collaborators).To(HaveLen(1))
-
-			err := p2.RemoveCollaborator(db, collabU)
-			Expect(err).To(BeNil())
-			Expect(p2.Collaborators).To(BeEmpty())
-
-			var p3 project.Project
-			err = db.Preload("Collaborators").First(&p3, proj.ID).Error
-			Expect(err).To(BeNil())
-			Expect(p3.Collaborators).To(BeEmpty())
-		})
-	})
-
-	Describe("LoadCollaborators()", func() {
-		It("loads collaborators from the database into .Collabators", func() {
-			Expect(proj.Collaborators).To(BeEmpty())
-
-			collabU := factories.User(db)
-			err := proj.AddCollaborator(db, collabU)
+			err := proj.RemoveCollaborator(db, u2)
 			Expect(err).To(BeNil())
 
-			var p2 project.Project
-			err = db.First(&p2, proj.ID).Error
+			cols := []collab.Collab{}
+			err = db.Model(collab.Collab{}).Where("project_id = ?", proj.ID).Find(&cols).Error
 			Expect(err).To(BeNil())
+			Expect(len(cols)).To(Equal(1))
+			Expect(cols[0].UserID).To(Equal(u3.ID))
+			Expect(cols[0].ProjectID).To(Equal(proj.ID))
 
-			err = p2.LoadCollaborators(db)
+			// it doesn't affect other projects
+			cols = []collab.Collab{}
+			err = db.Model(collab.Collab{}).Where("project_id = ?", proj2.ID).Find(&cols).Error
 			Expect(err).To(BeNil())
-
-			Expect(p2.Collaborators).To(HaveLen(1))
-		})
-
-		Context("when user has no collaborators", func() {
-			It("loads a nil slice", func() {
-				Expect(proj.Collaborators).To(BeEmpty())
-
-				err := proj.LoadCollaborators(db)
-				Expect(err).To(BeNil())
-
-				Expect(proj.Collaborators).To(BeNil())
-			})
-		})
-
-		Context("when called twice", func() {
-			It("does not load two copies of each collaborator", func() {
-				collabU := factories.User(db)
-				err := proj.AddCollaborator(db, collabU)
-				Expect(err).To(BeNil())
-
-				var p2 project.Project
-				err = db.First(&p2, proj.ID).Error
-				Expect(err).To(BeNil())
-
-				err = p2.LoadCollaborators(db)
-				Expect(err).To(BeNil())
-
-				Expect(p2.Collaborators).To(HaveLen(1))
-
-				err = p2.LoadCollaborators(db)
-				Expect(err).To(BeNil())
-
-				Expect(p2.Collaborators).To(HaveLen(1))
-			})
+			Expect(len(cols)).To(Equal(1))
+			Expect(cols[0].UserID).To(Equal(u2.ID))
+			Expect(cols[0].ProjectID).To(Equal(proj2.ID))
 		})
 	})
 })

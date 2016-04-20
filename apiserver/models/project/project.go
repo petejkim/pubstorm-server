@@ -2,10 +2,13 @@ package project
 
 import (
 	"errors"
+	"fmt"
 	"regexp"
 	"sort"
 	"time"
 
+	"github.com/lib/pq"
+	"github.com/nitrous-io/rise-server/apiserver/models/collab"
 	"github.com/nitrous-io/rise-server/apiserver/models/domain"
 	"github.com/nitrous-io/rise-server/apiserver/models/user"
 	"github.com/nitrous-io/rise-server/shared"
@@ -30,8 +33,6 @@ type Project struct {
 	ActiveDeploymentID *uint // pointer to be nullable. remember to dereference by using *ActiveDeploymentID to get actual value
 
 	LockedAt *time.Time
-
-	Collaborators []user.User `gorm:"many2many:collabs;"`
 }
 
 // Validates Project, if there are invalid fields, it returns a map of
@@ -58,11 +59,9 @@ func (p *Project) Validate() map[string]string {
 // Returns a struct that can be converted to JSON
 func (p *Project) AsJSON() interface{} {
 	return struct {
-		Name          string      `json:"name"`
-		Collaborators []user.User `json:"collaborators,omitempty"`
+		Name string `json:"name"`
 	}{
 		p.Name,
-		p.Collaborators,
 	}
 }
 
@@ -152,47 +151,30 @@ func (p *Project) AddCollaborator(db *gorm.DB, u *user.User) error {
 		return ErrCollaboratorIsOwner
 	}
 
-	if err := p.LoadCollaborators(db); err != nil {
-		return err
+	collab := &collab.Collab{
+		UserID:    u.ID,
+		ProjectID: p.ID,
 	}
 
-	// Check whether user is already a collaborator.
-	for _, collab := range p.Collaborators {
-		if collab.ID == u.ID {
-			return ErrCollaboratorAlreadyExists
-		}
+	err := db.Create(&collab).Error
+
+	if e, ok := err.(*pq.Error); ok && e.Code.Name() == "unique_violation" && e.Constraint == "index_collabs_on_user_id_and_project_id" {
+		return ErrCollaboratorAlreadyExists
 	}
 
-	return db.Model(p).Association("Collaborators").Append(u).Error
+	return err
 }
 
 func (p *Project) RemoveCollaborator(db *gorm.DB, u *user.User) error {
-	if err := p.LoadCollaborators(db); err != nil {
+	q := db.Delete(collab.Collab{}, "project_id = ? AND user_id = ?", p.ID, u.ID)
+	if err := q.Error; err != nil {
+		fmt.Println(err)
 		return err
 	}
 
-	// Check whether user is actually a collaborator.
-	var found bool
-	for _, collab := range p.Collaborators {
-		if collab.ID == u.ID {
-			found = true
-		}
-	}
-
-	if !found {
+	if q.RowsAffected == 0 {
 		return ErrNotCollaborator
 	}
 
-	return db.Model(p).Association("Collaborators").Delete(u).Error
-}
-
-// LoadCollaborators fetches associated collaborators from the database and
-// populates .Collaborators. We need to do this because Gorm doesn't
-// automatically load associations in its finders.
-func (p *Project) LoadCollaborators(db *gorm.DB) error {
-	// Gorm's Preload() function will naively append to the existing slice, so
-	// we empty it first.
-	p.Collaborators = nil
-
-	return db.Preload("Collaborators").First(p, p.ID).Error
+	return nil
 }
