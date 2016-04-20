@@ -393,6 +393,159 @@ var _ = Describe("Projects", func() {
 			}`, proj.Name)))
 		})
 
+		Context("when project name is changed", func() {
+			Context("when project name is empty", func() {
+				It("returns 200 OK and doesn't update the project", func() {
+					origProjName := proj.Name
+					Expect(origProjName).NotTo(BeEmpty())
+
+					params = url.Values{
+						"name": {""},
+					}
+					doRequest()
+
+					b := &bytes.Buffer{}
+					_, err := b.ReadFrom(res.Body)
+					Expect(err).To(BeNil())
+
+					Expect(res.StatusCode).To(Equal(http.StatusOK))
+
+					// Re-fetch from database to get the updated record.
+					err = db.First(proj, proj.ID).Error
+					Expect(err).To(BeNil())
+					Expect(proj.Name).To(Equal(origProjName))
+
+					Expect(b.String()).To(MatchJSON(fmt.Sprintf(`{
+						"project":{
+							"name": "%s",
+							"default_domain_enabled": %v
+						}
+					}`, origProjName, proj.DefaultDomainEnabled)))
+				})
+			})
+
+			Context("when project name is invalid", func() {
+				It("returns 422 unprocessable entity", func() {
+					params = url.Values{
+						"name": {"foo-bar-"},
+					}
+					doRequest()
+
+					b := &bytes.Buffer{}
+					_, err := b.ReadFrom(res.Body)
+					Expect(err).To(BeNil())
+
+					Expect(res.StatusCode).To(Equal(422))
+					Expect(b.String()).To(MatchJSON(`{
+						"error": "invalid_params",
+						"errors": {
+							"name": "is invalid"
+						}
+					}`))
+				})
+			})
+
+			Context("when project name is taken", func() {
+				BeforeEach(func() {
+					proj2 := &project.Project{
+						Name:   "foo-bar-express",
+						UserID: u.ID,
+					}
+
+					err := db.Create(proj2).Error
+					Expect(err).To(BeNil())
+				})
+
+				It("returns 422 unprocessable entity", func() {
+					params = url.Values{
+						"name": {"foo-bar-express"},
+					}
+					doRequest()
+
+					b := &bytes.Buffer{}
+					_, err := b.ReadFrom(res.Body)
+					Expect(err).To(BeNil())
+
+					Expect(res.StatusCode).To(Equal(422))
+					Expect(b.String()).To(MatchJSON(`{
+						"error": "invalid_params",
+						"errors": {
+							"name": "is taken"
+						}
+					}`))
+				})
+			})
+
+			Context("when project name is blacklisted", func() {
+				BeforeEach(func() {
+					factories.BlacklistedName(db, "foo-bar-express")
+				})
+
+				It("returns 422 unprocessable entity", func() {
+					params = url.Values{
+						"name": {"foo-bar-express"},
+					}
+					doRequest()
+
+					b := &bytes.Buffer{}
+					_, err := b.ReadFrom(res.Body)
+					Expect(err).To(BeNil())
+
+					Expect(res.StatusCode).To(Equal(422))
+					Expect(b.String()).To(MatchJSON(`{
+						"error": "invalid_params",
+						"errors": {
+							"name": "is taken"
+						}
+					}`))
+				})
+			})
+
+			Context("when project name is valid", func() {
+				It("returns 200 OK", func() {
+					params = url.Values{
+						"name": {"foo-bar-express"},
+					}
+					doRequest()
+
+					b := &bytes.Buffer{}
+					_, err := b.ReadFrom(res.Body)
+					Expect(err).To(BeNil())
+
+					Expect(res.StatusCode).To(Equal(http.StatusOK))
+
+					Expect(b.String()).To(MatchJSON(fmt.Sprintf(`{
+						"project":{
+							"name": "foo-bar-express",
+							"default_domain_enabled": %v
+						}
+					}`, proj.DefaultDomainEnabled)))
+				})
+
+				It("updates the project name in the DB", func() {
+					origProjName := proj.Name
+					Expect(origProjName).NotTo(BeEmpty())
+					Expect(origProjName).NotTo(Equal("foo-bar-express"))
+
+					params = url.Values{
+						"name": {"foo-bar-express"},
+					}
+					doRequest()
+
+					b := &bytes.Buffer{}
+					_, err := b.ReadFrom(res.Body)
+					Expect(err).To(BeNil())
+
+					Expect(res.StatusCode).To(Equal(http.StatusOK))
+
+					// Re-fetch from database to get the updated record.
+					err = db.First(proj, proj.ID).Error
+					Expect(err).To(BeNil())
+					Expect(proj.Name).NotTo(Equal(origProjName))
+				})
+			})
+		})
+
 		Context("when default domain is newly disabled (i.e. it was enabled)", func() {
 			BeforeEach(func() {
 				Expect(proj.DefaultDomainEnabled).To(Equal(true))

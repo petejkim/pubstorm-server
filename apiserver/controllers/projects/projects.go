@@ -117,76 +117,109 @@ func Update(c *gin.Context) {
 	// Make a copy of the original project.
 	updatedProj := *proj
 
-	if c.PostForm("default_domain_enabled") != "" {
-		defaultDomainEnabled, _ := strconv.ParseBool(c.PostForm("default_domain_enabled"))
-		if defaultDomainEnabled == proj.DefaultDomainEnabled {
-			c.JSON(http.StatusOK, gin.H{
-				"project": proj.AsJSON(),
-			})
-			return
-		}
-		updatedProj.DefaultDomainEnabled = defaultDomainEnabled
-	}
-
-	// If default domain was just enabled, we need add it so that it'll actually
-	// work.
-	activate := !proj.DefaultDomainEnabled &&
-		updatedProj.DefaultDomainEnabled &&
-		proj.ActiveDeploymentID != nil
-	if activate {
-		j, err := job.NewWithJSON(queues.Deploy, &messages.DeployJobData{
-			DeploymentID:      *proj.ActiveDeploymentID,
-			SkipWebrootUpload: true,
-			SkipInvalidation:  true,
-		})
-		if err != nil {
-			controllers.InternalServerError(c, err)
-			return
-		}
-
-		if err := j.Enqueue(); err != nil {
-			controllers.InternalServerError(c, err)
-			return
-		}
-	}
-
-	// If default domain was just disabled, we need to remove it so that it no
-	// longer works.
-	deactivate := proj.DefaultDomainEnabled &&
-		!updatedProj.DefaultDomainEnabled &&
-		proj.ActiveDeploymentID != nil
-	if deactivate {
-		defaultDomain := proj.Name + "." + shared.DefaultDomain
-
-		if err := s3client.Delete("/domains/" + defaultDomain + "/meta.json"); err != nil {
-			controllers.InternalServerError(c, err)
-			return
-		}
-
-		m, err := pubsub.NewMessageWithJSON(exchanges.Edges, exchanges.RouteV1Invalidation, &messages.V1InvalidationMessageData{
-			Domains: []string{defaultDomain},
-		})
-		if err != nil {
-			controllers.InternalServerError(c, err)
-			return
-		}
-
-		if err := m.Publish(); err != nil {
-			controllers.InternalServerError(c, err)
-			return
-		}
-	}
-
 	db, err := dbconn.DB()
 	if err != nil {
 		controllers.InternalServerError(c, err)
 		return
 	}
 
+	if n := c.PostForm("name"); n != "" {
+		updatedProj.Name = n
+
+		blacklisted, err := blacklistedname.IsBlacklisted(db, updatedProj.Name)
+		if err != nil {
+			controllers.InternalServerError(c, err)
+			return
+		}
+
+		if blacklisted {
+			c.JSON(422, gin.H{
+				"error": "invalid_params",
+				"errors": map[string]interface{}{
+					"name": "is taken",
+				},
+			})
+			return
+		}
+	}
+
+	if c.PostForm("default_domain_enabled") != "" {
+		defaultDomainEnabled, _ := strconv.ParseBool(c.PostForm("default_domain_enabled"))
+		updatedProj.DefaultDomainEnabled = defaultDomainEnabled
+	}
+
+	if errs := updatedProj.Validate(); errs != nil {
+		c.JSON(422, gin.H{
+			"error":  "invalid_params",
+			"errors": errs,
+		})
+		return
+	}
+
+	// If there is an active deployment, activate/deactivate default domain.
+	if proj.ActiveDeploymentID != nil {
+		// If default domain was just enabled, we need to add it so that it'll
+		// actually work.
+		activate := !proj.DefaultDomainEnabled && updatedProj.DefaultDomainEnabled
+		if activate {
+			j, err := job.NewWithJSON(queues.Deploy, &messages.DeployJobData{
+				DeploymentID:      *proj.ActiveDeploymentID,
+				SkipWebrootUpload: true,
+				SkipInvalidation:  true,
+			})
+			if err != nil {
+				controllers.InternalServerError(c, err)
+				return
+			}
+
+			if err := j.Enqueue(); err != nil {
+				controllers.InternalServerError(c, err)
+				return
+			}
+		}
+
+		// If default domain was just disabled, we need to remove it so that it
+		// no longer works.
+		deactivate := proj.DefaultDomainEnabled && !updatedProj.DefaultDomainEnabled
+		if deactivate {
+			defaultDomain := proj.Name + "." + shared.DefaultDomain
+
+			if err := s3client.Delete("/domains/" + defaultDomain + "/meta.json"); err != nil {
+				controllers.InternalServerError(c, err)
+				return
+			}
+
+			m, err := pubsub.NewMessageWithJSON(exchanges.Edges, exchanges.RouteV1Invalidation, &messages.V1InvalidationMessageData{
+				Domains: []string{defaultDomain},
+			})
+			if err != nil {
+				controllers.InternalServerError(c, err)
+				return
+			}
+
+			if err := m.Publish(); err != nil {
+				controllers.InternalServerError(c, err)
+				return
+			}
+		}
+	}
+
 	if err := db.Save(&updatedProj).Error; err != nil {
+		if e, ok := err.(*pq.Error); ok && e.Code.Name() == "unique_violation" {
+			c.JSON(422, gin.H{
+				"error": "invalid_params",
+				"errors": map[string]interface{}{
+					"name": "is taken",
+				},
+			})
+			return
+		}
+
 		controllers.InternalServerError(c, err)
 		return
 	}
+
+	// FIXME If project was renamed, we need to handle the change in default domain
 
 	c.JSON(http.StatusOK, gin.H{
 		"project": updatedProj.AsJSON(),
