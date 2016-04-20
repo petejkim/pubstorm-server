@@ -6,6 +6,7 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/nitrous-io/rise-server/apiserver/controllers"
 	"github.com/nitrous-io/rise-server/apiserver/dbconn"
+	"github.com/nitrous-io/rise-server/apiserver/models/collab"
 	"github.com/nitrous-io/rise-server/apiserver/models/project"
 )
 
@@ -47,20 +48,14 @@ func RequireProjectCollab(c *gin.Context) {
 
 	if proj.UserID != u.ID {
 		// If user is not the project owner, check if he is a collaborator.
-		if err := proj.LoadCollaborators(db); err != nil {
+		cnt := 0
+		if err := db.Model(collab.Collab{}).Where("project_id = ? AND user_id = ?", proj.ID, u.ID).Count(&cnt).Error; err != nil {
 			controllers.InternalServerError(c, err)
 			c.Abort()
 			return
 		}
 
-		var isCollab bool
-		for _, collab := range proj.Collaborators {
-			if collab.ID == u.ID {
-				isCollab = true
-			}
-		}
-
-		if !isCollab {
+		if cnt == 0 {
 			c.JSON(http.StatusNotFound, gin.H{
 				"error":             "not_found",
 				"error_description": "project could not be found",

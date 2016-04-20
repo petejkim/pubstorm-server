@@ -9,5 +9,5 @@ CREATE TABLE collabs (
   deleted_at timestamp without time zone
 );
 
-CREATE INDEX index_collabs_on_user_id ON collabs USING btree (user_id);
 CREATE INDEX index_collabs_on_project_id ON collabs USING btree (project_id);
+CREATE UNIQUE INDEX index_collabs_on_user_id_and_project_id ON collabs USING btree (user_id, project_id) WHERE deleted_at IS NULL;
