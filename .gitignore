@@ -4,6 +4,9 @@ config.json
 .vendor
 *.sqlite3
 
+# pre-commit config
+.pre-commit-config.yaml
+
 # ssh keys
 id_rsa
 .github_rsa
