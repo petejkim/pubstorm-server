@@ -24,6 +24,38 @@ import (
 
 var MaxCertSize = int64(96 * 1024) // 96 kb
 
+func Show(c *gin.Context) {
+	proj := controllers.CurrentProject(c)
+	domainName := c.Param("name")
+
+	db, err := dbconn.DB()
+	if err != nil {
+		controllers.InternalServerError(c, err)
+		return
+	}
+
+	ct := &cert.Cert{}
+	if err := db.Table("certs").
+		Joins("JOIN domains ON domains.id = certs.domain_id").
+		Where("domains.name = ? AND project_id = ?", domainName, proj.ID).First(ct).Error; err != nil {
+
+		if err == gorm.RecordNotFound {
+			c.JSON(http.StatusNotFound, gin.H{
+				"error":             "not_found",
+				"error_description": "cert could not be found",
+			})
+			return
+		}
+
+		controllers.InternalServerError(c, err)
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"cert": ct.AsJSON(),
+	})
+}
+
 func Create(c *gin.Context) {
 	proj := controllers.CurrentProject(c)
 	domainName := c.Param("name")

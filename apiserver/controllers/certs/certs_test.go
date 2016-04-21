@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"testing"
+	"time"
 
 	"github.com/jinzhu/gorm"
 	"github.com/nitrous-io/rise-server/apiserver/common"
@@ -59,6 +60,12 @@ var _ = Describe("Certs", func() {
 		}
 		s.Close()
 	})
+
+	formattedTimeForJSON := func(t time.Time) string {
+		formattedTime, err := t.MarshalJSON()
+		Expect(err).To(BeNil())
+		return string(formattedTime)
+	}
 
 	Describe("POST /projects/:project_name/domains/:name/cert", func() {
 		var (
@@ -266,10 +273,6 @@ A6ao9QSL1ryillYV9Y4001C3jApzmMtBWoMp3NPzwU8nacAOzClJYUcSLkbAIEWV
 			b := &bytes.Buffer{}
 			_, err = b.ReadFrom(res.Body)
 
-			formattedStartsAt, err := ct.StartsAt.MarshalJSON()
-			Expect(err).To(BeNil())
-			formattedExpiresAt, err := ct.ExpiresAt.MarshalJSON()
-			Expect(err).To(BeNil())
 			Expect(b.String()).To(MatchJSON(fmt.Sprintf(`{
 				"cert": {
 					"id": %d,
@@ -277,7 +280,7 @@ A6ao9QSL1ryillYV9Y4001C3jApzmMtBWoMp3NPzwU8nacAOzClJYUcSLkbAIEWV
 					"expires_at": %s,
 					"common_name": "%s"
 				}
-			}`, ct.ID, formattedStartsAt, formattedExpiresAt, *ct.CommonName)))
+			}`, ct.ID, formattedTimeForJSON(ct.StartsAt), formattedTimeForJSON(ct.ExpiresAt), *ct.CommonName)))
 
 			Expect(ct.CertificatePath).To(Equal("certs/www.foo-bar-express.com/ssl.crt"))
 			Expect(ct.PrivateKeyPath).To(Equal("certs/www.foo-bar-express.com/ssl.key"))
@@ -380,10 +383,6 @@ A6ao9QSL1ryillYV9Y4001C3jApzmMtBWoMp3NPzwU8nacAOzClJYUcSLkbAIEWV
 				b := &bytes.Buffer{}
 				_, err = b.ReadFrom(res.Body)
 
-				formattedStartsAt, err := ct.StartsAt.MarshalJSON()
-				Expect(err).To(BeNil())
-				formattedExpiresAt, err := ct.ExpiresAt.MarshalJSON()
-				Expect(err).To(BeNil())
 				Expect(b.String()).To(MatchJSON(fmt.Sprintf(`{
 					"cert": {
 						"id": %d,
@@ -391,7 +390,7 @@ A6ao9QSL1ryillYV9Y4001C3jApzmMtBWoMp3NPzwU8nacAOzClJYUcSLkbAIEWV
 						"expires_at": %s,
 						"common_name": "%s"
 					}
-				}`, ct.ID, formattedStartsAt, formattedExpiresAt, *ct.CommonName)))
+			}`, ct.ID, formattedTimeForJSON(ct.StartsAt), formattedTimeForJSON(ct.ExpiresAt), *ct.CommonName)))
 
 				Expect(ct.CertificatePath).To(Equal("certs/www.foo-bar-express.com/ssl.crt"))
 				Expect(ct.PrivateKeyPath).To(Equal("certs/www.foo-bar-express.com/ssl.key"))
@@ -546,5 +545,144 @@ A6ao9QSL1ryillYV9Y4001C3jApzmMtBWoMp3NPzwU8nacAOzClJYUcSLkbAIEWV
 				Expect(db.Last(ct).Error).To(Equal(gorm.RecordNotFound))
 			})
 		})
+	})
+
+	Describe("GET /projects/:project_name/domains/:domain_name/cert", func() {
+		var (
+			u  *user.User
+			oc *oauthclient.OauthClient
+			t  *oauthtoken.OauthToken
+
+			headers http.Header
+			proj    *project.Project
+			dm      *domain.Domain
+			ct      *cert.Cert
+		)
+
+		BeforeEach(func() {
+			u, oc, t = factories.AuthTrio(db)
+
+			proj = &project.Project{
+				Name:   "foo-bar-express",
+				UserID: u.ID,
+			}
+			Expect(db.Create(proj).Error).To(BeNil())
+
+			dm = factories.Domain(db, proj, "www.foo-bar-express.com")
+
+			wildcardDomainName := "*.foo-bar-express.com"
+			ct = &cert.Cert{
+				DomainID:   dm.ID,
+				ExpiresAt:  time.Now().Add(365 * 24 * time.Hour),
+				StartsAt:   time.Now().Add(-365 * 24 * time.Hour),
+				CommonName: &wildcardDomainName,
+			}
+			Expect(db.Create(ct).Error).To(BeNil())
+
+			headers = http.Header{
+				"Authorization": {"Bearer " + t.Token},
+			}
+		})
+
+		doRequest := func() {
+			s = httptest.NewServer(server.New())
+			res, err = testhelper.MakeRequest("GET", s.URL+"/projects/foo-bar-express/domains/www.foo-bar-express.com/cert", nil, headers, nil)
+			Expect(err).To(BeNil())
+		}
+
+		reloadCert := func(certRecord *cert.Cert) *cert.Cert {
+			Expect(db.First(certRecord, ct.ID).Error).To(BeNil())
+			return certRecord
+		}
+
+		It("returns a cert", func() {
+			doRequest()
+
+			b := &bytes.Buffer{}
+			_, err = b.ReadFrom(res.Body)
+
+			ct = reloadCert(ct)
+			Expect(res.StatusCode).To(Equal(200))
+			Expect(b.String()).To(MatchJSON(fmt.Sprintf(`{
+				"cert": {
+					"id": %d,
+					"starts_at": %s,
+					"expires_at": %s,
+					"common_name": "%s"
+				}
+			}`, ct.ID, formattedTimeForJSON(ct.StartsAt), formattedTimeForJSON(ct.ExpiresAt), *ct.CommonName)))
+		})
+
+		Context("when the domain does not exist", func() {
+			BeforeEach(func() {
+				Expect(db.Delete(ct).Error).To(BeNil())
+				Expect(db.Delete(dm).Error).To(BeNil())
+			})
+
+			It("returns 404 with not_found", func() {
+				doRequest()
+				b := &bytes.Buffer{}
+				_, err = b.ReadFrom(res.Body)
+
+				Expect(res.StatusCode).To(Equal(http.StatusNotFound))
+				Expect(b.String()).To(MatchJSON(`{
+					"error": "not_found",
+					"error_description": "cert could not be found"
+				}`))
+			})
+		})
+
+		Context("when the domain does not belongs to the project", func() {
+			BeforeEach(func() {
+				proj2 := factories.Project(db, nil)
+
+				dm.ProjectID = proj2.ID
+				Expect(db.Save(dm).Error).To(BeNil())
+			})
+
+			It("returns 404 with not_found", func() {
+				doRequest()
+				b := &bytes.Buffer{}
+				_, err = b.ReadFrom(res.Body)
+
+				Expect(res.StatusCode).To(Equal(http.StatusNotFound))
+				Expect(b.String()).To(MatchJSON(`{
+					"error": "not_found",
+					"error_description": "cert could not be found"
+				}`))
+			})
+		})
+
+		Context("when the cert does not exist", func() {
+			BeforeEach(func() {
+				Expect(db.Delete(ct).Error).To(BeNil())
+			})
+
+			It("returns 404 with not_found", func() {
+				doRequest()
+				b := &bytes.Buffer{}
+				_, err = b.ReadFrom(res.Body)
+
+				Expect(res.StatusCode).To(Equal(http.StatusNotFound))
+				Expect(b.String()).To(MatchJSON(`{
+					"error": "not_found",
+					"error_description": "cert could not be found"
+				}`))
+			})
+		})
+
+		sharedexamples.ItRequiresAuthentication(func() (*gorm.DB, *user.User, *http.Header) {
+			return db, u, &headers
+		}, func() *http.Response {
+			doRequest()
+			return res
+		}, nil)
+
+		sharedexamples.ItRequiresProject(func() (*gorm.DB, *project.Project) {
+			return db, proj
+		}, func() *http.Response {
+			doRequest()
+			return res
+		}, nil)
 	})
 })
