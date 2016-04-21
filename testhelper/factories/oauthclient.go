@@ -14,8 +14,8 @@ func OauthClient(db *gorm.DB) (oc *oauthclient.OauthClient) {
 	oauthClientN++
 
 	oc = &oauthclient.OauthClient{
-		Email:        fmt.Sprintf("foo%d@example.com", oauthClientN),
-		Name:         fmt.Sprintf("FooClient%d", oauthClientN),
+		Email:        fmt.Sprintf("client%04d@example.com", oauthClientN),
+		Name:         fmt.Sprintf("Client%04d", oauthClientN),
 		Organization: "FooCorp",
 	}
 	err := db.Create(oc).Error

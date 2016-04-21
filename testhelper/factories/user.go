@@ -22,7 +22,7 @@ func UserWithPassword(db *gorm.DB, password string) (u *user.User) {
 	}
 
 	u = &user.User{
-		Email:    fmt.Sprintf("factory%d@example.com", userN),
+		Email:    fmt.Sprintf("factory%04d@example.com", userN),
 		Password: password,
 	}
 	err := u.Insert(db)

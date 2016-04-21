@@ -22,7 +22,7 @@ func Project(db *gorm.DB, u *user.User, name ...string) (proj *project.Project) 
 		pName = name[0]
 	} else {
 		projectN++
-		pName = fmt.Sprintf("project%d", projectN)
+		pName = fmt.Sprintf("project%04d", projectN)
 	}
 
 	proj = &project.Project{

@@ -13,7 +13,7 @@ var blacklistedNameN = 0
 
 func BlacklistedName(db *gorm.DB, name string) (dpn *blacklistedname.BlacklistedName) {
 	if name == "" {
-		name = fmt.Sprintf("blacklisted-name-%d", blacklistedNameN)
+		name = fmt.Sprintf("blacklisted-name-%04d", blacklistedNameN)
 	}
 
 	dpn = &blacklistedname.BlacklistedName{

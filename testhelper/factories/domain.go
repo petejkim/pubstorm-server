@@ -22,7 +22,7 @@ func Domain(db *gorm.DB, proj *project.Project, domainNames ...string) (d *domai
 
 		d = &domain.Domain{
 			ProjectID: proj.ID,
-			Name:      fmt.Sprintf("www.dom%d.com", domainN),
+			Name:      fmt.Sprintf("www.dom%04d.com", domainN),
 		}
 		err := db.Create(d).Error
 		Expect(err).To(BeNil())
