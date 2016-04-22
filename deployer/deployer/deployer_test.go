@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"io/ioutil"
 	"testing"
+	"time"
 
 	"github.com/jinzhu/gorm"
 	"github.com/nitrous-io/rise-server/apiserver/dbconn"
@@ -13,7 +14,6 @@ import (
 	"github.com/nitrous-io/rise-server/deployer/deployer"
 	"github.com/nitrous-io/rise-server/pkg/filetransfer"
 	"github.com/nitrous-io/rise-server/pkg/mqconn"
-	"github.com/nitrous-io/rise-server/shared"
 	"github.com/nitrous-io/rise-server/shared/exchanges"
 	"github.com/nitrous-io/rise-server/shared/s3client"
 	"github.com/nitrous-io/rise-server/testhelper"
@@ -93,6 +93,24 @@ var _ = Describe("Deployer", func() {
 		Expect(*proj.ActiveDeploymentID).To(Equal(depl.ID))
 	}
 
+	assertMetaDataUpload := func() {
+		Expect(fakeS3.UploadCalls.Count()).To(Equal(2)) // 2 metadata files (2 domains)
+
+		for i, domain := range []string{
+			proj.DefaultDomainName(),
+			"www.foo-bar-express.com",
+		} {
+			assertUpload(
+				1+i,
+				"domains/"+domain+"/meta.json",
+				"application/json",
+				[]byte(fmt.Sprintf(`{
+						"prefix": "%s"
+					}`, depl.PrefixID())),
+			)
+		}
+	}
+
 	It("fetches the raw bundle from S3, uploads assets and meta data to S3, and publishes invalidation message to edges", func() {
 		// mock download
 		fakeS3.DownloadContent, err = ioutil.ReadFile("../../testhelper/fixtures/website.tar.gz")
@@ -139,7 +157,7 @@ var _ = Describe("Deployer", func() {
 
 		// it should upload meta.json for each domain
 		for i, domain := range []string{
-			proj.Name + "." + shared.DefaultDomain,
+			proj.DefaultDomainName(),
 			"www.foo-bar-express.com",
 		} {
 			assertUpload(
@@ -157,40 +175,24 @@ var _ = Describe("Deployer", func() {
 		Expect(d).NotTo(BeNil())
 		Expect(d.Body).To(MatchJSON(fmt.Sprintf(`{
 			"domains": [
-				"%s.%s",
+				"%s",
 				"www.foo-bar-express.com"
 			]
-		}`, proj.Name, shared.DefaultDomain)))
+		}`, proj.DefaultDomainName())))
 
 		// it should update deployment's state to deployed
 		err = db.First(depl, depl.ID).Error
 		Expect(err).To(BeNil())
 
 		Expect(depl.State).To(Equal(deployment.StateDeployed))
+		Expect(depl.DeployedAt).NotTo(BeNil())
+		Expect(depl.DeployedAt.Unix()).To(BeNumerically("~", time.Now().Unix(), 1))
 
 		// it should set project's active deployment to current deployment id
 		assertActiveDeploymentIDUpdate()
 	})
 
 	Context("when skip_webroot_upload is true", func() {
-		assertMetaDataUpload := func() {
-			Expect(fakeS3.UploadCalls.Count()).To(Equal(2)) // 2 metadata files (2 domains)
-
-			for i, domain := range []string{
-				proj.Name + "." + shared.DefaultDomain,
-				"www.foo-bar-express.com",
-			} {
-				assertUpload(
-					1+i,
-					"domains/"+domain+"/meta.json",
-					"application/json",
-					[]byte(fmt.Sprintf(`{
-						"prefix": "%s"
-					}`, depl.PrefixID())),
-				)
-			}
-		}
-
 		It("only uploads metadata to S3, and publishes invalidation message to edges", func() {
 			err = deployer.Work([]byte(fmt.Sprintf(`
 				{
@@ -208,10 +210,10 @@ var _ = Describe("Deployer", func() {
 			Expect(d).NotTo(BeNil())
 			Expect(d.Body).To(MatchJSON(fmt.Sprintf(`{
 				"domains": [
-					"%s.%s",
+					"%s",
 					"www.foo-bar-express.com"
 				]
-			}`, proj.Name, shared.DefaultDomain)))
+			}`, proj.DefaultDomainName())))
 
 			// it should set project's active deployment to current deployment id
 			assertActiveDeploymentIDUpdate()
@@ -234,6 +236,99 @@ var _ = Describe("Deployer", func() {
 				// it should NOT publish invalidation message
 				d := testhelper.ConsumeQueue(mq, qName)
 				Expect(d).To(BeNil())
+
+				// it should set project's active deployment to current deployment id
+				assertActiveDeploymentIDUpdate()
+			})
+		})
+	})
+
+	Context("the deployment is not in expected state", func() {
+		BeforeEach(func() {
+			// mock download
+			fakeS3.DownloadContent, err = ioutil.ReadFile("../../testhelper/fixtures/website.tar.gz")
+			Expect(err).To(BeNil())
+		})
+
+		It("returns an error if the deployment is in `uploaded` state", func() {
+			depl.State = deployment.StateUploaded
+			Expect(db.Save(depl).Error).To(BeNil())
+
+			err = deployer.Work([]byte(fmt.Sprintf(`{ "deployment_id": %d }`, depl.ID)))
+			Expect(err).NotTo(BeNil())
+
+			Expect(fakeS3.UploadCalls.Count()).To(Equal(0))
+
+			d := testhelper.ConsumeQueue(mq, qName)
+			Expect(d).To(BeNil())
+
+			err = db.First(proj, proj.ID).Error
+			Expect(err).To(BeNil())
+
+			Expect(proj.ActiveDeploymentID).To(BeNil())
+		})
+
+		It("returns an error if the deployment is in `pending_uploaded` state", func() {
+			depl.State = deployment.StatePendingUpload
+			Expect(db.Save(depl).Error).To(BeNil())
+
+			err = deployer.Work([]byte(fmt.Sprintf(`{ "deployment_id": %d }`, depl.ID)))
+			Expect(err).NotTo(BeNil())
+
+			Expect(fakeS3.UploadCalls.Count()).To(Equal(0))
+
+			d := testhelper.ConsumeQueue(mq, qName)
+			Expect(d).To(BeNil())
+
+			err = db.First(proj, proj.ID).Error
+			Expect(err).To(BeNil())
+
+			Expect(proj.ActiveDeploymentID).To(BeNil())
+		})
+
+		// We should not allow to upload again for same deployment
+		Context("the deployment is in `deployed` state", func() {
+			BeforeEach(func() {
+				depl.State = deployment.StateDeployed
+				Expect(db.Save(depl).Error).To(BeNil())
+			})
+
+			It("returns an error if skip_webroot_upload is false", func() {
+				err = deployer.Work([]byte(fmt.Sprintf(`{ "deployment_id": %d }`, depl.ID)))
+				Expect(err).NotTo(BeNil())
+
+				Expect(fakeS3.UploadCalls.Count()).To(Equal(0))
+
+				d := testhelper.ConsumeQueue(mq, qName)
+				Expect(d).To(BeNil())
+
+				err = db.First(proj, proj.ID).Error
+				Expect(err).To(BeNil())
+
+				Expect(proj.ActiveDeploymentID).To(BeNil())
+			})
+
+			It("only uploads metadata to s3, and does not publish invalidation message if skip_webroot_upload is true", func() {
+				err = deployer.Work([]byte(fmt.Sprintf(`
+					{
+						"deployment_id": %d,
+						"skip_webroot_upload": true
+					}
+				`, depl.ID)))
+				Expect(err).To(BeNil())
+
+				// it should upload meta.json for each domain
+				assertMetaDataUpload()
+
+				// it should publish invalidation message
+				d := testhelper.ConsumeQueue(mq, qName)
+				Expect(d).NotTo(BeNil())
+				Expect(d.Body).To(MatchJSON(fmt.Sprintf(`{
+				"domains": [
+					"%s",
+					"www.foo-bar-express.com"
+				]
+			}`, proj.DefaultDomainName())))
 
 				// it should set project's active deployment to current deployment id
 				assertActiveDeploymentIDUpdate()

@@ -37,6 +37,7 @@ func Draw(r *gin.Engine) {
 
 			projCollab.GET("", projects.Get)
 			projCollab.GET("/deployments/:id", deployments.Show)
+			projCollab.GET("/deployments", deployments.Index)
 			projCollab.GET("/domains", domains.Index)
 			projCollab.GET("/collaborators", projects.ListCollaborators)
 
@@ -45,6 +46,7 @@ func Draw(r *gin.Engine) {
 				lock.POST("/deployments", deployments.Create)
 				lock.POST("/domains", domains.Create)
 				lock.DELETE("/domains/:name", domains.Destroy)
+				lock.POST("/rollback", deployments.Rollback)
 			}
 		}
 

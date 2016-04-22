@@ -1,7 +1,6 @@
 package project_test
 
 import (
-	"fmt"
 	"strings"
 	"testing"
 	"time"
@@ -95,9 +94,7 @@ var _ = Describe("Project", func() {
 			It("only returns the default subdomain", func() {
 				domainNames, err := proj.DomainNames(db)
 				Expect(err).To(BeNil())
-				Expect(domainNames).To(Equal([]string{
-					fmt.Sprintf("%s.%s", proj.Name, shared.DefaultDomain),
-				}))
+				Expect(domainNames).To(Equal([]string{proj.DefaultDomainName()}))
 			})
 		})
 
@@ -122,7 +119,7 @@ var _ = Describe("Project", func() {
 				domainNames, err := proj.DomainNames(db)
 				Expect(err).To(BeNil())
 				Expect(domainNames).To(Equal([]string{
-					fmt.Sprintf("%s.%s", proj.Name, shared.DefaultDomain),
+					proj.DefaultDomainName(),
 					"foo-bar-express.com",
 					"foobarexpress.com",
 				}))

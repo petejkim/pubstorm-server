@@ -1,17 +1,22 @@
 package deployment
 
 import (
+	"errors"
 	"fmt"
+	"time"
 
 	"github.com/jinzhu/gorm"
 )
 
 const (
-	StatePendingUpload = "pending_upload"
-	StateUploaded      = "uploaded"
-	StatePendingDeploy = "pending_deploy"
-	StateDeployed      = "deployed"
+	StatePendingUpload   = "pending_upload"
+	StateUploaded        = "uploaded"
+	StatePendingDeploy   = "pending_deploy"
+	StateDeployed        = "deployed"
+	StatePendingRollback = "pending_rollback"
 )
+
+var ErrInvalidState = errors.New("state is not valid")
 
 type Deployment struct {
 	gorm.Model
@@ -23,20 +28,82 @@ type Deployment struct {
 
 	ProjectID uint
 	UserID    uint
+
+	DeployedAt *time.Time
+}
+
+type DeploymentJSON struct {
+	ID         uint       `json:"id"`
+	State      string     `json:"state"`
+	Active     bool       `json:"active,omitempty"`
+	DeployedAt *time.Time `json:"deployed_at,omitempty"`
 }
 
 // Returns a struct that can be converted to JSON
-func (d *Deployment) AsJSON() interface{} {
-	return struct {
-		ID    uint   `json:"id"`
-		State string `json:"state"`
-	}{
-		d.ID,
-		d.State,
+func (d *Deployment) AsJSON() *DeploymentJSON {
+	return &DeploymentJSON{
+		ID:         d.ID,
+		State:      d.State,
+		DeployedAt: d.DeployedAt,
 	}
 }
 
 // Returns prefix and ID in <prefix>-<id> format
 func (d *Deployment) PrefixID() string {
 	return fmt.Sprintf("%s-%d", d.Prefix, d.ID)
+}
+
+// Returns previous deployment of current deployment
+func (d *Deployment) PreviousCompletedDeployment(db *gorm.DB) (*Deployment, error) {
+	var prevDepl Deployment
+
+	if d.DeployedAt == nil || d.State != StateDeployed {
+		return nil, nil
+	}
+
+	if err := db.Where("project_id = ? AND deployed_at IS NOT NULL AND deployed_at < ? AND state = ?", d.ProjectID, *d.DeployedAt, StateDeployed).
+		Order("deployed_at DESC").
+		First(&prevDepl).Error; err != nil {
+		if err == gorm.RecordNotFound {
+			return nil, nil
+		}
+		return nil, err
+	}
+
+	return &prevDepl, nil
+}
+
+// Returns all completed deployments
+func AllCompletedDeployments(db *gorm.DB, projectID uint) ([]*Deployment, error) {
+	var depls []*Deployment
+	if err := db.Where("project_id = ? AND state = ?", projectID, StateDeployed).Order("deployed_at DESC").Find(&depls).Error; err != nil {
+		return nil, err
+	}
+	return depls, nil
+}
+
+// Updates deployment state
+func (d *Deployment) UpdateState(db *gorm.DB, state string) error {
+	if !isValidState(state) {
+		return ErrInvalidState
+	}
+
+	q := db.Model(Deployment{}).Where("id = ?", d.ID).Update("state", state)
+	if state == StateDeployed {
+		q = q.Update("deployed_at", gorm.Expr("now()"))
+	}
+
+	if err := q.Scan(d).Error; err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func isValidState(state string) bool {
+	return StatePendingUpload == state ||
+		StateUploaded == state ||
+		StatePendingDeploy == state ||
+		StateDeployed == state ||
+		StatePendingRollback == state
 }
