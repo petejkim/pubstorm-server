@@ -54,6 +54,8 @@ var _ = Describe("Users", func() {
 
 	Describe("POST /users", func() {
 		var (
+			params url.Values
+
 			fakeMailer *fake.Mailer
 			origMailer mailer.Mailer
 		)
@@ -62,13 +64,18 @@ var _ = Describe("Users", func() {
 			origMailer = common.Mailer
 			fakeMailer = &fake.Mailer{}
 			common.Mailer = fakeMailer
+
+			params = url.Values{
+				"email":    {"foo@example.com"},
+				"password": {"foobar"},
+			}
 		})
 
 		AfterEach(func() {
 			common.Mailer = origMailer
 		})
 
-		doRequest := func(params url.Values) {
+		doRequest := func() {
 			s = httptest.NewServer(server.New())
 			res, err = http.PostForm(s.URL+"/users", params)
 			Expect(err).To(BeNil())
@@ -78,10 +85,7 @@ var _ = Describe("Users", func() {
 			var u *user.User
 
 			BeforeEach(func() {
-				doRequest(url.Values{
-					"email":    {"foo@example.com"},
-					"password": {"foobar"},
-				})
+				doRequest()
 				u = &user.User{}
 				err := db.Last(u).Error
 				Expect(err).To(BeNil())
@@ -127,122 +131,61 @@ var _ = Describe("Users", func() {
 			})
 		})
 
-		Context("when email field is missing", func() {
-			BeforeEach(func() {
-				doRequest(url.Values{
-					"password": {"foobar"},
-				})
-			})
+		DescribeTable("missing or invalid params",
+			func(setUp func(), expectedBody string) {
+				setUp()
 
-			It("returns 422 unprocessable entity", func() {
+				var initialUserCount int
+				Expect(db.Model(user.User{}).Count(&initialUserCount).Error).To(BeNil())
+
+				doRequest()
+
 				b := &bytes.Buffer{}
 				_, err := b.ReadFrom(res.Body)
 				Expect(err).To(BeNil())
 
 				Expect(res.StatusCode).To(Equal(422))
-				Expect(b.String()).To(MatchJSON(`{
-					"error": "invalid_params",
-					"errors": {
-						"email": "is required"
-					}
-				}`))
-			})
+				Expect(b.String()).To(MatchJSON(expectedBody))
 
-			It("does not create a user record in the DB", func() {
-				userCount := 0
-				db.Model(user.User{}).Count(&userCount)
-				Expect(userCount).To(BeZero())
-			})
-		})
-
-		Context("when password field is missing", func() {
-			BeforeEach(func() {
-				doRequest(url.Values{
-					"email": {"foo@example.com"},
-				})
-			})
-
-			It("returns 422 unprocessable entity", func() {
-				b := &bytes.Buffer{}
-				_, err := b.ReadFrom(res.Body)
-				Expect(err).To(BeNil())
-
-				Expect(res.StatusCode).To(Equal(422))
-				Expect(b.String()).To(MatchJSON(`{
-					"error": "invalid_params",
-					"errors": {
-						"password": "is required"
-					}
-				}`))
-			})
-
-			It("does not create a user record in the DB", func() {
-				userCount := 0
-				db.Model(user.User{}).Count(&userCount)
-				Expect(userCount).To(BeZero())
-			})
-		})
-
-		Context("when a field is invalid", func() {
-			BeforeEach(func() {
-				doRequest(url.Values{
-					"email":    {"foo@@example.com"},
-					"password": {"foobar"},
-				})
-			})
-
-			It("returns 422 unprocessable entity", func() {
-				b := &bytes.Buffer{}
-				_, err := b.ReadFrom(res.Body)
-				Expect(err).To(BeNil())
-
-				Expect(res.StatusCode).To(Equal(422))
-				Expect(b.String()).To(MatchJSON(`{
-					"error": "invalid_params",
-					"errors": {
-						"email": "is invalid"
-					}
-				}`))
-			})
-
-			It("does not create a user record in the DB", func() {
-				userCount := 0
-				db.Model(user.User{}).Count(&userCount)
-				Expect(userCount).To(BeZero())
-			})
-		})
-
-		Context("when email is taken", func() {
-			BeforeEach(func() {
-				db, err = dbconn.DB()
-				Expect(err).To(BeNil())
-				testhelper.TruncateTables(db.DB())
-
+				var userCount int
+				Expect(db.Model(user.User{}).Count(&userCount).Error).To(BeNil())
+				Expect(initialUserCount - userCount).To(BeZero())
+			},
+			Entry("missing email", func() {
+				params.Del("email")
+			}, `{
+				"error": "invalid_params",
+				"errors": {
+					"email": "is required"
+				}
+			}`),
+			Entry("missing password", func() {
+				params.Del("password")
+			}, `{
+				"error": "invalid_params",
+				"errors": {
+					"password": "is required"
+				}
+			}`),
+			Entry("invalid email", func() {
+				params.Set("email", "foo@@example.com")
+			}, `{
+				"error": "invalid_params",
+				"errors": {
+					"email": "is invalid"
+				}
+			}`),
+			Entry("taken email", func() {
 				u := &user.User{Email: "foo@example.com", Password: "foobar"}
 				err = u.Insert(db)
 				Expect(err).To(BeNil())
-
-				doRequest(url.Values{
-					"email":    {"foo@example.com"},
-					"password": {"foobar"},
-				})
-			})
-
-			It("returns 422", func() {
-				Expect(res.StatusCode).To(Equal(422))
-
-				b := &bytes.Buffer{}
-				_, err := b.ReadFrom(res.Body)
-				Expect(err).To(BeNil())
-
-				Expect(b.String()).To(MatchJSON(`{
-					"error": "invalid_params",
-					"errors": {
-						"email": "is taken"
-					}
-				}`))
-			})
-		})
+			}, `{
+				"error": "invalid_params",
+				"errors": {
+					"email": "is taken"
+				}
+			}`),
+		)
 	})
 
 	Describe("POST /user/confirm", func() {
