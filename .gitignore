@@ -11,6 +11,9 @@ id_rsa
 *.swp
 **.orig
 
+# pre-commit.com config
+.pre-commit-config.yaml
+
 # Compiled Object files, Static and Dynamic libs (Shared Objects)
 *.o
 *.a
