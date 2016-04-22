@@ -42,6 +42,7 @@ func Draw(r *gin.Engine) {
 
 			{ // Routes that lock a project
 				lock := projCollab.Group("", middleware.LockProject)
+				lock.PUT("", projects.Update)
 				lock.POST("/deployments", deployments.Create)
 				lock.POST("/domains", domains.Create)
 				lock.DELETE("/domains/:name", domains.Destroy)
