@@ -298,4 +298,34 @@ var _ = Describe("Project", func() {
 			Expect(cols[0].ProjectID).To(Equal(proj2.ID))
 		})
 	})
+
+	Describe("NextVersion()", func() {
+		var proj2 *project.Project
+
+		BeforeEach(func() {
+			proj2 = factories.Project(db, u)
+		})
+
+		It("atomically increments and returns version counter", func() {
+			v, err := proj.NextVersion(db)
+			Expect(err).To(BeNil())
+			Expect(v).To(Equal(int64(1)))
+
+			v, err = proj.NextVersion(db)
+			Expect(err).To(BeNil())
+			Expect(v).To(Equal(int64(2)))
+
+			v, err = proj2.NextVersion(db)
+			Expect(err).To(BeNil())
+			Expect(v).To(Equal(int64(1)))
+
+			v, err = proj.NextVersion(db)
+			Expect(err).To(BeNil())
+			Expect(v).To(Equal(int64(3)))
+
+			v, err = proj2.NextVersion(db)
+			Expect(err).To(BeNil())
+			Expect(v).To(Equal(int64(2)))
+		})
+	})
 })

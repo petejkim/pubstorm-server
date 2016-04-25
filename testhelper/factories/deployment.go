@@ -11,7 +11,15 @@ import (
 	. "github.com/onsi/gomega"
 )
 
-func Deployment(db *gorm.DB, proj *project.Project, u *user.User, state string) (d *deployment.Deployment) {
+func Deployment(db *gorm.DB, proj *project.Project, u *user.User, state string) *deployment.Deployment {
+	return DeploymentWithAttrs(db, proj, u, deployment.Deployment{
+		State: state,
+	})
+}
+
+func DeploymentWithAttrs(db *gorm.DB, proj *project.Project, u *user.User, attrs deployment.Deployment) *deployment.Deployment {
+	d := &attrs
+
 	if u == nil {
 		u = User(db)
 	}
@@ -20,13 +28,20 @@ func Deployment(db *gorm.DB, proj *project.Project, u *user.User, state string) 
 		proj = Project(db, u)
 	}
 
-	d = &deployment.Deployment{
-		ProjectID: proj.ID,
-		UserID:    u.ID,
-		State:     state,
+	if d.UserID == 0 {
+		d.UserID = u.ID
+	}
+	if d.ProjectID == 0 {
+		d.ProjectID = proj.ID
 	}
 
-	if state == deployment.StateDeployed {
+	if d.Version == 0 {
+		ver, err := proj.NextVersion(db)
+		Expect(err).To(BeNil())
+		d.Version = ver
+	}
+
+	if d.State == deployment.StateDeployed && d.DeployedAt == nil {
 		currentTime := time.Now()
 		d.DeployedAt = &currentTime
 	}

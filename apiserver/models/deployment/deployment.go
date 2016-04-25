@@ -24,7 +24,8 @@ type Deployment struct {
 	State string `sql:"default:'pending_upload'"`
 	// 4-digit hex hash is used to ensure files are uploaded across multiple partitions in S3
 	// http://docs.aws.amazon.com/AmazonS3/latest/dev/request-rate-perf-considerations.html
-	Prefix string `sql:"default:encode(gen_random_bytes(2), 'hex')"`
+	Prefix  string `sql:"default:encode(gen_random_bytes(2), 'hex')"`
+	Version int64
 
 	ProjectID uint
 	UserID    uint
@@ -35,6 +36,7 @@ type Deployment struct {
 type DeploymentJSON struct {
 	ID         uint       `json:"id"`
 	State      string     `json:"state"`
+	Version    int64      `json:"version"`
 	Active     bool       `json:"active,omitempty"`
 	DeployedAt *time.Time `json:"deployed_at,omitempty"`
 }
@@ -44,6 +46,7 @@ func (d *Deployment) AsJSON() *DeploymentJSON {
 	return &DeploymentJSON{
 		ID:         d.ID,
 		State:      d.State,
+		Version:    d.Version,
 		DeployedAt: d.DeployedAt,
 	}
 }

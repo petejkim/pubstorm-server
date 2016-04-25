@@ -269,8 +269,9 @@ var _ = Describe("Deployments", func() {
 
 					j := map[string]interface{}{
 						"deployment": map[string]interface{}{
-							"id":    depl.ID,
-							"state": deployment.StatePendingDeploy,
+							"id":      depl.ID,
+							"state":   deployment.StatePendingDeploy,
+							"version": 1,
 						},
 					}
 					expectedJSON, err := json.Marshal(j)
@@ -284,6 +285,7 @@ var _ = Describe("Deployments", func() {
 					Expect(depl.UserID).To(Equal(u.ID))
 					Expect(depl.State).To(Equal(deployment.StatePendingDeploy))
 					Expect(depl.Prefix).NotTo(HaveLen(0))
+					Expect(depl.Version).To(Equal(int64(1)))
 				})
 
 				It("uploads bundle to s3", func() {
@@ -308,6 +310,31 @@ var _ = Describe("Deployments", func() {
 							"skip_invalidation": false
 						}
 					`, depl.ID)))
+				})
+
+				Describe("when deploying again", func() {
+					It("increments version", func() {
+						doRequest()
+
+						depl = &deployment.Deployment{}
+						db.Last(depl)
+						b := &bytes.Buffer{}
+						_, err = b.ReadFrom(res.Body)
+
+						j := map[string]interface{}{
+							"deployment": map[string]interface{}{
+								"id":      depl.ID,
+								"state":   deployment.StatePendingDeploy,
+								"version": 2,
+							},
+						}
+						expectedJSON, err := json.Marshal(j)
+						Expect(err).To(BeNil())
+						Expect(b.String()).To(MatchJSON(expectedJSON))
+
+						Expect(depl).NotTo(BeNil())
+						Expect(depl.Version).To(Equal(int64(2)))
+					})
 				})
 			})
 		})
@@ -339,14 +366,11 @@ var _ = Describe("Deployments", func() {
 				"Authorization": {"Bearer " + t.Token},
 			}
 
-			depl = &deployment.Deployment{
+			depl = factories.DeploymentWithAttrs(db, proj, u, deployment.Deployment{
 				Prefix:     "a1b2c3",
 				State:      deployment.StatePendingDeploy,
-				ProjectID:  proj.ID,
-				UserID:     u.ID,
 				DeployedAt: timeAgo(-1 * time.Hour),
-			}
-			Expect(db.Create(depl).Error).To(BeNil())
+			})
 		})
 
 		doRequest := func() {
@@ -385,6 +409,7 @@ var _ = Describe("Deployments", func() {
 						"id":          d.ID,
 						"state":       deployment.StatePendingDeploy,
 						"deployed_at": d.DeployedAt,
+						"version":     d.Version,
 					},
 				}
 				expectedJSON, err := json.Marshal(j)
@@ -482,31 +507,22 @@ var _ = Describe("Deployments", func() {
 				"Authorization": {"Bearer " + t.Token},
 			}
 
-			depl1 = &deployment.Deployment{
+			depl1 = factories.DeploymentWithAttrs(db, proj, u, deployment.Deployment{
 				Prefix:     "a1b2c3",
 				State:      deployment.StateDeployed,
-				ProjectID:  proj.ID,
-				UserID:     u.ID,
 				DeployedAt: timeAgo(3 * time.Hour),
-			}
-			Expect(db.Create(depl1).Error).To(BeNil())
+			})
 
-			depl2 = &deployment.Deployment{
-				Prefix:    "a7b8c9",
-				State:     deployment.StateUploaded,
-				ProjectID: proj.ID,
-				UserID:    u.ID,
-			}
-			Expect(db.Create(depl2).Error).To(BeNil())
+			depl2 = factories.DeploymentWithAttrs(db, proj, u, deployment.Deployment{
+				Prefix: "a7b8c9",
+				State:  deployment.StateUploaded,
+			})
 
-			depl3 = &deployment.Deployment{
+			depl3 = factories.DeploymentWithAttrs(db, proj, u, deployment.Deployment{
 				Prefix:     "d1e2f3",
 				State:      deployment.StateDeployed,
-				ProjectID:  proj.ID,
-				UserID:     u.ID,
 				DeployedAt: timeAgo(1 * time.Hour),
-			}
-			Expect(db.Create(depl3).Error).To(BeNil())
+			})
 
 			var currentDeplID = depl3.ID
 			proj.ActiveDeploymentID = &currentDeplID
@@ -561,6 +577,7 @@ var _ = Describe("Deployments", func() {
 						"id":          d.ID,
 						"state":       deployment.StatePendingRollback,
 						"deployed_at": d.DeployedAt,
+						"version":     d.Version,
 					},
 				}
 				expectedJSON, err := json.Marshal(j)
@@ -595,14 +612,11 @@ var _ = Describe("Deployments", func() {
 			var depl4 *deployment.Deployment
 
 			BeforeEach(func() {
-				depl4 = &deployment.Deployment{
+				depl4 = factories.DeploymentWithAttrs(db, proj, u, deployment.Deployment{
 					Prefix:     "x0y1z2",
 					State:      deployment.StateDeployed,
-					ProjectID:  proj.ID,
-					UserID:     u.ID,
 					DeployedAt: timeAgo(2 * time.Hour),
-				}
-				Expect(db.Create(depl4).Error).To(BeNil())
+				})
 
 				params = url.Values{
 					"deployment_id": {fmt.Sprintf("%d", depl4.ID)},
@@ -628,6 +642,7 @@ var _ = Describe("Deployments", func() {
 						"id":          d.ID,
 						"state":       deployment.StatePendingRollback,
 						"deployed_at": d.DeployedAt,
+						"version":     d.Version,
 					},
 				}
 				expectedJSON, err := json.Marshal(j)
@@ -810,40 +825,28 @@ var _ = Describe("Deployments", func() {
 				"Authorization": {"Bearer " + t.Token},
 			}
 
-			depl1 = &deployment.Deployment{
+			depl1 = factories.DeploymentWithAttrs(db, proj, u, deployment.Deployment{
 				Prefix:     "a1b2c3",
 				State:      deployment.StateDeployed,
-				ProjectID:  proj.ID,
-				UserID:     u.ID,
 				DeployedAt: timeAgo(3 * time.Hour),
-			}
-			Expect(db.Create(depl1).Error).To(BeNil())
+			})
 
-			depl2 = &deployment.Deployment{
+			depl2 = factories.DeploymentWithAttrs(db, proj, u, deployment.Deployment{
 				Prefix:     "d0e1f2",
 				State:      deployment.StateDeployed,
-				ProjectID:  proj.ID,
-				UserID:     u.ID,
 				DeployedAt: timeAgo(2 * time.Hour),
-			}
-			Expect(db.Create(depl2).Error).To(BeNil())
+			})
 
-			depl3 = &deployment.Deployment{
-				Prefix:    "x0y1z2",
-				State:     deployment.StatePendingDeploy,
-				ProjectID: proj.ID,
-				UserID:    u.ID,
-			}
-			Expect(db.Create(depl3).Error).To(BeNil())
+			depl3 = factories.DeploymentWithAttrs(db, proj, u, deployment.Deployment{
+				Prefix: "x0y1z2",
+				State:  deployment.StatePendingDeploy,
+			})
 
-			depl4 = &deployment.Deployment{
+			depl4 = factories.DeploymentWithAttrs(db, proj, u, deployment.Deployment{
 				Prefix:     "u0v1w2",
 				State:      deployment.StateDeployed,
-				ProjectID:  proj.ID,
-				UserID:     u.ID,
 				DeployedAt: timeAgo(4 * time.Hour),
-			}
-			Expect(db.Create(depl4).Error).To(BeNil())
+			})
 
 			proj.ActiveDeploymentID = &depl2.ID
 			Expect(db.Save(proj).Error).To(BeNil())
@@ -900,22 +903,25 @@ var _ = Describe("Deployments", func() {
 						"id": %d,
 						"state": "%s",
 						"active": true,
-						"deployed_at": %s
+						"deployed_at": %s,
+						"version": %d
 					},
 					{
 						"id": %d,
 						"state": "%s",
-						"deployed_at": %s
+						"deployed_at": %s,
+						"version": %d
 					},
 					{
 						"id": %d,
 						"state": "%s",
-						"deployed_at": %s
+						"deployed_at": %s,
+						"version": %d
 					}
 				]
-			}`, depl2.ID, depl2.State, formattedTimeForJSON(depl2.DeployedAt),
-				depl1.ID, depl1.State, formattedTimeForJSON(depl1.DeployedAt),
-				depl4.ID, depl4.State, formattedTimeForJSON(depl4.DeployedAt),
+			}`, depl2.ID, depl2.State, formattedTimeForJSON(depl2.DeployedAt), depl2.Version,
+				depl1.ID, depl1.State, formattedTimeForJSON(depl1.DeployedAt), depl1.Version,
+				depl4.ID, depl4.State, formattedTimeForJSON(depl4.DeployedAt), depl4.Version,
 			)))
 		})
 	})

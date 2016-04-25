@@ -71,6 +71,13 @@ func Create(c *gin.Context) {
 		}
 
 		if part.FormName() == "payload" {
+			ver, err := proj.NextVersion(db)
+			if err != nil {
+				controllers.InternalServerError(c, err)
+				return
+			}
+
+			depl.Version = ver
 			if err := db.Create(depl).Error; err != nil {
 				controllers.InternalServerError(c, err)
 				return

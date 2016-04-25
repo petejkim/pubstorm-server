@@ -185,3 +185,14 @@ func (p *Project) RemoveCollaborator(db *gorm.DB, u *user.User) error {
 
 	return nil
 }
+
+// Atomically increments version_counter and returns next deployment version
+func (p *Project) NextVersion(db *gorm.DB) (int64, error) {
+	r := struct{ V int64 }{}
+
+	if err := db.Raw("UPDATE projects SET version_counter = version_counter + 1 WHERE id = ? RETURNING version_counter AS v;", p.ID).Scan(&r).Error; err != nil {
+		return 0, err
+	}
+
+	return r.V, nil
+}
