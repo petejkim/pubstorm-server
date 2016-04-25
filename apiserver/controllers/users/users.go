@@ -7,6 +7,7 @@ import (
 	"github.com/nitrous-io/rise-server/apiserver/common"
 	"github.com/nitrous-io/rise-server/apiserver/controllers"
 	"github.com/nitrous-io/rise-server/apiserver/dbconn"
+	"github.com/nitrous-io/rise-server/apiserver/models/blacklistedemail"
 	"github.com/nitrous-io/rise-server/apiserver/models/oauthtoken"
 	"github.com/nitrous-io/rise-server/apiserver/models/user"
 )
@@ -28,6 +29,21 @@ func Create(c *gin.Context) {
 	db, err := dbconn.DB()
 	if err != nil {
 		controllers.InternalServerError(c, err)
+		return
+	}
+
+	if blacklisted, err := blacklistedemail.IsBlacklisted(db, u.Email); blacklisted || err != nil {
+		if err != nil {
+			controllers.InternalServerError(c, err)
+			return
+		}
+
+		c.JSON(422, gin.H{
+			"error": "invalid_params",
+			"errors": map[string]string{
+				"email": "is blacklisted",
+			},
+		})
 		return
 	}
 

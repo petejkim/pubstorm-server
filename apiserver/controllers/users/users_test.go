@@ -185,6 +185,14 @@ var _ = Describe("Users", func() {
 					"email": "is taken"
 				}
 			}`),
+			Entry("blacklisted email", func() {
+				factories.BlacklistedEmail(db, "example.com")
+			}, `{
+				"error": "invalid_params",
+				"errors": {
+					"email": "is blacklisted"
+				}
+			}`),
 		)
 	})
 
