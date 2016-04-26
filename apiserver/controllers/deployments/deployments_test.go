@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"strconv"
 	"testing"
 	"time"
 
@@ -561,7 +562,7 @@ var _ = Describe("Deployments", func() {
 			return res
 		}, nil)
 
-		Context("when the deployment id is not specified", func() {
+		Context("when the version is not specified", func() {
 			It("returns 202 accepted", func() {
 				doRequest()
 				b := &bytes.Buffer{}
@@ -608,7 +609,7 @@ var _ = Describe("Deployments", func() {
 			})
 		})
 
-		Context("when the deployment id is specified", func() {
+		Context("when the version is specified", func() {
 			var depl4 *deployment.Deployment
 
 			BeforeEach(func() {
@@ -619,7 +620,7 @@ var _ = Describe("Deployments", func() {
 				})
 
 				params = url.Values{
-					"deployment_id": {fmt.Sprintf("%d", depl4.ID)},
+					"version": {strconv.FormatInt(depl4.Version, 10)},
 				}
 			})
 
@@ -686,7 +687,7 @@ var _ = Describe("Deployments", func() {
 					Expect(res.StatusCode).To(Equal(422))
 					Expect(b.String()).To(MatchJSON(`{
 						"error": "invalid_request",
-						"error_description": "complete deployment with given id could not be found"
+						"error_description": "completed deployment with a given version could not be found"
 					}`))
 				})
 			})
@@ -726,7 +727,7 @@ var _ = Describe("Deployments", func() {
 					Expect(res.StatusCode).To(Equal(422))
 					Expect(b.String()).To(MatchJSON(`{
 						"error": "invalid_request",
-						"error_description": "complete deployment with given id could not be found"
+						"error_description": "completed deployment with a given version could not be found"
 					}`))
 				})
 			})
@@ -747,7 +748,7 @@ var _ = Describe("Deployments", func() {
 					Expect(res.StatusCode).To(Equal(422))
 					Expect(b.String()).To(MatchJSON(`{
 						"error": "invalid_request",
-						"error_description": "complete deployment with given id could not be found"
+						"error_description": "completed deployment with a given version could not be found"
 					}`))
 				})
 			})

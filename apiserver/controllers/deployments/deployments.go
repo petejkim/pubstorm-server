@@ -177,7 +177,7 @@ func Rollback(c *gin.Context) {
 	}
 
 	var depl *deployment.Deployment
-	if c.PostForm("deployment_id") == "" {
+	if c.PostForm("version") == "" {
 		var currentDepl deployment.Deployment
 		if err := db.First(&currentDepl, *proj.ActiveDeploymentID).Error; err != nil {
 			controllers.InternalServerError(c, err)
@@ -199,20 +199,20 @@ func Rollback(c *gin.Context) {
 		}
 	} else {
 		depl = &deployment.Deployment{}
-		deploymentID, err := strconv.ParseInt(c.PostForm("deployment_id"), 10, 64)
+		version, err := strconv.ParseInt(c.PostForm("version"), 10, 64)
 		if err != nil {
 			c.JSON(422, gin.H{
 				"error":  "invalid_params",
-				"errors": map[string]string{"deployment_id": "is not a number"},
+				"errors": map[string]string{"version": "is not a number"},
 			})
 			return
 		}
 
-		if err := db.Where("project_id = ? AND state = ? AND id = ?", proj.ID, deployment.StateDeployed, deploymentID).First(depl).Error; err != nil {
+		if err := db.Where("project_id = ? AND state = ? AND version = ?", proj.ID, deployment.StateDeployed, version).First(depl).Error; err != nil {
 			if err == gorm.RecordNotFound {
 				c.JSON(422, gin.H{
 					"error":             "invalid_request",
-					"error_description": "complete deployment with given id could not be found",
+					"error_description": "completed deployment with a given version could not be found",
 				})
 				return
 			}
