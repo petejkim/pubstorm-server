@@ -284,6 +284,32 @@ var _ = Describe("Domains", func() {
 				})
 			})
 
+			Context("when the domain name contains uppercase characters", func() {
+				BeforeEach(func() {
+					dom := &domain.Domain{
+						Name:      "Www.foo-bar-EXPRESS.Com",
+						ProjectID: proj.ID,
+					}
+					err := db.Create(dom).Error
+					Expect(err).To(BeNil())
+
+					doRequest()
+				})
+
+				It("converts those characters to lowercase", func() {
+					b := &bytes.Buffer{}
+					_, err := b.ReadFrom(res.Body)
+					Expect(err).To(BeNil())
+
+					Expect(res.StatusCode).To(Equal(http.StatusCreated))
+					Expect(b.String()).To(MatchJSON(`{
+						"domain": {
+							"name": "www.foo-bar-express.com"
+						}
+					}`))
+				})
+			})
+
 			Context("when a valid domain name is given", func() {
 				var dom *domain.Domain
 

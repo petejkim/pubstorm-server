@@ -8,7 +8,7 @@ import (
 	"github.com/nitrous-io/rise-server/shared"
 )
 
-var domainLabelRe = regexp.MustCompile(`\A([A-Za-z0-9]|([A-Za-z0-9][A-Za-z0-9\-]*[A-Za-z0-9]))\z`)
+var domainLabelRe = regexp.MustCompile(`\A([a-z0-9]|([a-z0-9][a-z0-9\-]*[a-z0-9]))\z`)
 
 type Domain struct {
 	gorm.Model

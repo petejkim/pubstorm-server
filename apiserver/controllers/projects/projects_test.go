@@ -176,6 +176,26 @@ var _ = Describe("Projects", func() {
 			})
 		})
 
+		Context("when the project name contains uppercase characters", func() {
+			BeforeEach(func() {
+				params.Set("name", "Foo-Bar-Express")
+				doRequest()
+			})
+
+			It("converts those characters to lowercase", func() {
+				b := &bytes.Buffer{}
+				_, err := b.ReadFrom(res.Body)
+				Expect(err).To(BeNil())
+
+				Expect(res.StatusCode).To(Equal(http.StatusCreated))
+				Expect(b.String()).To(MatchJSON(`{
+					"project": {
+						"name": "foo-bar-express"
+					}
+				}`))
+			})
+		})
+
 		Context("when a valid project name is given", func() {
 			var proj *project.Project
 

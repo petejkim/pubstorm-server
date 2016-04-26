@@ -17,7 +17,7 @@ import (
 )
 
 var (
-	projectNameRe = regexp.MustCompile(`\A[A-Za-z0-9][A-Za-z0-9\-]{1,61}[A-Za-z0-9]\z`)
+	projectNameRe = regexp.MustCompile(`\A[a-z0-9][a-z0-9\-]{1,61}[a-z0-9]\z`)
 
 	ErrCollaboratorIsOwner       = errors.New("owner of project cannot be added as a collaborator")
 	ErrCollaboratorAlreadyExists = errors.New("collaborator already exists")

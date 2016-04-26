@@ -60,6 +60,7 @@ var _ = Describe("Project", func() {
 			Entry("normal", "abc", ""),
 			Entry("allows hyphens", "good-one", ""),
 			Entry("allows multiple hyphens", "hello-world--foobar", ""),
+			Entry("disallows uppercase letters", "Bad-one", "is invalid"),
 			Entry("disallows starting with a hyphen", "-abc", "is invalid"),
 			Entry("disallows ending with a hyphen", "abc-", "is invalid"),
 			Entry("disallows spaces", "good one", "is invalid"),
