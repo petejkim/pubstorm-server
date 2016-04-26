@@ -69,6 +69,7 @@ var _ = Describe("Domain", func() {
 			Entry("allows numbers", "www.007.com", ""),
 			Entry("allows multiple hyphens", "hello-world--foobar.com", ""),
 			Entry("allows multiple subdomains", "this.is.an.example.com", ""),
+			Entry("disallows uppercase letters", "Www.Bad-one.COM", "is invalid"),
 			Entry("disallows domains beginning with a dot", ".abc.com", "is invalid"),
 			Entry("disallows domains ending with a dot", "abc.com.", "is invalid"),
 			Entry("disallows domains without a dot", "abc", "is invalid"),

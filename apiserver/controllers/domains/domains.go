@@ -2,6 +2,7 @@ package domains
 
 import (
 	"net/http"
+	"strings"
 
 	"github.com/gin-gonic/gin"
 	"github.com/lib/pq"
@@ -39,8 +40,9 @@ func Index(c *gin.Context) {
 func Create(c *gin.Context) {
 	proj := controllers.CurrentProject(c)
 
+	domName := strings.ToLower(c.PostForm("name"))
 	dom := &domain.Domain{
-		Name:      c.PostForm("name"),
+		Name:      domName,
 		ProjectID: proj.ID,
 	}
 

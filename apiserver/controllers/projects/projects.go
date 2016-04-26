@@ -2,6 +2,7 @@ package projects
 
 import (
 	"net/http"
+	"strings"
 
 	"github.com/gin-gonic/gin"
 	"github.com/lib/pq"
@@ -19,8 +20,9 @@ import (
 func Create(c *gin.Context) {
 	u := controllers.CurrentUser(c)
 
+	projName := strings.ToLower(c.PostForm("name"))
 	proj := &project.Project{
-		Name:   c.PostForm("name"),
+		Name:   projName,
 		UserID: u.ID,
 	}
 
