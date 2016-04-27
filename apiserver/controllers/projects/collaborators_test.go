@@ -11,7 +11,6 @@ import (
 	"github.com/nitrous-io/rise-server/apiserver/common"
 	"github.com/nitrous-io/rise-server/apiserver/dbconn"
 	"github.com/nitrous-io/rise-server/apiserver/models/collab"
-	"github.com/nitrous-io/rise-server/apiserver/models/oauthclient"
 	"github.com/nitrous-io/rise-server/apiserver/models/oauthtoken"
 	"github.com/nitrous-io/rise-server/apiserver/models/project"
 	"github.com/nitrous-io/rise-server/apiserver/models/user"
@@ -35,7 +34,6 @@ var _ = Describe("Project collaborators", func() {
 		err     error
 
 		u    *user.User
-		oc   *oauthclient.OauthClient
 		t    *oauthtoken.OauthToken
 		proj *project.Project
 
@@ -48,7 +46,7 @@ var _ = Describe("Project collaborators", func() {
 		Expect(err).To(BeNil())
 		testhelper.TruncateTables(db.DB())
 
-		u, oc, t = factories.AuthTrio(db)
+		u, _, t = factories.AuthTrio(db)
 
 		headers = http.Header{
 			"Authorization": {"Bearer " + t.Token},
