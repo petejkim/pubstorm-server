@@ -108,6 +108,77 @@ var _ = Describe("Deployment", func() {
 		})
 	})
 
+	Describe("DeleteExceptLastN()", func() {
+		var (
+			proj *project.Project
+
+			d1 *deployment.Deployment
+			d2 *deployment.Deployment
+			d3 *deployment.Deployment
+			d4 *deployment.Deployment
+		)
+
+		BeforeEach(func() {
+			u := factories.User(db)
+			proj = factories.Project(db, u)
+			d1 = factories.Deployment(db, proj, u, deployment.StateDeployed)
+			d2 = factories.Deployment(db, proj, u, deployment.StatePendingDeploy)
+			d3 = factories.Deployment(db, proj, u, deployment.StateDeployed)
+			d4 = factories.Deployment(db, proj, u, deployment.StateDeployed)
+		})
+
+		It("deletes all completed deployments except the last N deployments, ordered by deployed time", func() {
+			err := deployment.DeleteExceptLastN(db, proj.ID, 2)
+			Expect(err).To(BeNil())
+
+			var depls []*deployment.Deployment
+			q := db.Where("project_id = ? AND state = ?", proj.ID, deployment.StateDeployed).Find(&depls)
+			Expect(q.Error).To(BeNil())
+
+			var ids []uint
+			for _, depl := range depls {
+				ids = append(ids, depl.ID)
+			}
+
+			Expect(ids).To(HaveLen(2))
+			Expect(ids).To(ConsistOf(d3.ID, d4.ID))
+		})
+
+		It("does not delete any records if there are N deployments", func() {
+			err := deployment.DeleteExceptLastN(db, proj.ID, 3)
+			Expect(err).To(BeNil())
+
+			var depls []*deployment.Deployment
+			q := db.Where("project_id = ? AND state = ?", proj.ID, deployment.StateDeployed).Find(&depls)
+			Expect(q.Error).To(BeNil())
+
+			var ids []uint
+			for _, depl := range depls {
+				ids = append(ids, depl.ID)
+			}
+
+			Expect(ids).To(HaveLen(3))
+			Expect(ids).To(ConsistOf(d1.ID, d3.ID, d4.ID))
+		})
+
+		It("does not delete any records if there are fewer than N deployments", func() {
+			err := deployment.DeleteExceptLastN(db, proj.ID, 4)
+			Expect(err).To(BeNil())
+
+			var depls []*deployment.Deployment
+			q := db.Where("project_id = ? AND state = ?", proj.ID, deployment.StateDeployed).Find(&depls)
+			Expect(q.Error).To(BeNil())
+
+			var ids []uint
+			for _, depl := range depls {
+				ids = append(ids, depl.ID)
+			}
+
+			Expect(ids).To(HaveLen(3))
+			Expect(ids).To(ConsistOf(d1.ID, d3.ID, d4.ID))
+		})
+	})
+
 	Describe("UpdateState()", func() {
 		var (
 			d *deployment.Deployment

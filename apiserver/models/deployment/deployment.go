@@ -105,6 +105,27 @@ func CompletedDeployments(db *gorm.DB, projectID, limit uint) ([]*Deployment, er
 	return depls, nil
 }
 
+// DeleteExceptLastN deletes all but the last n deployed deployments.
+func DeleteExceptLastN(db *gorm.DB, projectID, n uint) error {
+	q := db.Exec(`
+		UPDATE deployments
+		SET deleted_at = now()
+		WHERE
+			project_id = ?
+			AND state = ?
+			AND deleted_at IS NULL
+			AND deployed_at <= (
+				SELECT deployed_at FROM deployments
+				WHERE
+					project_id = ?
+					AND state = ?
+					AND deleted_at IS NULL
+				ORDER BY deployed_at DESC
+				LIMIT 1 OFFSET ?
+			);`, projectID, StateDeployed, projectID, StateDeployed, n)
+	return q.Error
+}
+
 // UpdateState updates deployment state
 func (d *Deployment) UpdateState(db *gorm.DB, state string) error {
 	if !isValidState(state) {
