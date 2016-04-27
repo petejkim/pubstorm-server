@@ -54,6 +54,7 @@ func Draw(r *gin.Engine) {
 			projCollab.POST("/domains/:name/cert", certs.Create)
 			projCollab.DELETE("/domains/:name/cert", certs.Destroy)
 			projCollab.GET("/raw_bundles/:bundle_checksum", rawbundles.Get)
+			projCollab.GET("/jsenvvars", jsenvvars.Index)
 
 			{ // Routes that lock a project
 				lock := projCollab.Group("", middleware.LockProject)

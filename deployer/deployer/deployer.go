@@ -182,7 +182,6 @@ func Work(data []byte) error {
 		}
 
 		var envvars map[string]string
-		// To check if it is in valid json format
 		if err := json.Unmarshal(depl.JsEnvVars, &envvars); err != nil {
 			return err
 		}

@@ -159,6 +159,41 @@ func Delete(c *gin.Context) {
 	})
 }
 
+func Index(c *gin.Context) {
+	proj := controllers.CurrentProject(c)
+
+	if proj.ActiveDeploymentID == nil {
+		c.JSON(http.StatusPreconditionFailed, gin.H{
+			"error":             "precondition_failed",
+			"error_description": "current active deployment could not be found",
+		})
+		return
+	}
+
+	db, err := dbconn.DB()
+	if err != nil {
+		controllers.InternalServerError(c, err)
+		return
+	}
+
+	var depl deployment.Deployment
+	if err := db.First(&depl, *proj.ActiveDeploymentID).Error; err != nil {
+		controllers.InternalServerError(c, err)
+		return
+	}
+
+	var jsEnvVars map[string]string
+	if err := json.Unmarshal(depl.JsEnvVars, &jsEnvVars); err != nil {
+		controllers.InternalServerError(c, err)
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"js_env_vars": jsEnvVars,
+	})
+	return
+}
+
 func deployWithJsEnvVars(db *gorm.DB, u *user.User, proj *project.Project, currentDepl *deployment.Deployment, jsEnvVars *map[string]string) (*deployment.Deployment, error) {
 	updatedJSON, err := json.Marshal(&jsEnvVars)
 	if err != nil {

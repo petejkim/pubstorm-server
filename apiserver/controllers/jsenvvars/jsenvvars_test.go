@@ -478,4 +478,79 @@ var _ = Describe("JSEnvVars", func() {
 			assertNoDeployment()
 		})
 	})
+
+	Describe("GET /projects/:project_name/jsenvvars", func() {
+		var (
+			depl *deployment.Deployment
+		)
+
+		BeforeEach(func() {
+			now := time.Now()
+			depl = factories.DeploymentWithAttrs(db, proj, u, deployment.Deployment{
+				State:      deployment.StateDeployed,
+				DeployedAt: &now,
+				JsEnvVars:  []byte(`{"foo":"bar","baz":"qux","quux":"corge"}`),
+			})
+			db.Model(proj).UpdateColumn("active_deployment_id", depl.ID)
+		})
+
+		doRequest := func() {
+			s = httptest.NewServer(server.New())
+			res, err = testhelper.MakeRequest("GET", s.URL+"/projects/foo-bar-express/jsenvvars", nil, headers, nil)
+			Expect(err).To(BeNil())
+		}
+
+		Context("when active_deployment_id exists", func() {
+			It("return 200 with OK", func() {
+				doRequest()
+				Expect(res.StatusCode).To(Equal(http.StatusOK))
+
+				b := &bytes.Buffer{}
+				_, err := b.ReadFrom(res.Body)
+				Expect(err).To(BeNil())
+
+				Expect(b.String()).To(MatchJSON(`{
+					"js_env_vars": {
+						"baz":  "qux",
+						"foo":  "bar",
+						"quux": "corge"
+					}
+				}`))
+			})
+		})
+
+		DescribeTable("errors",
+			func(setup func(), expectedCode int, expectedBody string) {
+				setup()
+
+				b := &bytes.Buffer{}
+				_, err := b.ReadFrom(res.Body)
+				Expect(err).To(BeNil())
+
+				Expect(res.StatusCode).To(Equal(expectedCode))
+				Expect(b.String()).To(MatchJSON(expectedBody))
+			},
+			Entry("when there is no active deployment", func() {
+				db.Model(proj).UpdateColumn("active_deployment_id", nil)
+				doRequest()
+			}, http.StatusPreconditionFailed, `{
+				"error":             "precondition_failed",
+				"error_description": "current active deployment could not be found"
+			}`),
+		)
+
+		sharedexamples.ItRequiresAuthentication(func() (*gorm.DB, *user.User, *http.Header) {
+			return db, u, &headers
+		}, func() *http.Response {
+			doRequest()
+			return res
+		}, nil)
+
+		sharedexamples.ItRequiresProjectCollab(func() (*gorm.DB, *user.User, *project.Project) {
+			return db, u, proj
+		}, func() *http.Response {
+			doRequest()
+			return res
+		}, nil)
+	})
 })
