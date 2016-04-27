@@ -69,7 +69,7 @@ var _ = Describe("Deployment", func() {
 		})
 	})
 
-	Describe("AllCompletedDeployments()", func() {
+	Describe("CompletedDeployments()", func() {
 		var (
 			proj *project.Project
 
@@ -86,13 +86,25 @@ var _ = Describe("Deployment", func() {
 			d3 = factories.Deployment(db, proj, u, deployment.StateDeployed)
 		})
 
-		It("returns completed deployments sort by deployed_at", func() {
-			depls, err := deployment.AllCompletedDeployments(db, proj.ID)
+		It("returns completed deployments sorted by deployed_at", func() {
+			limit := uint(0) // No limit.
+			depls, err := deployment.CompletedDeployments(db, proj.ID, limit)
 			Expect(err).To(BeNil())
 
 			Expect(depls).To(HaveLen(2))
 			Expect(depls[0].ID).To(Equal(d3.ID))
 			Expect(depls[1].ID).To(Equal(d1.ID))
+		})
+
+		Context("with a non-zero limit", func() {
+			It("limits deployments", func() {
+				limit := uint(1) // No limit.
+				depls, err := deployment.CompletedDeployments(db, proj.ID, limit)
+				Expect(err).To(BeNil())
+
+				Expect(depls).To(HaveLen(1))
+				Expect(depls[0].ID).To(Equal(d3.ID))
+			})
 		})
 	})
 

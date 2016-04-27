@@ -13,12 +13,16 @@ import (
 
 var (
 	emailRe = regexp.MustCompile(`\A[^@\s]+@([^@\s]+\.)+[^@\s]+\z`)
+)
 
+// Errors returned from this package.
+var (
 	ErrEmailTaken                  = errors.New("email is taken")
 	ErrPasswordResetTokenRequired  = errors.New("password reset token is required")
 	ErrPasswordResetTokenIncorrect = errors.New("password reset token incorrect")
 )
 
+// User is a database model representing a user account,
 type User struct {
 	gorm.Model
 
@@ -34,7 +38,7 @@ type User struct {
 	PasswordResetTokenCreatedAt *time.Time
 }
 
-// Returns a struct that can be converted to JSON
+// AsJSON returns a struct that can be converted to JSON
 func (u *User) AsJSON() interface{} {
 	return struct {
 		Email        string `json:"email"`
@@ -47,7 +51,7 @@ func (u *User) AsJSON() interface{} {
 	}
 }
 
-// Validates User, if there are invalid fields, it returns a map of
+// Validate validates User, if there are invalid fields, it returns a map of
 // <field, errors> and returns nil if valid
 func (u *User) Validate() map[string]string {
 	errors := map[string]string{}
@@ -72,7 +76,7 @@ func (u *User) Validate() map[string]string {
 	return errors
 }
 
-// Inserts the record into the DB, encrypting the Password field
+// Insert saves the record to the DB, encrypting the Password field
 func (u *User) Insert(db *gorm.DB) error {
 	err := db.Raw(`INSERT INTO users (
 		email,
@@ -88,6 +92,7 @@ func (u *User) Insert(db *gorm.DB) error {
 	return err
 }
 
+// SavePassword encrypts and updates the user's password.
 func (u *User) SavePassword(db *gorm.DB) error {
 	return db.Exec("UPDATE users SET encrypted_password = crypt(?, gen_salt('bf')) WHERE id = ?;", u.Password, u.ID).Error
 }
@@ -142,7 +147,7 @@ func (u *User) ResetPassword(db *gorm.DB, newPassword, resetToken string) error 
 	return nil
 }
 
-// Checks email and password and return user if credentials are valid
+// Authenticate checks email and password and return user if credentials are valid
 func Authenticate(db *gorm.DB, email, password string) (*User, error) {
 	u := &User{}
 	if err := db.Where(
@@ -158,7 +163,7 @@ func Authenticate(db *gorm.DB, email, password string) (*User, error) {
 	return u, nil
 }
 
-// Finds user by email and confirmation code and confirms user if found
+// Confirm finds user by email and confirmation code and confirms user if found
 func Confirm(db *gorm.DB, email, confirmationCode string) (confirmed bool, err error) {
 	q := db.Model(User{}).Where(
 		"email = ? AND confirmation_code = ? AND confirmed_at IS NULL", email, confirmationCode,
@@ -174,7 +179,7 @@ func Confirm(db *gorm.DB, email, confirmationCode string) (confirmed bool, err e
 	return true, nil
 }
 
-// Finds user by email
+// FindByEmail returns the user with the given email
 func FindByEmail(db *gorm.DB, email string) (u *User, err error) {
 	u = &User{}
 	q := db.Where("email = ?", email).First(u)

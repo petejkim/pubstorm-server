@@ -8,6 +8,7 @@ import (
 	"github.com/jinzhu/gorm"
 )
 
+// Allowed deployment states.
 const (
 	StatePendingUpload   = "pending_upload"
 	StateUploaded        = "uploaded"
@@ -19,8 +20,12 @@ const (
 	StateBuildFailed     = "build_failed"
 )
 
-var ErrInvalidState = errors.New("state is not valid")
+// Errors returned from this package.
+var (
+	ErrInvalidState = errors.New("state is not valid")
+)
 
+// Deployment is a database model representing a particular deploy of a Project.
 type Deployment struct {
 	gorm.Model
 
@@ -38,7 +43,8 @@ type Deployment struct {
 	ErrorMessage *string
 }
 
-type DeploymentJSON struct {
+// JSON specifies which fields of a deployment will be marshaled to JSON.
+type JSON struct {
 	ID           uint       `json:"id"`
 	State        string     `json:"state"`
 	Version      int64      `json:"version"`
@@ -47,9 +53,9 @@ type DeploymentJSON struct {
 	ErrorMessage *string    `json:"error_message,omitempty"`
 }
 
-// Returns a struct that can be converted to JSON
-func (d *Deployment) AsJSON() *DeploymentJSON {
-	return &DeploymentJSON{
+// AsJSON returns a struct that can be converted to JSON
+func (d *Deployment) AsJSON() *JSON {
+	return &JSON{
 		ID:           d.ID,
 		State:        d.State,
 		Version:      d.Version,
@@ -58,12 +64,12 @@ func (d *Deployment) AsJSON() *DeploymentJSON {
 	}
 }
 
-// Returns prefix and ID in <prefix>-<id> format
+// PrefixID returns prefix and ID in <prefix>-<id> format
 func (d *Deployment) PrefixID() string {
 	return fmt.Sprintf("%s-%d", d.Prefix, d.ID)
 }
 
-// Returns previous deployment of current deployment
+// PreviousCompletedDeployment returns previous deployment of current deployment
 func (d *Deployment) PreviousCompletedDeployment(db *gorm.DB) (*Deployment, error) {
 	var prevDepl Deployment
 
@@ -83,16 +89,23 @@ func (d *Deployment) PreviousCompletedDeployment(db *gorm.DB) (*Deployment, erro
 	return &prevDepl, nil
 }
 
-// Returns all completed deployments
-func AllCompletedDeployments(db *gorm.DB, projectID uint) ([]*Deployment, error) {
+// CompletedDeployments returns completed deployments up to the given limit.
+// A limit of 0 implies no limit (i.e. all deployments will be returned).
+// Apologies for the magic number, but who'd ask for 0 deployments anyway.
+func CompletedDeployments(db *gorm.DB, projectID, limit uint) ([]*Deployment, error) {
+	qLimit := int(limit)
+	if qLimit == 0 {
+		qLimit = -1 // Gorm uses a limit of -1 to "disable" LIMIT clauses.
+	}
+
 	var depls []*Deployment
-	if err := db.Where("project_id = ? AND state = ?", projectID, StateDeployed).Order("deployed_at DESC").Find(&depls).Error; err != nil {
+	if err := db.Limit(qLimit).Where("project_id = ? AND state = ?", projectID, StateDeployed).Order("deployed_at DESC").Find(&depls).Error; err != nil {
 		return nil, err
 	}
 	return depls, nil
 }
 
-// Updates deployment state
+// UpdateState updates deployment state
 func (d *Deployment) UpdateState(db *gorm.DB, state string) error {
 	if !isValidState(state) {
 		return ErrInvalidState

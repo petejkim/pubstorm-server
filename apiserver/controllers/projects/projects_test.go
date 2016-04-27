@@ -14,7 +14,6 @@ import (
 	"github.com/nitrous-io/rise-server/apiserver/models/cert"
 	"github.com/nitrous-io/rise-server/apiserver/models/deployment"
 	"github.com/nitrous-io/rise-server/apiserver/models/domain"
-	"github.com/nitrous-io/rise-server/apiserver/models/oauthclient"
 	"github.com/nitrous-io/rise-server/apiserver/models/oauthtoken"
 	"github.com/nitrous-io/rise-server/apiserver/models/project"
 	"github.com/nitrous-io/rise-server/apiserver/models/user"
@@ -48,9 +47,8 @@ var _ = Describe("Projects", func() {
 		res *http.Response
 		err error
 
-		u  *user.User
-		oc *oauthclient.OauthClient
-		t  *oauthtoken.OauthToken
+		u *user.User
+		t *oauthtoken.OauthToken
 
 		fakeTracker *fake.Tracker
 		origTracker tracker.Trackable
@@ -61,7 +59,7 @@ var _ = Describe("Projects", func() {
 		Expect(err).To(BeNil())
 		testhelper.TruncateTables(db.DB())
 
-		u, oc, t = factories.AuthTrio(db)
+		u, _, t = factories.AuthTrio(db)
 
 		origTracker = common.Tracker
 		fakeTracker = &fake.Tracker{}

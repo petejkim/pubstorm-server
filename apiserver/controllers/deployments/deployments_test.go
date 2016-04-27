@@ -1033,7 +1033,7 @@ var _ = Describe("Deployments", func() {
 			return res
 		}, nil)
 
-		It("returns all active deployments", func() {
+		It("returns all completed deployments", func() {
 			doRequest()
 
 			b := &bytes.Buffer{}
@@ -1071,6 +1071,37 @@ var _ = Describe("Deployments", func() {
 				depl1.ID, depl1.State, formattedTimeForJSON(depl1.DeployedAt), depl1.Version,
 				depl4.ID, depl4.State, formattedTimeForJSON(depl4.DeployedAt), depl4.Version,
 			)))
+		})
+
+		Context("when project has a limit on max deployments kept", func() {
+			BeforeEach(func() {
+				proj.MaxDeploysKept = 1
+				Expect(db.Save(proj).Error).To(BeNil())
+			})
+
+			It("returns only those deployments", func() {
+				doRequest()
+
+				b := &bytes.Buffer{}
+				_, err = b.ReadFrom(res.Body)
+				Expect(err).To(BeNil())
+				Expect(res.StatusCode).To(Equal(http.StatusOK))
+
+				depl2 = reloadDeployment(depl2)
+
+				Expect(b.String()).To(MatchJSON(fmt.Sprintf(`{
+					"deployments": [
+						{
+							"id": %d,
+							"state": "%s",
+							"active": true,
+							"deployed_at": %s,
+							"version": %d
+						}
+					]
+				}`, depl2.ID, depl2.State, formattedTimeForJSON(depl2.DeployedAt), depl2.Version,
+				)))
+			})
 		})
 	})
 })
