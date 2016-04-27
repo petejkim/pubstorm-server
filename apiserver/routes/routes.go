@@ -65,6 +65,7 @@ func Draw(r *gin.Engine) {
 				lock.POST("/auth", projects.CreateAuth)
 				lock.DELETE("/auth", projects.DeleteAuth)
 				lock.PUT("/jsenvvars/add", jsenvvars.Add)
+				lock.PUT("/jsenvvars/delete", jsenvvars.Delete)
 			}
 		}
 

@@ -132,15 +132,3 @@ func (s *S3) DeleteAll(region, bucket, prefix string) error {
 
 	return nil
 }
-
-func (s *S3) Copy(region, bucket, key, newKey string) (err error) {
-	svc := s3.New(session.New(&aws.Config{Region: aws.String(region)}))
-
-	_, err = svc.CopyObject(&s3.CopyObjectInput{
-		Bucket:     aws.String(bucket),
-		Key:        aws.String(newKey),
-		CopySource: aws.String(bucket + "/" + key),
-	})
-
-	return err
-}

@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"testing"
 	"time"
 
@@ -100,10 +101,13 @@ var _ = Describe("JSEnvVars", func() {
 
 			params["foo"] = "bar"
 
+			rawBundle := factories.RawBundle(db, proj)
+
 			now := time.Now()
 			depl = factories.DeploymentWithAttrs(db, proj, u, deployment.Deployment{
-				State:      deployment.StateDeployed,
-				DeployedAt: &now,
+				State:       deployment.StateDeployed,
+				RawBundleID: &rawBundle.ID,
+				DeployedAt:  &now,
 			})
 			db.Model(proj).UpdateColumn("active_deployment_id", depl.ID)
 		})
@@ -141,8 +145,6 @@ var _ = Describe("JSEnvVars", func() {
 		assertNoDeployment := func() {
 			// Don't enqueue any messages to deployment queue
 			Expect(testhelper.ConsumeQueue(mq, queues.Deploy)).To(BeNil())
-			// Don't copy a bundle from current deployment
-			Expect(fakeS3.CopyCalls.Count()).To(Equal(0))
 			var count int
 			Expect(db.Model(deployment.Deployment{}).Where("id <> ?", depl.ID).Count(&count).Error).To(BeNil())
 			Expect(count).To(Equal(0))
@@ -168,7 +170,7 @@ var _ = Describe("JSEnvVars", func() {
 				j := map[string]interface{}{
 					"deployment": map[string]interface{}{
 						"id":      newDepl.ID,
-						"state":   deployment.StatePendingDeploy,
+						"state":   deployment.StatePendingBuild,
 						"version": newDepl.Version,
 					},
 				}
@@ -178,35 +180,23 @@ var _ = Describe("JSEnvVars", func() {
 				Expect(b.String()).To(MatchJSON(expectedJSON))
 
 				Expect(newDepl.JsEnvVars).To(MatchJSON(`{"foo": "bar"}`))
-			})
-
-			It("uploads bundle to s3", func() {
-				Expect(fakeS3.CopyCalls.Count()).To(Equal(1))
-				call := fakeS3.CopyCalls.NthCall(1)
-				Expect(call).NotTo(BeNil())
-				Expect(call.Arguments[0]).To(Equal(s3client.BucketRegion))
-				Expect(call.Arguments[1]).To(Equal(s3client.BucketName))
-				Expect(call.Arguments[2]).To(Equal(fmt.Sprintf("deployments/%s-%d/raw-bundle.tar.gz", depl.Prefix, depl.ID)))
-				Expect(call.Arguments[3]).To(Equal(fmt.Sprintf("deployments/%s-%d/raw-bundle.tar.gz", newDepl.Prefix, newDepl.ID)))
+				Expect(newDepl.RawBundleID).To(Equal(depl.RawBundleID))
 			})
 
 			It("enqueues a deploy job", func() {
-				d := testhelper.ConsumeQueue(mq, queues.Deploy)
+				d := testhelper.ConsumeQueue(mq, queues.Build)
 				Expect(d).NotTo(BeNil())
 				Expect(d.Body).To(MatchJSON(fmt.Sprintf(`
 					{
-						"deployment_id": %d,
-						"skip_webroot_upload": false,
-						"skip_invalidation": false,
-						"use_raw_bundle": false
+						"deployment_id": %d
 					}
 				`, newDepl.ID)))
 			})
 
-			It("marks the deployment as 'pending_deploy'", func() {
+			It("marks the deployment as 'pending_build'", func() {
 				doRequest()
 
-				Expect(newDepl.State).To(Equal(deployment.StatePendingDeploy))
+				Expect(newDepl.State).To(Equal(deployment.StatePendingBuild))
 			})
 		})
 
@@ -269,6 +259,192 @@ var _ = Describe("JSEnvVars", func() {
 			}`),
 			Entry("when request body is empty", func() {
 				doRequestWith([]byte(`{}`))
+			}, 422, `{
+				"error": "invalid_params",
+				"error_description": "request body is empty"
+			}`),
+		)
+
+		sharedexamples.ItRequiresAuthentication(func() (*gorm.DB, *user.User, *http.Header) {
+			return db, u, &headers
+		}, func() *http.Response {
+			doRequest()
+			return res
+		}, func() {
+			assertNoDeployment()
+		})
+
+		sharedexamples.ItRequiresProjectCollab(func() (*gorm.DB, *user.User, *project.Project) {
+			return db, u, proj
+		}, func() *http.Response {
+			doRequest()
+			return res
+		}, func() {
+			assertNoDeployment()
+		})
+
+		sharedexamples.ItLocksProject(func() (*gorm.DB, *project.Project) {
+			return db, proj
+		}, func() *http.Response {
+			doRequest()
+			return res
+		}, func() {
+			assertNoDeployment()
+		})
+	})
+
+	Describe("PUT /projects/:project_name/jsenvvars/delete", func() {
+		var (
+			fakeS3 *fake.S3
+			origS3 filetransfer.FileTransfer
+
+			params url.Values
+			depl   *deployment.Deployment
+		)
+
+		BeforeEach(func() {
+			origS3 = s3client.S3
+			fakeS3 = &fake.S3{}
+			s3client.S3 = fakeS3
+
+			params = url.Values{
+				"keys": {"foo", "baz"},
+			}
+
+			rawBundle := factories.RawBundle(db, proj)
+
+			now := time.Now()
+			depl = factories.DeploymentWithAttrs(db, proj, u, deployment.Deployment{
+				State:       deployment.StateDeployed,
+				DeployedAt:  &now,
+				RawBundleID: &rawBundle.ID,
+				JsEnvVars:   []byte(`{"foo":"bar","baz":"qux", "quux": "corge"}`),
+			})
+			db.Model(proj).UpdateColumn("active_deployment_id", depl.ID)
+		})
+
+		AfterEach(func() {
+			s3client.S3 = origS3
+		})
+
+		doRequest := func() {
+			s = httptest.NewServer(server.New())
+			res, err = testhelper.MakeRequest("PUT", s.URL+"/projects/foo-bar-express/jsenvvars/delete", params, headers, nil)
+			Expect(err).To(BeNil())
+		}
+
+		assertNoDeployment := func() {
+			// Don't enqueue any messages to deployment queue
+			Expect(testhelper.ConsumeQueue(mq, queues.Build)).To(BeNil())
+			var count int
+			Expect(db.Model(deployment.Deployment{}).Where("id <> ?", depl.ID).Count(&count).Error).To(BeNil())
+			Expect(count).To(Equal(0))
+		}
+
+		Context("when active_deployment_id exists", func() {
+			var newDepl *deployment.Deployment
+
+			BeforeEach(func() {
+				doRequest()
+
+				newDepl = &deployment.Deployment{}
+				db.Last(newDepl)
+			})
+
+			It("return 202 with accepted", func() {
+				Expect(res.StatusCode).To(Equal(http.StatusAccepted))
+
+				b := &bytes.Buffer{}
+				_, err := b.ReadFrom(res.Body)
+				Expect(err).To(BeNil())
+
+				j := map[string]interface{}{
+					"deployment": map[string]interface{}{
+						"id":      newDepl.ID,
+						"state":   deployment.StatePendingBuild,
+						"version": newDepl.Version,
+					},
+				}
+
+				expectedJSON, err := json.Marshal(j)
+				Expect(err).To(BeNil())
+				Expect(b.String()).To(MatchJSON(expectedJSON))
+
+				Expect(newDepl.JsEnvVars).To(MatchJSON(`{"quux": "corge"}`))
+				Expect(newDepl.RawBundleID).To(Equal(depl.RawBundleID))
+			})
+
+			It("enqueues a deploy job", func() {
+				d := testhelper.ConsumeQueue(mq, queues.Build)
+				Expect(d).NotTo(BeNil())
+				Expect(d.Body).To(MatchJSON(fmt.Sprintf(`
+					{
+						"deployment_id": %d
+					}
+				`, newDepl.ID)))
+			})
+
+			It("marks the deployment as 'pending_build'", func() {
+				doRequest()
+
+				Expect(newDepl.State).To(Equal(deployment.StatePendingBuild))
+			})
+		})
+
+		Context("when there is no changes", func() {
+			BeforeEach(func() {
+				params.Set("keys", "hello")
+				doRequest()
+			})
+
+			It("return 202 with accepted", func() {
+				Expect(res.StatusCode).To(Equal(http.StatusAccepted))
+
+				b := &bytes.Buffer{}
+				_, err := b.ReadFrom(res.Body)
+				Expect(err).To(BeNil())
+
+				Expect(db.First(depl, depl.ID).Error).To(BeNil())
+				j := map[string]interface{}{
+					"deployment": map[string]interface{}{
+						"id":          depl.ID,
+						"state":       depl.State,
+						"version":     depl.Version,
+						"deployed_at": depl.DeployedAt,
+					},
+				}
+
+				expectedJSON, err := json.Marshal(j)
+				Expect(err).To(BeNil())
+				Expect(b.String()).To(MatchJSON(expectedJSON))
+
+				assertNoDeployment()
+			})
+		})
+
+		DescribeTable("errors",
+			func(setup func(), expectedCode int, expectedBody string) {
+				setup()
+
+				b := &bytes.Buffer{}
+				_, err := b.ReadFrom(res.Body)
+				Expect(err).To(BeNil())
+
+				Expect(res.StatusCode).To(Equal(expectedCode))
+				Expect(b.String()).To(MatchJSON(expectedBody))
+
+				assertNoDeployment()
+			},
+			Entry("when there is no active deployment", func() {
+				db.Model(proj).UpdateColumn("active_deployment_id", nil)
+				doRequest()
+			}, http.StatusPreconditionFailed, `{
+				"error":             "precondition_failed",
+				"error_description": "current active deployment could not be found"
+			}`),
+			Entry("when request body is empty", func() {
+				params.Del("keys")
+				doRequest()
 			}, 422, `{
 				"error": "invalid_params",
 				"error_description": "request body is empty"
