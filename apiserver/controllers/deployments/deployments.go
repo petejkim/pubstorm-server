@@ -38,6 +38,17 @@ func Create(c *gin.Context) {
 		UserID:    u.ID,
 	}
 
+	// Get js environment variables from previous project
+	if proj.ActiveDeploymentID != nil {
+		var prevDepl deployment.Deployment
+		if err := db.Where("id = ?", proj.ActiveDeploymentID).First(&prevDepl).Error; err != nil {
+			controllers.InternalServerError(c, err)
+			return
+		}
+
+		depl.JsEnvVars = prevDepl.JsEnvVars
+	}
+
 	if strings.HasPrefix(c.Request.Header.Get("Content-Type"), "multipart/form-data; boundary=") {
 		reader, err := c.Request.MultipartReader()
 		if err != nil {
@@ -63,6 +74,7 @@ func Create(c *gin.Context) {
 			return
 		}
 
+		// upload "payload" part to s3
 		for {
 			part, err := reader.NextPart()
 			if err == io.EOF {

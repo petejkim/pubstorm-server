@@ -279,6 +279,7 @@ var _ = Describe("Deployments", func() {
 
 					depl = &deployment.Deployment{}
 					db.Last(depl)
+
 					bun := &rawbundle.RawBundle{}
 					db.Last(bun)
 
@@ -291,6 +292,7 @@ var _ = Describe("Deployments", func() {
 
 					Expect(bun).NotTo(BeNil())
 					Expect(*depl.RawBundleID).To(Equal(bun.ID))
+					Expect(depl.JsEnvVars).To(Equal([]byte("{}")))
 				})
 
 				It("creates a bundle record", func() {
@@ -612,6 +614,33 @@ var _ = Describe("Deployments", func() {
 							}
 						}`))
 					})
+				})
+			})
+
+			Context("when the request is valid and previous active deployment exists", func() {
+				var depl *deployment.Deployment
+
+				BeforeEach(func() {
+					depl := factories.DeploymentWithAttrs(db, proj, u, deployment.Deployment{
+						JsEnvVars: []byte(`{"foo":"bar","express":"com"}`),
+						State:     deployment.StateDeployed,
+					})
+					proj.ActiveDeploymentID = &depl.ID
+					Expect(db.Save(proj).Error).To(BeNil())
+				})
+
+				It("copies the js env vars from previous active deployment", func() {
+					doRequest()
+					depl = &deployment.Deployment{}
+					db.Last(depl)
+
+					Expect(depl).NotTo(BeNil())
+					Expect(depl.ProjectID).To(Equal(proj.ID))
+					Expect(depl.UserID).To(Equal(u.ID))
+					Expect(depl.State).To(Equal(deployment.StatePendingBuild))
+					Expect(depl.Prefix).NotTo(HaveLen(0))
+					Expect(depl.Version).To(Equal(int64(2)))
+					Expect(depl.JsEnvVars).To(Equal([]byte(`{"foo":"bar","express":"com"}`)))
 				})
 			})
 		})
