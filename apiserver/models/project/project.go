@@ -201,3 +201,20 @@ func (p *Project) NextVersion(db *gorm.DB) (int64, error) {
 
 	return r.V, nil
 }
+
+// Destroy a project
+func (p *Project) Destroy(db *gorm.DB) error {
+	if err := db.Exec("UPDATE certs c SET deleted_at = now() FROM domains d WHERE c.domain_id = d.id AND d.project_id = ?", p.ID).Error; err != nil {
+		return err
+	}
+
+	if err := db.Delete(domain.Domain{}, "project_id = ?", p.ID).Error; err != nil {
+		return err
+	}
+
+	if err := db.Delete(p).Error; err != nil {
+		return err
+	}
+
+	return nil
+}

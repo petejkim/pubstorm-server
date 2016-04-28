@@ -7,6 +7,7 @@ import (
 
 	"github.com/jinzhu/gorm"
 	"github.com/nitrous-io/rise-server/apiserver/dbconn"
+	"github.com/nitrous-io/rise-server/apiserver/models/cert"
 	"github.com/nitrous-io/rise-server/apiserver/models/collab"
 	"github.com/nitrous-io/rise-server/apiserver/models/domain"
 	"github.com/nitrous-io/rise-server/apiserver/models/project"
@@ -356,6 +357,82 @@ var _ = Describe("Project", func() {
 			v, err = proj2.NextVersion(db)
 			Expect(err).To(BeNil())
 			Expect(v).To(Equal(int64(2)))
+		})
+	})
+
+	Describe("Destroy()", func() {
+		var (
+			proj  *project.Project
+			proj2 *project.Project
+		)
+
+		BeforeEach(func() {
+			proj = factories.Project(db, u)
+			proj2 = factories.Project(db, u)
+		})
+
+		It("deletes associated domains and certs", func() {
+			Expect(proj.Destroy(db)).To(BeNil())
+
+			var count int
+			Expect(db.Model(project.Project{}).Where("id = ?", proj.ID).Count(&count).Error).To(BeNil())
+			Expect(count).To(Equal(0))
+		})
+
+		Context("when a project has domains and certs", func() {
+			var (
+				dm1 *domain.Domain
+				dm2 *domain.Domain
+
+				dm3 *domain.Domain
+				ct3 *cert.Cert
+			)
+
+			BeforeEach(func() {
+				dm1 = factories.Domain(db, proj)
+				dm2 = factories.Domain(db, proj)
+
+				ct1 := &cert.Cert{
+					DomainID:        dm1.ID,
+					CertificatePath: "old/path",
+					PrivateKeyPath:  "old/path",
+				}
+				Expect(db.Create(ct1).Error).To(BeNil())
+
+				ct2 := &cert.Cert{
+					DomainID:        dm2.ID,
+					CertificatePath: "old/path",
+					PrivateKeyPath:  "old/path",
+				}
+				Expect(db.Create(ct2).Error).To(BeNil())
+
+				dm3 = factories.Domain(db, proj2)
+
+				ct3 = &cert.Cert{
+					DomainID:        dm3.ID,
+					CertificatePath: "old/path",
+					PrivateKeyPath:  "old/path",
+				}
+				Expect(db.Create(ct3).Error).To(BeNil())
+			})
+
+			It("deletes associated domains and certs", func() {
+				Expect(proj.Destroy(db)).To(BeNil())
+
+				var count int
+				Expect(db.Model(domain.Domain{}).Where("project_id = ?", proj.ID).Count(&count).Error).To(BeNil())
+				Expect(count).To(Equal(0))
+
+				Expect(db.Model(cert.Cert{}).Where("domain_id IN (?,?)", dm1.ID, dm2.ID).Count(&count).Error).To(BeNil())
+				Expect(count).To(Equal(0))
+
+				// Make sure it does not delete other project's domains and certs
+				Expect(db.Model(domain.Domain{}).Where("id = ?", dm3.ID).Count(&count).Error).To(BeNil())
+				Expect(count).To(Equal(1))
+
+				Expect(db.Model(cert.Cert{}).Where("id = ?", ct3.ID).Count(&count).Error).To(BeNil())
+				Expect(count).To(Equal(1))
+			})
 		})
 	})
 })

@@ -10,6 +10,7 @@ import (
 
 	"github.com/jinzhu/gorm"
 	"github.com/nitrous-io/rise-server/apiserver/dbconn"
+	"github.com/nitrous-io/rise-server/apiserver/models/cert"
 	"github.com/nitrous-io/rise-server/apiserver/models/deployment"
 	"github.com/nitrous-io/rise-server/apiserver/models/domain"
 	"github.com/nitrous-io/rise-server/apiserver/models/oauthclient"
@@ -708,8 +709,6 @@ var _ = Describe("Projects", func() {
 			dm1  *domain.Domain
 			dm2  *domain.Domain
 
-			proj2   *project.Project
-			dm3     *domain.Domain
 			headers http.Header
 		)
 
@@ -734,8 +733,19 @@ var _ = Describe("Projects", func() {
 			dm1 = factories.Domain(db, proj)
 			dm2 = factories.Domain(db, proj)
 
-			proj2 = factories.Project(db, u)
-			dm3 = factories.Domain(db, proj2)
+			ct1 := &cert.Cert{
+				DomainID:        dm1.ID,
+				CertificatePath: "old/path",
+				PrivateKeyPath:  "old/path",
+			}
+			Expect(db.Create(ct1).Error).To(BeNil())
+
+			ct2 := &cert.Cert{
+				DomainID:        dm2.ID,
+				CertificatePath: "old/path",
+				PrivateKeyPath:  "old/path",
+			}
+			Expect(db.Create(ct2).Error).To(BeNil())
 		})
 
 		AfterEach(func() {
@@ -760,38 +770,46 @@ var _ = Describe("Projects", func() {
 			}`))
 		})
 
-		It("deletes associated domains", func() {
+		It("deletes associated domains and certs", func() {
 			doRequest()
-			var dms []domain.Domain
 
-			err := db.Where("project_id = ?", proj.ID).Find(&dms).Error
-			Expect(err).To(BeNil())
-			Expect(len(dms)).To(Equal(0))
+			var count int
+			Expect(db.Model(domain.Domain{}).Where("project_id = ?", proj.ID).Count(&count).Error).To(BeNil())
+			Expect(count).To(Equal(0))
 
-			// Make sure it does not delete other project's domains
-			Expect(db.First(&domain.Domain{}, dm3.ID).Error).To(BeNil())
+			Expect(db.Model(cert.Cert{}).Where("domain_id IN (?,?)", dm1.ID, dm2.ID).Count(&count).Error).To(BeNil())
+			Expect(count).To(Equal(0))
+		})
+
+		It("deletes meta.json and ssl certs for the associated domains from s3", func() {
+			doRequest()
+
+			Expect(fakeS3.DeleteCalls.Count()).To(Equal(1))
+
+			deleteCall := fakeS3.DeleteCalls.NthCall(1)
+			Expect(deleteCall).NotTo(BeNil())
+			Expect(deleteCall.Arguments[0]).To(Equal(s3client.BucketRegion))
+			Expect(deleteCall.Arguments[1]).To(Equal(s3client.BucketName))
+			Expect(deleteCall.ReturnValues[0]).To(BeNil())
+
+			filesToDelete := []string{
+				"domains/" + proj.DefaultDomainName() + "/meta.json",
+				"domains/" + dm1.Name + "/meta.json",
+				"certs/" + dm1.Name + "/ssl.crt",
+				"certs/" + dm1.Name + "/ssl.key",
+				"domains/" + dm2.Name + "/meta.json",
+				"certs/" + dm2.Name + "/ssl.crt",
+				"certs/" + dm2.Name + "/ssl.key",
+			}
+
+			for i, path := range filesToDelete {
+				Expect(deleteCall.Arguments[2+i]).To(Equal(path))
+			}
 		})
 
 		It("deletes the given project", func() {
 			doRequest()
 			Expect(db.First(&project.Project{}, proj.ID).Error).To(Equal(gorm.RecordNotFound))
-			// Make sure it does not delete other projects
-			Expect(db.First(&project.Project{}, proj2.ID).Error).To(BeNil())
-		})
-
-		It("deletes the meta.json for the associated domains from s3", func() {
-			doRequest()
-
-			Expect(fakeS3.DeleteCalls.Count()).To(Equal(3))
-
-			for i, domainName := range []string{proj.Name + "." + shared.DefaultDomain, dm1.Name, dm2.Name} {
-				deleteCall := fakeS3.DeleteCalls.NthCall(i + 1)
-				Expect(deleteCall).NotTo(BeNil())
-				Expect(deleteCall.Arguments[0]).To(Equal(s3client.BucketRegion))
-				Expect(deleteCall.Arguments[1]).To(Equal(s3client.BucketName))
-				Expect(deleteCall.Arguments[2]).To(Equal("/domains/" + domainName + "/meta.json"))
-				Expect(deleteCall.ReturnValues[0]).To(BeNil())
-			}
 		})
 
 		It("publishes invalidation message for the associated domains", func() {

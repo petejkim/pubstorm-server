@@ -10,7 +10,6 @@ import (
 	"github.com/nitrous-io/rise-server/apiserver/controllers"
 	"github.com/nitrous-io/rise-server/apiserver/dbconn"
 	"github.com/nitrous-io/rise-server/apiserver/models/blacklistedname"
-	"github.com/nitrous-io/rise-server/apiserver/models/domain"
 	"github.com/nitrous-io/rise-server/apiserver/models/project"
 	"github.com/nitrous-io/rise-server/pkg/job"
 	"github.com/nitrous-io/rise-server/pkg/pubsub"
@@ -235,11 +234,19 @@ func Destroy(c *gin.Context) {
 		return
 	}
 
+	// Delete ssl certs from S3
+	var filesToDelete []string
 	for _, domainName := range domainNames {
-		if err := s3client.Delete("/domains/" + domainName + "/meta.json"); err != nil {
-			controllers.InternalServerError(c, err)
-			return
+		filesToDelete = append(filesToDelete, "domains/"+domainName+"/meta.json")
+		if domainName != proj.DefaultDomainName() {
+			filesToDelete = append(filesToDelete, "certs/"+domainName+"/ssl.crt")
+			filesToDelete = append(filesToDelete, "certs/"+domainName+"/ssl.key")
 		}
+	}
+
+	if err := s3client.Delete(filesToDelete...); err != nil {
+		controllers.InternalServerError(c, err)
+		return
 	}
 
 	m, err := pubsub.NewMessageWithJSON(exchanges.Edges, exchanges.RouteV1Invalidation, &messages.V1InvalidationMessageData{
@@ -256,12 +263,7 @@ func Destroy(c *gin.Context) {
 		return
 	}
 
-	if err := tx.Delete(domain.Domain{}, "project_id = ?", proj.ID).Error; err != nil {
-		controllers.InternalServerError(c, err)
-		return
-	}
-
-	if err := tx.Delete(proj).Error; err != nil {
+	if err := proj.Destroy(tx); err != nil {
 		controllers.InternalServerError(c, err)
 		return
 	}
