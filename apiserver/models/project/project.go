@@ -29,7 +29,7 @@ type Project struct {
 
 	Name                 string
 	UserID               uint
-	DefaultDomainEnabled bool
+	DefaultDomainEnabled bool `sql:"default:true"`
 
 	ActiveDeploymentID *uint // pointer to be nullable. remember to dereference by using *ActiveDeploymentID to get actual value
 
