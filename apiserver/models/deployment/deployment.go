@@ -30,6 +30,7 @@ type Deployment struct {
 	ProjectID uint
 	UserID    uint
 
+	Checksum   string
 	DeployedAt *time.Time
 }
 
@@ -94,6 +95,10 @@ func (d *Deployment) UpdateState(db *gorm.DB, state string) error {
 	q := db.Model(Deployment{}).Where("id = ?", d.ID).Update("state", state)
 	if state == StateDeployed {
 		q = q.Update("deployed_at", gorm.Expr("now()"))
+	}
+
+	if state == StateUploaded && d.Checksum != "" {
+		q = q.Update("checksum", d.Checksum)
 	}
 
 	if err := q.Scan(d).Error; err != nil {

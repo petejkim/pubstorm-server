@@ -11,6 +11,7 @@ import (
 	"github.com/nitrous-io/rise-server/apiserver/controllers"
 	"github.com/nitrous-io/rise-server/apiserver/dbconn"
 	"github.com/nitrous-io/rise-server/apiserver/models/deployment"
+	"github.com/nitrous-io/rise-server/pkg/hasher"
 	"github.com/nitrous-io/rise-server/pkg/job"
 	"github.com/nitrous-io/rise-server/shared/messages"
 	"github.com/nitrous-io/rise-server/shared/queues"
@@ -83,12 +84,14 @@ func Create(c *gin.Context) {
 				return
 			}
 
+			hashReader := hasher.NewReader(part)
 			uploadKey := fmt.Sprintf("deployments/%s-%d/raw-bundle.tar.gz", depl.Prefix, depl.ID)
-
-			if err := s3client.Upload(uploadKey, part, "", "private"); err != nil {
+			if err := s3client.Upload(uploadKey, hashReader, "", "private"); err != nil {
 				controllers.InternalServerError(c, err)
 				return
 			}
+
+			depl.Checksum = hashReader.Checksum()
 			break
 		}
 	}
@@ -112,9 +115,7 @@ func Create(c *gin.Context) {
 		return
 	}
 
-	// Gorm does not refetch the row from DB after update.
-	// So we call `Find` again to fetch actual values particularly for time fields because of precision.
-	if err := db.Model(depl).Update("state", deployment.StatePendingDeploy).Find(depl).Error; err != nil {
+	if err := depl.UpdateState(db, deployment.StatePendingDeploy); err != nil {
 		controllers.InternalServerError(c, err)
 		return
 	}

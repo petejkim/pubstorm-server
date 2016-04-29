@@ -287,6 +287,7 @@ var _ = Describe("Deployments", func() {
 					Expect(depl.State).To(Equal(deployment.StatePendingDeploy))
 					Expect(depl.Prefix).NotTo(HaveLen(0))
 					Expect(depl.Version).To(Equal(int64(1)))
+					Expect(depl.Checksum).To(Equal("db39e098913eee20e5371139022e4431ffe7b01baa524bd87e08f2763de3ea55"))
 				})
 
 				It("uploads bundle to s3", func() {
@@ -319,6 +320,7 @@ var _ = Describe("Deployments", func() {
 
 						depl = &deployment.Deployment{}
 						db.Last(depl)
+
 						b := &bytes.Buffer{}
 						_, err = b.ReadFrom(res.Body)
 
