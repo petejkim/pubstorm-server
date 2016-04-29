@@ -19,6 +19,7 @@ import (
 	"github.com/nitrous-io/rise-server/apiserver/models/domain"
 	"github.com/nitrous-io/rise-server/apiserver/models/oauthtoken"
 	"github.com/nitrous-io/rise-server/apiserver/models/project"
+	"github.com/nitrous-io/rise-server/apiserver/models/rawbundle"
 	"github.com/nitrous-io/rise-server/apiserver/models/user"
 	"github.com/nitrous-io/rise-server/apiserver/server"
 	"github.com/nitrous-io/rise-server/pkg/filetransfer"
@@ -120,20 +121,35 @@ var _ = Describe("Deployments", func() {
 			s3client.S3 = origS3
 		})
 
-		doRequestWithMultipart := func(partName string) {
+		writeFilePart := func(writer *multipart.Writer, filePath string, partName string, data []byte) {
+			part, err := writer.CreateFormFile(partName, filePath)
+			Expect(err).To(BeNil())
+
+			_, err = part.Write(data)
+			Expect(err).To(BeNil())
+		}
+
+		writeFieldPart := func(writer *multipart.Writer, partName string, data []byte) {
+			part, err := writer.CreateFormField(partName)
+			Expect(err).To(BeNil())
+
+			_, err = part.Write(data)
+			Expect(err).To(BeNil())
+		}
+
+		doRequestWithMultipart := func(payloadPartName string, checksumPartName string) {
 			s = httptest.NewServer(server.New())
 
 			body := &bytes.Buffer{}
 			writer := multipart.NewWriter(body)
 
-			part, err := writer.CreateFormFile(partName, "/tmp/rise/foo.tar.gz")
-			Expect(err).To(BeNil())
+			if checksumPartName != "" {
+				writeFieldPart(writer, checksumPartName, []byte("e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"))
+			}
 
-			_, err = part.Write([]byte("hello\nworld!"))
-			Expect(err).To(BeNil())
+			writeFilePart(writer, "/tmp/rise/foo.tar.gz", payloadPartName, []byte("hello\nworld!"))
 
-			err = writer.Close()
-			Expect(err).To(BeNil())
+			Expect(writer.Close()).To(BeNil())
 
 			req, err := http.NewRequest("POST", s.URL+"/projects/foo-bar-express/deployments", body)
 			Expect(err).To(BeNil())
@@ -152,11 +168,11 @@ var _ = Describe("Deployments", func() {
 		}
 
 		doRequest := func() {
-			doRequestWithMultipart("payload")
+			doRequestWithMultipart("payload", "")
 		}
 
 		doRequestWithWrongPart := func() {
-			doRequestWithMultipart("upload")
+			doRequestWithMultipart("upload", "")
 		}
 
 		doRequestWithoutMultipart := func() {
@@ -267,13 +283,21 @@ var _ = Describe("Deployments", func() {
 			})
 
 			Context("when the request is valid", func() {
-				var depl *deployment.Deployment
+				var (
+					depl *deployment.Deployment
+					bun  *rawbundle.RawBundle
+				)
 
-				It("returns 202 accepted", func() {
+				BeforeEach(func() {
 					doRequest()
 					depl = &deployment.Deployment{}
 					db.Last(depl)
 
+					bun = &rawbundle.RawBundle{}
+					db.Last(bun)
+				})
+
+				It("returns 202 accepted", func() {
 					b := &bytes.Buffer{}
 					_, err = b.ReadFrom(res.Body)
 
@@ -300,6 +324,16 @@ var _ = Describe("Deployments", func() {
 					Expect(depl.State).To(Equal(deployment.StatePendingBuild))
 					Expect(depl.Prefix).NotTo(HaveLen(0))
 					Expect(depl.Version).To(Equal(int64(1)))
+
+					Expect(bun).NotTo(BeNil())
+					Expect(*depl.RawBundleID).To(Equal(bun.ID))
+				})
+
+				It("creates a bundle record", func() {
+					Expect(bun).NotTo(BeNil())
+					Expect(bun.ProjectID).To(Equal(proj.ID))
+					Expect(bun.UploadedPath).To(Equal(fmt.Sprintf("deployments/%s-%d/raw-bundle.tar.gz", depl.Prefix, depl.ID)))
+					Expect(bun.Checksum).To(Equal("db39e098913eee20e5371139022e4431ffe7b01baa524bd87e08f2763de3ea55"))
 				})
 
 				It("uploads bundle to s3", func() {
@@ -366,6 +400,7 @@ var _ = Describe("Deployments", func() {
 
 						depl = &deployment.Deployment{}
 						db.Last(depl)
+
 						b := &bytes.Buffer{}
 						_, err = b.ReadFrom(res.Body)
 

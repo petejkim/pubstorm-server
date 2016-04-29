@@ -35,8 +35,9 @@ type Deployment struct {
 	Prefix  string `sql:"default:encode(gen_random_bytes(2), 'hex')"`
 	Version int64
 
-	ProjectID uint
-	UserID    uint
+	ProjectID   uint
+	UserID      uint
+	RawBundleID *uint
 
 	DeployedAt *time.Time
 	PurgedAt   *time.Time
@@ -140,6 +141,9 @@ func (d *Deployment) UpdateState(db *gorm.DB, state string) error {
 
 	if state == StateBuildFailed {
 		q = q.Update("error_message", d.ErrorMessage)
+	}
+	if state == StateUploaded && d.RawBundleID != nil {
+		q = q.Update("raw_bundle_id", d.RawBundleID)
 	}
 
 	if err := q.Scan(d).Error; err != nil {

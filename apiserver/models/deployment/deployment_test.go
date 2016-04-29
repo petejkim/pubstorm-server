@@ -8,6 +8,7 @@ import (
 	"github.com/nitrous-io/rise-server/apiserver/dbconn"
 	"github.com/nitrous-io/rise-server/apiserver/models/deployment"
 	"github.com/nitrous-io/rise-server/apiserver/models/project"
+	"github.com/nitrous-io/rise-server/apiserver/models/rawbundle"
 	"github.com/nitrous-io/rise-server/testhelper"
 	"github.com/nitrous-io/rise-server/testhelper/factories"
 
@@ -219,6 +220,25 @@ var _ = Describe("Deployment", func() {
 			Expect(d.DeployedAt).To(BeNil())
 			Expect(d.ErrorMessage).NotTo(BeNil())
 			Expect(*d.ErrorMessage).To(Equal(msg))
+		})
+
+		It("updates state and checksum if updates to uploaded state and checksum is not empty", func() {
+			proj := factories.Project(db, nil)
+			rb := rawbundle.RawBundle{
+				ProjectID:    proj.ID,
+				Checksum:     "checksum123456",
+				UploadedPath: "foo/bar",
+			}
+			d.RawBundleID = &rb.ID
+
+			Expect(db.Create(&rb).Error).To(BeNil())
+
+			err := d.UpdateState(db, deployment.StateUploaded)
+			Expect(err).To(BeNil())
+
+			Expect(d.State).To(Equal(deployment.StateUploaded))
+			Expect(*d.RawBundleID).To(Equal(rb.ID))
+			Expect(d.DeployedAt).To(BeNil())
 		})
 	})
 })
