@@ -65,13 +65,24 @@ func (s *S3) Download(region, bucket, key string, out io.WriterAt) (err error) {
 	return
 }
 
-func (s *S3) Delete(region, bucket, key string) (err error) {
+func (s *S3) Delete(region, bucket string, keys ...string) (err error) {
 	svc := s3.New(session.New(&aws.Config{Region: aws.String(region)}))
 
-	_, err = svc.DeleteObject(&s3.DeleteObjectInput{
-		Bucket: aws.String(bucket),
-		Key:    aws.String(key),
-	})
+	var objects []*s3.ObjectIdentifier
+	for _, key := range keys {
+		oi := &s3.ObjectIdentifier{
+			Key:       aws.String(key),
+			VersionId: nil,
+		}
 
+		objects = append(objects, oi)
+	}
+
+	params := &s3.DeleteObjectsInput{
+		Bucket: aws.String(bucket),
+		Delete: &s3.Delete{Objects: objects},
+	}
+
+	_, err = svc.DeleteObjects(params)
 	return err
 }

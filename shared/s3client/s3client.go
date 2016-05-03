@@ -38,6 +38,6 @@ func Download(path string, out io.WriterAt) (err error) {
 	return S3.Download(BucketRegion, BucketName, path, out)
 }
 
-func Delete(path string) (err error) {
-	return S3.Delete(BucketRegion, BucketName, path)
+func Delete(path ...string) (err error) {
+	return S3.Delete(BucketRegion, BucketName, path...)
 }
