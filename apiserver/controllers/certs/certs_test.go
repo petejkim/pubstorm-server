@@ -278,7 +278,9 @@ A6ao9QSL1ryillYV9Y4001C3jApzmMtBWoMp3NPzwU8nacAOzClJYUcSLkbAIEWV
 					"id": %d,
 					"starts_at": %s,
 					"expires_at": %s,
-					"common_name": "%s"
+					"common_name": "%s",
+					"issuer": "/C=SG/O=Nitrous.io/L=Singapore/ST=Singapore/CN=*.foo-bar-express.com",
+					"subject": "/C=SG/O=Nitrous.io/L=Singapore/ST=Singapore/CN=*.foo-bar-express.com"
 				}
 			}`, ct.ID, formattedTimeForJSON(ct.StartsAt), formattedTimeForJSON(ct.ExpiresAt), *ct.CommonName)))
 
@@ -287,6 +289,8 @@ A6ao9QSL1ryillYV9Y4001C3jApzmMtBWoMp3NPzwU8nacAOzClJYUcSLkbAIEWV
 			Expect(ct.StartsAt.String()).To(Equal("2016-04-20 08:50:15 +0000 +0000"))
 			Expect(ct.ExpiresAt.String()).To(Equal("2017-04-20 08:50:15 +0000 +0000"))
 			Expect(*ct.CommonName).To(Equal("*.foo-bar-express.com"))
+			Expect(*ct.Issuer).To(Equal("/C=SG/O=Nitrous.io/L=Singapore/ST=Singapore/CN=*.foo-bar-express.com"))
+			Expect(*ct.Subject).To(Equal("/C=SG/O=Nitrous.io/L=Singapore/ST=Singapore/CN=*.foo-bar-express.com"))
 		})
 
 		It("uploads certificate and private keys", func() {
@@ -388,7 +392,9 @@ A6ao9QSL1ryillYV9Y4001C3jApzmMtBWoMp3NPzwU8nacAOzClJYUcSLkbAIEWV
 						"id": %d,
 						"starts_at": %s,
 						"expires_at": %s,
-						"common_name": "%s"
+						"common_name": "%s",
+						"issuer": "/C=SG/O=Nitrous.io/L=Singapore/ST=Singapore/CN=*.foo-bar-express.com",
+						"subject": "/C=SG/O=Nitrous.io/L=Singapore/ST=Singapore/CN=*.foo-bar-express.com"
 					}
 			}`, ct.ID, formattedTimeForJSON(ct.StartsAt), formattedTimeForJSON(ct.ExpiresAt), *ct.CommonName)))
 
@@ -397,6 +403,8 @@ A6ao9QSL1ryillYV9Y4001C3jApzmMtBWoMp3NPzwU8nacAOzClJYUcSLkbAIEWV
 				Expect(ct.StartsAt.String()).To(Equal("2016-04-20 08:50:15 +0000 +0000"))
 				Expect(ct.ExpiresAt.String()).To(Equal("2017-04-20 08:50:15 +0000 +0000"))
 				Expect(*ct.CommonName).To(Equal("*.foo-bar-express.com"))
+				Expect(*ct.Issuer).To(Equal("/C=SG/O=Nitrous.io/L=Singapore/ST=Singapore/CN=*.foo-bar-express.com"))
+				Expect(*ct.Subject).To(Equal("/C=SG/O=Nitrous.io/L=Singapore/ST=Singapore/CN=*.foo-bar-express.com"))
 			})
 		})
 

@@ -7,6 +7,7 @@ CREATE TABLE certs (
   private_key_path character varying(255) NOT NULL,
 
   common_name character varying(255),
+
   starts_at timestamp without time zone NOT NULL,
   expires_at timestamp without time zone NOT NULL,
 

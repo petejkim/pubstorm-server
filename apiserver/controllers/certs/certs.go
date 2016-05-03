@@ -181,6 +181,8 @@ func Create(c *gin.Context) {
 	ct.StartsAt = info.StartsAt
 	ct.ExpiresAt = info.ExpiresAt
 	ct.CommonName = &info.CommonName
+	ct.Issuer = &info.Issuer
+	ct.Subject = &info.Subject
 
 	uploadKeys := []string{ct.CertificatePath, ct.PrivateKeyPath}
 	for i, b := range [][]byte{certBytes, pKeyBytes} {

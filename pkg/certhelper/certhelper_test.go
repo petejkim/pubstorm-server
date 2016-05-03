@@ -79,6 +79,8 @@ nqz5zr68zkEgxlfrZnBxifOvcdmlfGdhM3KSIGAzQOuyUaiblA+cqg==
 			Expect(cm.StartsAt.String()).To(Equal("2014-09-15 18:18:35 +0000 UTC"))
 			Expect(cm.ExpiresAt.String()).To(Equal("2019-09-15 18:18:35 +0000 UTC"))
 			Expect(cm.CommonName).To(Equal("*.n2odev.com"))
+			Expect(cm.Issuer).To(Equal("/C=US/O=[DEV] n2odev.com/L=San Francisco/ST=California/CN=*.n2odev.com"))
+			Expect(cm.Subject).To(Equal("/C=US/O=[DEV] n2odev.com/L=San Francisco/ST=California/CN=*.n2odev.com"))
 		})
 
 		It("returns an error if cert is valid but common name is not valid", func() {
