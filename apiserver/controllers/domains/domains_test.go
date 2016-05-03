@@ -7,9 +7,11 @@ import (
 	"net/http/httptest"
 	"net/url"
 	"testing"
+	"time"
 
 	"github.com/jinzhu/gorm"
 	"github.com/nitrous-io/rise-server/apiserver/dbconn"
+	"github.com/nitrous-io/rise-server/apiserver/models/cert"
 	"github.com/nitrous-io/rise-server/apiserver/models/deployment"
 	"github.com/nitrous-io/rise-server/apiserver/models/domain"
 	"github.com/nitrous-io/rise-server/apiserver/models/oauthtoken"
@@ -496,7 +498,9 @@ var _ = Describe("Domains", func() {
 				Expect(deleteCall).NotTo(BeNil())
 				Expect(deleteCall.Arguments[0]).To(Equal(s3client.BucketRegion))
 				Expect(deleteCall.Arguments[1]).To(Equal(s3client.BucketName))
-				Expect(deleteCall.Arguments[2]).To(Equal("/domains/" + domainName + "/meta.json"))
+				Expect(deleteCall.Arguments[2]).To(Equal("domains/" + domainName + "/meta.json"))
+				Expect(deleteCall.Arguments[3]).To(Equal("certs/" + domainName + "/ssl.crt"))
+				Expect(deleteCall.Arguments[4]).To(Equal("certs/" + domainName + "/ssl.key"))
 				Expect(deleteCall.ReturnValues[0]).To(BeNil())
 			})
 
@@ -508,6 +512,70 @@ var _ = Describe("Domains", func() {
 				Expect(d.Body).To(MatchJSON(fmt.Sprintf(`{
 					"domains": ["%s"]
 				}`, domainName)))
+			})
+
+			Context("domains has a ssl cert", func() {
+				var ct *cert.Cert
+
+				BeforeEach(func() {
+					commonName := "*.foo-bar-express.com"
+					ct = &cert.Cert{
+						DomainID:        d.ID,
+						CertificatePath: "/foo/bar",
+						PrivateKeyPath:  "/baz/qux",
+						StartsAt:        time.Now().Add(-365 * 24 * time.Hour),
+						ExpiresAt:       time.Now().Add(365 * 24 * time.Hour),
+						CommonName:      &commonName,
+					}
+					Expect(db.Create(ct).Error).To(BeNil())
+				})
+
+				It("deletes the domain and the cert from the project", func() {
+					doRequest()
+
+					b := &bytes.Buffer{}
+					_, err := b.ReadFrom(res.Body)
+					Expect(err).To(BeNil())
+
+					Expect(res.StatusCode).To(Equal(http.StatusOK))
+					Expect(b.String()).To(MatchJSON(`{
+						"deleted": true
+					}`))
+
+					var count int
+					err = db.Model(domain.Domain{}).Where("id = ?", d.ID).Count(&count).Error
+					Expect(err).To(BeNil())
+					Expect(count).To(BeZero())
+
+					err = db.Model(cert.Cert{}).Where("id = ?", ct.ID).Count(&count).Error
+					Expect(err).To(BeNil())
+					Expect(count).To(BeZero())
+				})
+
+				It("deletes the meta.json and ssl cert for the domain from s3", func() {
+					doRequest()
+
+					Expect(fakeS3.DeleteCalls.Count()).To(Equal(1))
+
+					deleteCall := fakeS3.DeleteCalls.NthCall(1)
+					Expect(deleteCall).NotTo(BeNil())
+					Expect(deleteCall.Arguments[0]).To(Equal(s3client.BucketRegion))
+					Expect(deleteCall.Arguments[1]).To(Equal(s3client.BucketName))
+					Expect(deleteCall.Arguments[2]).To(Equal("domains/" + domainName + "/meta.json"))
+					Expect(deleteCall.Arguments[3]).To(Equal("certs/" + domainName + "/ssl.crt"))
+					Expect(deleteCall.Arguments[4]).To(Equal("certs/" + domainName + "/ssl.key"))
+					Expect(deleteCall.ReturnValues[0]).To(BeNil())
+				})
+
+				It("publishes invalidation message for the domain", func() {
+					doRequest()
+
+					d := testhelper.ConsumeQueue(mq, qName)
+					Expect(d).NotTo(BeNil())
+					Expect(d.Body).To(MatchJSON(fmt.Sprintf(`{
+						"domains": ["%s"]
+					}`, domainName)))
+				})
 			})
 		})
 

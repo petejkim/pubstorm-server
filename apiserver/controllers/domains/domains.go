@@ -5,9 +5,11 @@ import (
 	"strings"
 
 	"github.com/gin-gonic/gin"
+	"github.com/jinzhu/gorm"
 	"github.com/lib/pq"
 	"github.com/nitrous-io/rise-server/apiserver/controllers"
 	"github.com/nitrous-io/rise-server/apiserver/dbconn"
+	"github.com/nitrous-io/rise-server/apiserver/models/cert"
 	"github.com/nitrous-io/rise-server/apiserver/models/domain"
 	"github.com/nitrous-io/rise-server/pkg/job"
 	"github.com/nitrous-io/rise-server/pkg/pubsub"
@@ -122,19 +124,42 @@ func Destroy(c *gin.Context) {
 		return
 	}
 
-	q := db.Where("name = ?", domainName).Delete(domain.Domain{})
-	if err := q.Error; err != nil {
+	tx := db.Begin()
+	if err := tx.Error; err != nil {
 		controllers.InternalServerError(c, err)
 		return
-	} else if q.RowsAffected == 0 {
-		c.JSON(http.StatusNotFound, gin.H{
-			"error":             "not_found",
-			"error_description": "domain could not be found",
-		})
+	}
+	defer tx.Rollback()
+
+	var d domain.Domain
+	if err := tx.Where("name = ?", domainName).First(&d).Error; err != nil {
+		if err == gorm.RecordNotFound {
+			c.JSON(http.StatusNotFound, gin.H{
+				"error":             "not_found",
+				"error_description": "domain could not be found",
+			})
+			return
+		} else {
+			controllers.InternalServerError(c, err)
+			return
+		}
+	}
+
+	metaJSONPath := "domains/" + domainName + "/meta.json"
+	certificatePath := "certs/" + domainName + "/ssl.crt"
+	privateKeyPath := "certs/" + domainName + "/ssl.key"
+	if err := s3client.Delete(metaJSONPath, certificatePath, privateKeyPath); err != nil {
+		controllers.InternalServerError(c, err)
 		return
 	}
 
-	if err := s3client.Delete("/domains/" + domainName + "/meta.json"); err != nil {
+	if err := tx.Delete(d).Error; err != nil {
+		controllers.InternalServerError(c, err)
+		return
+	}
+
+	q := tx.Where("domain_id = ?", d.ID).Delete(cert.Cert{})
+	if q.Error != nil {
 		controllers.InternalServerError(c, err)
 		return
 	}
@@ -142,12 +167,18 @@ func Destroy(c *gin.Context) {
 	m, err := pubsub.NewMessageWithJSON(exchanges.Edges, exchanges.RouteV1Invalidation, &messages.V1InvalidationMessageData{
 		Domains: []string{domainName},
 	})
+
 	if err != nil {
 		controllers.InternalServerError(c, err)
 		return
 	}
 
 	if err := m.Publish(); err != nil {
+		controllers.InternalServerError(c, err)
+		return
+	}
+
+	if err := tx.Commit().Error; err != nil {
 		controllers.InternalServerError(c, err)
 		return
 	}
