@@ -15,7 +15,7 @@ func Test(t *testing.T) {
 
 var _ = Describe("AESEncrypter", func() {
 	var (
-		key  = []byte("supercalifragilisticexpialidocio") // 256-bit (32 byte) key
+		key  = []byte("supercalifragilisticexpi") // 196-bit (24 byte) key
 		data = []byte("super secret information")
 
 		e1, e2, e3 []byte
@@ -67,7 +67,7 @@ var _ = Describe("AESEncrypter", func() {
 		Expect(d2).To(Equal(data))
 	})
 
-	Context("when a key shorter than 32 bytes (256-bit) is given", func() {
+	Context("when a key shorter than 24 bytes (196-bit) is given", func() {
 		It("returns an error when attempting to encrypt", func() {
 			_, err := aesencrypter.Encrypt(data, []byte("128bit-short-key"))
 			Expect(err).To(Equal(aesencrypter.ErrKeyTooShort))

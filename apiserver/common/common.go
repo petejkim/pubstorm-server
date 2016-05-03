@@ -46,8 +46,8 @@ func init() {
 			log.Fatal("AWS_ACCESS_KEY_ID and AWS_SECRET_ACCESS_KEY environment variables are required!")
 		}
 
-		if aesKey := os.Getenv("AES_KEY"); aesKey == "" || len(aesKey) < 32 {
-			log.Fatal("AES_KEY environment variable containing a 256-bit (32 bytes) key is required!")
+		if aesKey := os.Getenv("AES_KEY"); aesKey == "" || len(aesKey) < 24 {
+			log.Fatal("AES_KEY environment variable containing a 196-bit (24 bytes) key is required!")
 		}
 	}
 }

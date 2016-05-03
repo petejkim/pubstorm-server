@@ -5,10 +5,13 @@ import (
 	"crypto/cipher"
 	"crypto/rand"
 	"errors"
+	"fmt"
 )
 
 var (
-	ErrKeyTooShort        = errors.New("key should be 32 bytes long")
+	KeyLength = 192 / 8
+
+	ErrKeyTooShort        = errors.New(fmt.Sprintf("key should be %d bytes long", KeyLength))
 	ErrCipherTextTooShort = errors.New("cipher text should be longer than 16 bytes")
 )
 
@@ -22,7 +25,7 @@ func randomIV() ([]byte, error) {
 }
 
 func Encrypt(plainText []byte, key []byte) ([]byte, error) {
-	if len(key) < 32 {
+	if len(key) < KeyLength {
 		return nil, ErrKeyTooShort
 	}
 
