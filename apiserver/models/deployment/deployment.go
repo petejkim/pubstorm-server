@@ -39,6 +39,7 @@ type Deployment struct {
 	UserID    uint
 
 	DeployedAt *time.Time
+	PurgedAt   *time.Time
 
 	ErrorMessage *string
 }
@@ -146,6 +147,10 @@ func (d *Deployment) UpdateState(db *gorm.DB, state string) error {
 	}
 
 	return nil
+}
+
+func (d *Deployment) String() string {
+	return fmt.Sprintf("v%d of project %d", d.Version, d.ProjectID)
 }
 
 func isValidState(state string) bool {
