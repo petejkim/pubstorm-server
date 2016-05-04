@@ -1,4 +1,7 @@
 #!/bin/bash
+#
+# Builds and releases binaries to S3. This is meant to be run in a Docker
+# container - see script/ci-build.
 
 PUBLIC_BUCKET=${PUBLIC_BUCKET:="rise-server-staging"}
 UPLOAD_S3=${UPLOAD_S3:="false"}
@@ -20,7 +23,7 @@ get_version() {
   version=$(cat $app/VERSION) # get version from version file
   sha=$(git rev-list --max-count=1 --abbrev-commit HEAD)
 
-  echo "${version}-${sha}" # 1.0.1-asdf
+  echo "${version}-${sha}" # E.g. 1.0.1-deadbeef
 }
 
 hash_files() {
@@ -111,3 +114,5 @@ bundle_binary apiserver migrate migrations/*
 bundle_binary edged
 bundle_binary deployer
 bundle_binary builder
+
+bundle_binary purgedeploys
