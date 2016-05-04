@@ -203,6 +203,21 @@ func Create(c *gin.Context) {
 		}
 	}
 
+	// Invalidate cert cache
+	m, err := pubsub.NewMessageWithJSON(exchanges.Edges, exchanges.RouteV1Invalidation, &messages.V1InvalidationMessageData{
+		Domains: []string{domainName},
+	})
+
+	if err != nil {
+		controllers.InternalServerError(c, err)
+		return
+	}
+
+	if err := m.Publish(); err != nil {
+		controllers.InternalServerError(c, err)
+		return
+	}
+
 	if err := cert.Upsert(db, ct); err != nil {
 		controllers.InternalServerError(c, err)
 		return

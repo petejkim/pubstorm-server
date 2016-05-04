@@ -77,6 +77,9 @@ var _ = Describe("Certs", func() {
 			fakeS3 *fake.S3
 			origS3 filetransfer.FileTransfer
 
+			mq                    *amqp.Connection
+			invalidationQueueName string
+
 			origAesKey string
 
 			u  *user.User
@@ -95,6 +98,11 @@ var _ = Describe("Certs", func() {
 			origS3 = s3client.S3
 			fakeS3 = &fake.S3{}
 			s3client.S3 = fakeS3
+
+			mq, err = mqconn.MQ()
+			Expect(err).To(BeNil())
+
+			invalidationQueueName = testhelper.StartQueueWithExchange(mq, exchanges.Edges, exchanges.RouteV1Invalidation)
 
 			u, oc, t = factories.AuthTrio(db)
 
@@ -318,6 +326,14 @@ A6ao9QSL1ryillYV9Y4001C3jApzmMtBWoMp3NPzwU8nacAOzClJYUcSLkbAIEWV
 			}
 		})
 
+		It("publishes invalidation message for the domain", func() {
+			doRequest()
+
+			d := testhelper.ConsumeQueue(mq, invalidationQueueName)
+			Expect(d).NotTo(BeNil())
+			Expect(d.Body).To(MatchJSON(`{"domains": ["www.foo-bar-express.com"]}`))
+		})
+
 		Context("when given domain does not exist", func() {
 			BeforeEach(func() {
 				Expect(db.Delete(dm).Error).To(BeNil())
@@ -409,6 +425,14 @@ A6ao9QSL1ryillYV9Y4001C3jApzmMtBWoMp3NPzwU8nacAOzClJYUcSLkbAIEWV
 				Expect(*ct.CommonName).To(Equal("*.foo-bar-express.com"))
 				Expect(*ct.Issuer).To(Equal("/C=SG/O=Nitrous.io/L=Singapore/ST=Singapore/CN=*.foo-bar-express.com"))
 				Expect(*ct.Subject).To(Equal("/C=SG/O=Nitrous.io/L=Singapore/ST=Singapore/CN=*.foo-bar-express.com"))
+			})
+
+			It("publishes invalidation message for the domain", func() {
+				doRequest()
+
+				d := testhelper.ConsumeQueue(mq, invalidationQueueName)
+				Expect(d).NotTo(BeNil())
+				Expect(d.Body).To(MatchJSON(`{"domains": ["www.foo-bar-express.com"]}`))
 			})
 		})
 
