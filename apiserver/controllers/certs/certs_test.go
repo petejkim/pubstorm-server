@@ -23,7 +23,10 @@ import (
 	"github.com/nitrous-io/rise-server/apiserver/server"
 	"github.com/nitrous-io/rise-server/pkg/aesencrypter"
 	"github.com/nitrous-io/rise-server/pkg/filetransfer"
+	"github.com/nitrous-io/rise-server/pkg/mqconn"
 	"github.com/nitrous-io/rise-server/shared"
+	"github.com/nitrous-io/rise-server/shared/exchanges"
+	"github.com/nitrous-io/rise-server/shared/queues"
 	"github.com/nitrous-io/rise-server/shared/s3client"
 	"github.com/nitrous-io/rise-server/testhelper"
 	"github.com/nitrous-io/rise-server/testhelper/factories"
@@ -31,6 +34,7 @@ import (
 	"github.com/nitrous-io/rise-server/testhelper/sharedexamples"
 	. "github.com/onsi/ginkgo"
 	. "github.com/onsi/gomega"
+	"github.com/streadway/amqp"
 )
 
 func Test(t *testing.T) {
@@ -625,6 +629,172 @@ A6ao9QSL1ryillYV9Y4001C3jApzmMtBWoMp3NPzwU8nacAOzClJYUcSLkbAIEWV
 			BeforeEach(func() {
 				Expect(db.Delete(ct).Error).To(BeNil())
 				Expect(db.Delete(dm).Error).To(BeNil())
+			})
+
+			It("returns 404 with not_found", func() {
+				doRequest()
+				b := &bytes.Buffer{}
+				_, err = b.ReadFrom(res.Body)
+
+				Expect(res.StatusCode).To(Equal(http.StatusNotFound))
+				Expect(b.String()).To(MatchJSON(`{
+					"error": "not_found",
+					"error_description": "cert could not be found"
+				}`))
+			})
+		})
+
+		Context("when the domain does not belongs to the project", func() {
+			BeforeEach(func() {
+				proj2 := factories.Project(db, nil)
+
+				dm.ProjectID = proj2.ID
+				Expect(db.Save(dm).Error).To(BeNil())
+			})
+
+			It("returns 404 with not_found", func() {
+				doRequest()
+				b := &bytes.Buffer{}
+				_, err = b.ReadFrom(res.Body)
+
+				Expect(res.StatusCode).To(Equal(http.StatusNotFound))
+				Expect(b.String()).To(MatchJSON(`{
+					"error": "not_found",
+					"error_description": "cert could not be found"
+				}`))
+			})
+		})
+
+		Context("when the cert does not exist", func() {
+			BeforeEach(func() {
+				Expect(db.Delete(ct).Error).To(BeNil())
+			})
+
+			It("returns 404 with not_found", func() {
+				doRequest()
+				b := &bytes.Buffer{}
+				_, err = b.ReadFrom(res.Body)
+
+				Expect(res.StatusCode).To(Equal(http.StatusNotFound))
+				Expect(b.String()).To(MatchJSON(`{
+					"error": "not_found",
+					"error_description": "cert could not be found"
+				}`))
+			})
+		})
+
+		sharedexamples.ItRequiresAuthentication(func() (*gorm.DB, *user.User, *http.Header) {
+			return db, u, &headers
+		}, func() *http.Response {
+			doRequest()
+			return res
+		}, nil)
+
+		sharedexamples.ItRequiresProject(func() (*gorm.DB, *project.Project) {
+			return db, proj
+		}, func() *http.Response {
+			doRequest()
+			return res
+		}, nil)
+	})
+
+	Describe("DELETE /projects/:project_name/domains/:name/cert", func() {
+		var (
+			err    error
+			fakeS3 *fake.S3
+			origS3 filetransfer.FileTransfer
+
+			mq    *amqp.Connection
+			qName string
+
+			u  *user.User
+			oc *oauthclient.OauthClient
+			t  *oauthtoken.OauthToken
+
+			headers http.Header
+			proj    *project.Project
+			dm      *domain.Domain
+			ct      *cert.Cert
+		)
+
+		BeforeEach(func() {
+			origS3 = s3client.S3
+			fakeS3 = &fake.S3{}
+			s3client.S3 = fakeS3
+
+			mq, err = mqconn.MQ()
+			Expect(err).To(BeNil())
+
+			testhelper.TruncateTables(db.DB())
+			testhelper.DeleteQueue(mq, queues.All...)
+			testhelper.DeleteExchange(mq, exchanges.All...)
+
+			u, oc, t = factories.AuthTrio(db)
+
+			proj = factories.Project(db, u, "foo-bar-express")
+			dm = factories.Domain(db, proj, "www.foo-bar-express.com")
+			ct = &cert.Cert{
+				DomainID:        dm.ID,
+				CertificatePath: "foo/bar",
+				PrivateKeyPath:  "baz/qux",
+				ExpiresAt:       time.Now().Add(365 * 24 * time.Hour),
+				StartsAt:        time.Now().Add(-365 * 24 * time.Hour),
+			}
+			Expect(db.Create(ct).Error).To(BeNil())
+
+			headers = http.Header{
+				"Authorization": {"Bearer " + t.Token},
+			}
+
+			qName = testhelper.StartQueueWithExchange(mq, exchanges.Edges, exchanges.RouteV1Invalidation)
+		})
+
+		doRequest := func() {
+			s = httptest.NewServer(server.New())
+			res, err = testhelper.MakeRequest("DELETE", s.URL+"/projects/foo-bar-express/domains/www.foo-bar-express.com/cert", nil, headers, nil)
+			Expect(err).To(BeNil())
+		}
+
+		It("return 200 OK", func() {
+			doRequest()
+			Expect(res.StatusCode).To(Equal(http.StatusOK))
+
+			b := &bytes.Buffer{}
+			_, err = b.ReadFrom(res.Body)
+
+			Expect(b.String()).To(MatchJSON(`{"deleted": true}`))
+		})
+
+		It("deletes ssl cert from DB", func() {
+			doRequest()
+			Expect(db.First(ct, ct.ID).Error).To(Equal(gorm.RecordNotFound))
+		})
+
+		It("deletes ssl cert from S3", func() {
+			doRequest()
+
+			Expect(fakeS3.DeleteCalls.Count()).To(Equal(1))
+
+			deleteCall := fakeS3.DeleteCalls.NthCall(1)
+			Expect(deleteCall).NotTo(BeNil())
+			Expect(deleteCall.Arguments[0]).To(Equal(s3client.BucketRegion))
+			Expect(deleteCall.Arguments[1]).To(Equal(s3client.BucketName))
+			Expect(deleteCall.Arguments[2]).To(Equal("certs/www.foo-bar-express.com/ssl.crt"))
+			Expect(deleteCall.Arguments[3]).To(Equal("certs/www.foo-bar-express.com/ssl.key"))
+			Expect(deleteCall.ReturnValues[0]).To(BeNil())
+		})
+
+		It("invalidates domain cache", func() {
+			doRequest()
+
+			d := testhelper.ConsumeQueue(mq, qName)
+			Expect(d).NotTo(BeNil())
+			Expect(d.Body).To(MatchJSON(`{ "domains": ["www.foo-bar-express.com"] }`))
+		})
+
+		Context("when the cert does not exist", func() {
+			BeforeEach(func() {
+				Expect(db.Delete(ct).Error).To(BeNil())
 			})
 
 			It("returns 404 with not_found", func() {
