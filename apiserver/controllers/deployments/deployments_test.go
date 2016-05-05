@@ -49,6 +49,12 @@ var _ = Describe("Deployments", func() {
 		err error
 	)
 
+	formattedTimeForJSON := func(t *time.Time) string {
+		formattedTime, err := t.MarshalJSON()
+		Expect(err).To(BeNil())
+		return string(formattedTime)
+	}
+
 	timeAgo := func(ago time.Duration) *time.Time {
 		currentTime := time.Now()
 		result := currentTime.Add(-ago)
@@ -154,6 +160,13 @@ var _ = Describe("Deployments", func() {
 			Expect(err).To(BeNil())
 		}
 
+		assertNoDeployment := func() {
+			Expect(fakeS3.UploadCalls.Count()).To(Equal(0))
+			depl := &deployment.Deployment{}
+			Expect(db.Last(depl).Error).To(Equal(gorm.RecordNotFound))
+			Expect(testhelper.ConsumeQueue(mq, queues.Deploy)).To(BeNil())
+		}
+
 		sharedexamples.ItRequiresAuthentication(func() (*gorm.DB, *user.User, *http.Header) {
 			return db, u, &headers
 		}, func() *http.Response {
@@ -168,9 +181,7 @@ var _ = Describe("Deployments", func() {
 			return res
 		}, func() {
 			// should not deploy anything if project is not found
-			Expect(fakeS3.UploadCalls.Count()).To(Equal(0))
-			depl := &deployment.Deployment{}
-			Expect(db.Last(depl).Error).To(Equal(gorm.RecordNotFound))
+			assertNoDeployment()
 		})
 
 		sharedexamples.ItLocksProject(func() (*gorm.DB, *project.Project) {
@@ -180,9 +191,7 @@ var _ = Describe("Deployments", func() {
 			return res
 		}, func() {
 			// should not deploy anything if project is locked
-			Expect(fakeS3.UploadCalls.Count()).To(Equal(0))
-			depl := &deployment.Deployment{}
-			Expect(db.Last(depl).Error).To(Equal(gorm.RecordNotFound))
+			assertNoDeployment()
 		})
 
 		Context("when the project belongs to current user", func() {
@@ -198,10 +207,8 @@ var _ = Describe("Deployments", func() {
 						"error": "invalid_request",
 						"error_description": "the request should be encoded in multipart/form-data format"
 					}`))
-					Expect(fakeS3.UploadCalls.Count()).To(Equal(0))
 
-					depl := &deployment.Deployment{}
-					Expect(db.Last(depl).Error).To(Equal(gorm.RecordNotFound))
+					assertNoDeployment()
 				})
 			})
 
@@ -219,10 +226,7 @@ var _ = Describe("Deployments", func() {
 							"payload": "is required"
 						}
 					}`))
-					Expect(fakeS3.UploadCalls.Count()).To(Equal(0))
-
-					depl := &deployment.Deployment{}
-					Expect(db.Last(depl).Error).To(Equal(gorm.RecordNotFound))
+					assertNoDeployment()
 				})
 			})
 
@@ -248,10 +252,7 @@ var _ = Describe("Deployments", func() {
 						"error": "invalid_request",
 						"error_description": "request body is too large"
 					}`))
-					Expect(fakeS3.UploadCalls.Count()).To(Equal(0))
-
-					depl := &deployment.Deployment{}
-					Expect(db.Last(depl).Error).To(Equal(gorm.RecordNotFound))
+					assertNoDeployment()
 				})
 			})
 
@@ -862,12 +863,6 @@ var _ = Describe("Deployments", func() {
 			Expect(err).To(BeNil())
 		}
 
-		formattedTimeForJSON := func(t *time.Time) string {
-			formattedTime, err := t.MarshalJSON()
-			Expect(err).To(BeNil())
-			return string(formattedTime)
-		}
-
 		reloadDeployment := func(d *deployment.Deployment) *deployment.Deployment {
 			var reloadedDepl deployment.Deployment
 			Expect(db.First(&reloadedDepl, d.ID).Error).To(BeNil())
@@ -927,5 +922,103 @@ var _ = Describe("Deployments", func() {
 				depl4.ID, depl4.State, formattedTimeForJSON(depl4.DeployedAt), depl4.Version,
 			)))
 		})
+	})
+
+	Describe("GET /projects/:project_id/active_deployment", func() {
+		var (
+			err error
+
+			u  *user.User
+			oc *oauthclient.OauthClient
+			t  *oauthtoken.OauthToken
+
+			headers          http.Header
+			proj             *project.Project
+			activeDeployment *deployment.Deployment
+		)
+
+		BeforeEach(func() {
+			u, oc, t = factories.AuthTrio(db)
+
+			headers = http.Header{
+				"Authorization": {"Bearer " + t.Token},
+			}
+
+			proj = factories.Project(db, u, "foo-bar-express")
+			activeDeployment = factories.DeploymentWithAttrs(db, proj, u, deployment.Deployment{
+				Checksum: "db39e098913eee20e5371139022e4431ffe7b01baa524bd87e08f2763de3ea55",
+				State:    deployment.StateDeployed,
+			})
+
+			proj.ActiveDeploymentID = &activeDeployment.ID
+			Expect(db.Save(proj).Error).To(BeNil())
+		})
+
+		doRequest := func() {
+			s = httptest.NewServer(server.New())
+			url := fmt.Sprintf("%s/projects/foo-bar-express/active_deployment", s.URL)
+			res, err = testhelper.MakeRequest("GET", url, nil, headers, nil)
+			Expect(err).To(BeNil())
+		}
+
+		It("returns with checksum", func() {
+			doRequest()
+			b := &bytes.Buffer{}
+			_, err = b.ReadFrom(res.Body)
+			Expect(err).To(BeNil())
+
+			Expect(res.StatusCode).To(Equal(http.StatusOK))
+
+			Expect(db.First(activeDeployment, activeDeployment.ID).Error).To(BeNil())
+
+			j := map[string]interface{}{
+				"deployment": map[string]interface{}{
+					"id":          activeDeployment.ID,
+					"state":       deployment.StateDeployed,
+					"version":     activeDeployment.Version,
+					"checksum":    activeDeployment.Checksum,
+					"deployed_at": activeDeployment.DeployedAt,
+				},
+			}
+
+			expectedJSON, err := json.Marshal(j)
+			Expect(err).To(BeNil())
+			Expect(b.String()).To(MatchJSON(expectedJSON))
+		})
+
+		Context("when there is no active deployment", func() {
+			BeforeEach(func() {
+				proj.ActiveDeploymentID = nil
+				Expect(db.Save(proj).Error).To(BeNil())
+			})
+
+			It("returns 404 not found", func() {
+				doRequest()
+				b := &bytes.Buffer{}
+				_, err := b.ReadFrom(res.Body)
+				Expect(err).To(BeNil())
+
+				Expect(res.StatusCode).To(Equal(http.StatusNotFound))
+
+				Expect(b.String()).To(MatchJSON(`{
+					"error": "not_found",
+					"error_description": "deployment could not be found"
+				}`))
+			})
+		})
+
+		sharedexamples.ItRequiresAuthentication(func() (*gorm.DB, *user.User, *http.Header) {
+			return db, u, &headers
+		}, func() *http.Response {
+			doRequest()
+			return res
+		}, nil)
+
+		sharedexamples.ItRequiresProject(func() (*gorm.DB, *project.Project) {
+			return db, proj
+		}, func() *http.Response {
+			doRequest()
+			return res
+		}, nil)
 	})
 })

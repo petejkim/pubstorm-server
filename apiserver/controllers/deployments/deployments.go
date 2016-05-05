@@ -282,3 +282,37 @@ func Index(c *gin.Context) {
 		"deployments": deplsToJSON,
 	})
 }
+
+func ActiveDeployment(c *gin.Context) {
+	proj := controllers.CurrentProject(c)
+	if proj.ActiveDeploymentID == nil {
+		c.JSON(http.StatusNotFound, gin.H{
+			"error":             "not_found",
+			"error_description": "deployment could not be found",
+		})
+		return
+	}
+
+	db, err := dbconn.DB()
+	if err != nil {
+		controllers.InternalServerError(c, err)
+		return
+	}
+
+	depl := &deployment.Deployment{}
+	if err := db.First(depl, *proj.ActiveDeploymentID).Error; err != nil {
+		if err == gorm.RecordNotFound {
+			c.JSON(http.StatusNotFound, gin.H{
+				"error":             "not_found",
+				"error_description": "deployment could not be found",
+			})
+			return
+		}
+		controllers.InternalServerError(c, err)
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"deployment": depl.AsJSONWithChecksum(),
+	})
+}

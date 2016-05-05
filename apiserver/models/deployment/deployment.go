@@ -40,6 +40,7 @@ type DeploymentJSON struct {
 	Version    int64      `json:"version"`
 	Active     bool       `json:"active,omitempty"`
 	DeployedAt *time.Time `json:"deployed_at,omitempty"`
+	Checksum   string     `json:"checksum,omitempty"`
 }
 
 // Returns a struct that can be converted to JSON
@@ -48,6 +49,16 @@ func (d *Deployment) AsJSON() *DeploymentJSON {
 		ID:         d.ID,
 		State:      d.State,
 		Version:    d.Version,
+		DeployedAt: d.DeployedAt,
+	}
+}
+
+func (d *Deployment) AsJSONWithChecksum() *DeploymentJSON {
+	return &DeploymentJSON{
+		ID:         d.ID,
+		State:      d.State,
+		Version:    d.Version,
+		Checksum:   d.Checksum,
 		DeployedAt: d.DeployedAt,
 	}
 }
