@@ -80,6 +80,30 @@ var _ = Describe("Cert", func() {
 				Expect(updatedCert.CertificatePath).To(Equal("/legit/foo/bar"))
 				Expect(updatedCert.PrivateKeyPath).To(Equal("/legit/baz/qux"))
 			})
+
+			Context("when the record is soft-deleted in the DB", func() {
+				BeforeEach(func() {
+					Expect(db.Delete(ct).Error).To(BeNil())
+				})
+
+				It("inserts a row to certs table", func() {
+					var count int
+					Expect(db.Model(cert.Cert{}).Count(&count).Error).To(BeNil())
+					Expect(count).To(Equal(0))
+
+					Expect(cert.Upsert(db, ct)).To(BeNil())
+
+					Expect(db.Model(cert.Cert{}).Count(&count).Error).To(BeNil())
+					Expect(count).To(Equal(1))
+
+					var insertedCert cert.Cert
+					Expect(db.Last(&insertedCert).Error).To(BeNil())
+					Expect(insertedCert.ID).To(Equal(ct.ID))
+					Expect(insertedCert.DomainID).To(Equal(d.ID))
+					Expect(insertedCert.CertificatePath).To(Equal("/foo/bar"))
+					Expect(insertedCert.PrivateKeyPath).To(Equal("/baz/qux"))
+				})
+			})
 		})
 	})
 })

@@ -57,7 +57,7 @@ func Upsert(db *gorm.DB, c *Cert) error {
 	return db.Raw(`WITH update_cert AS (
 		UPDATE certs
 		SET certificate_path=$2, private_key_path=$3, starts_at=$4, expires_at=$5, common_name=$6, issuer=$7, subject=$8, updated_at = now()
-		WHERE domain_id=$1 RETURNING *
+		WHERE domain_id=$1 AND deleted_at IS NULL RETURNING *
 	), insert_cert AS (
 		INSERT INTO
 		certs (domain_id, certificate_path, private_key_path, starts_at, expires_at, common_name, issuer, subject)
