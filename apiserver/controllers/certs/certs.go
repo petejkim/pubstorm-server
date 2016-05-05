@@ -18,7 +18,10 @@ import (
 	"github.com/nitrous-io/rise-server/apiserver/models/domain"
 	"github.com/nitrous-io/rise-server/pkg/aesencrypter"
 	"github.com/nitrous-io/rise-server/pkg/certhelper"
+	"github.com/nitrous-io/rise-server/pkg/pubsub"
 	"github.com/nitrous-io/rise-server/shared"
+	"github.com/nitrous-io/rise-server/shared/exchanges"
+	"github.com/nitrous-io/rise-server/shared/messages"
 	"github.com/nitrous-io/rise-server/shared/s3client"
 )
 
@@ -207,5 +210,68 @@ func Create(c *gin.Context) {
 
 	c.JSON(http.StatusCreated, gin.H{
 		"cert": ct.AsJSON(),
+	})
+}
+
+func Destroy(c *gin.Context) {
+	proj := controllers.CurrentProject(c)
+	domainName := c.Param("name")
+
+	db, err := dbconn.DB()
+	if err != nil {
+		controllers.InternalServerError(c, err)
+		return
+	}
+
+	var d domain.Domain
+	if err := db.Where("name = ? AND project_id = ?", domainName, proj.ID).First(&d).Error; err != nil {
+		if err == gorm.RecordNotFound {
+			c.JSON(http.StatusNotFound, gin.H{
+				"error":             "not_found",
+				"error_description": "cert could not be found",
+			})
+			return
+		}
+		controllers.InternalServerError(c, err)
+		return
+	}
+
+	q := db.Where("domain_id = ?", d.ID).Delete(cert.Cert{})
+	if q.Error != nil {
+		controllers.InternalServerError(c, err)
+		return
+	}
+
+	if q.RowsAffected == 0 {
+		c.JSON(http.StatusNotFound, gin.H{
+			"error":             "not_found",
+			"error_description": "cert could not be found",
+		})
+		return
+	}
+
+	certificatePath := "certs/" + domainName + "/ssl.crt"
+	privateKeyPath := "certs/" + domainName + "/ssl.key"
+	if err := s3client.Delete(certificatePath, privateKeyPath); err != nil {
+		controllers.InternalServerError(c, err)
+		return
+	}
+
+	m, err := pubsub.NewMessageWithJSON(exchanges.Edges, exchanges.RouteV1Invalidation, &messages.V1InvalidationMessageData{
+		Domains: []string{domainName},
+	})
+
+	if err != nil {
+		controllers.InternalServerError(c, err)
+		return
+	}
+
+	if err := m.Publish(); err != nil {
+		controllers.InternalServerError(c, err)
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"deleted": true,
 	})
 }
