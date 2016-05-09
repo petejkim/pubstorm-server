@@ -47,7 +47,7 @@ func init() {
 		}
 
 		if aesKey := os.Getenv("AES_KEY"); aesKey == "" || len(aesKey) < 24 {
-			log.Fatal("AES_KEY environment variable containing a 196-bit (24 bytes) key is required!")
+			log.Fatal("AES_KEY environment variable containing a 192-bit (24 bytes) key is required!")
 		}
 	}
 }
