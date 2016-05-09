@@ -9,12 +9,12 @@ import (
 	"github.com/jinzhu/gorm"
 	"github.com/nitrous-io/rise-server/apiserver/dbconn"
 	"github.com/nitrous-io/rise-server/apiserver/models/deployment"
+	"github.com/nitrous-io/rise-server/apiserver/models/domain"
 	"github.com/nitrous-io/rise-server/apiserver/models/project"
 	"github.com/nitrous-io/rise-server/apiserver/models/user"
 	"github.com/nitrous-io/rise-server/deployer/deployer"
 	"github.com/nitrous-io/rise-server/pkg/filetransfer"
 	"github.com/nitrous-io/rise-server/pkg/mqconn"
-	"github.com/nitrous-io/rise-server/shared"
 	"github.com/nitrous-io/rise-server/shared/exchanges"
 	"github.com/nitrous-io/rise-server/shared/s3client"
 	"github.com/nitrous-io/rise-server/testhelper"
@@ -43,6 +43,7 @@ var _ = Describe("Deployer", func() {
 		u    *user.User
 		proj *project.Project
 		depl *deployment.Deployment
+		dm   *domain.Domain
 	)
 
 	BeforeEach(func() {
@@ -62,7 +63,11 @@ var _ = Describe("Deployer", func() {
 
 		u = factories.User(db)
 		proj = factories.Project(db, u)
-		factories.Domain(db, proj, "www.foo-bar-express.com")
+		dm = factories.DomainWithAttrs(db, domain.Domain{
+			ProjectID:  proj.ID,
+			Name:       "www.foo-bar-express.com",
+			ForceHTTPS: true,
+		})
 
 		depl = factories.Deployment(db, proj, u, deployment.StatePendingDeploy)
 	})
@@ -97,19 +102,47 @@ var _ = Describe("Deployer", func() {
 	assertMetaDataUpload := func() {
 		Expect(fakeS3.UploadCalls.Count()).To(Equal(2)) // 2 metadata files (2 domains)
 
-		for i, domain := range []string{
-			proj.DefaultDomainName(),
-			"www.foo-bar-express.com",
-		} {
+		type domainStruct struct {
+			name       string
+			forceHTTPS bool
+		}
+
+		domains := []domainStruct{
+			domainStruct{
+				name:       proj.DefaultDomainName(),
+				forceHTTPS: proj.DefaultDomainForceHTTPS,
+			},
+			domainStruct{
+				name:       dm.Name,
+				forceHTTPS: dm.ForceHTTPS,
+			},
+		}
+
+		for i, domain := range domains {
 			assertUpload(
 				1+i,
-				"domains/"+domain+"/meta.json",
+				"domains/"+domain.name+"/meta.json",
 				"application/json",
 				[]byte(fmt.Sprintf(`{
-						"prefix": "%s"
-					}`, depl.PrefixID())),
+					"prefix": "%s",
+					"force_https": %v
+				}`, depl.PrefixID(), domain.forceHTTPS)),
 			)
 		}
+	}
+
+	assertMetaDataUploadWithoutDefaultDomain := func() {
+		Expect(fakeS3.UploadCalls.Count()).To(Equal(1)) // 2 metadata files (2 domains)
+
+		assertUpload(
+			1,
+			"domains/"+dm.Name+"/meta.json",
+			"application/json",
+			[]byte(fmt.Sprintf(`{
+				"prefix": "%s",
+				"force_https": %v
+			}`, depl.PrefixID(), dm.ForceHTTPS)),
+		)
 	}
 
 	It("fetches the raw bundle from S3, uploads assets and meta data to S3, and publishes invalidation message to edges", func() {
@@ -156,20 +189,27 @@ var _ = Describe("Deployer", func() {
 			)
 		}
 
-		// it should upload meta.json for each domain
-		for i, domain := range []string{
-			proj.DefaultDomainName(),
-			"www.foo-bar-express.com",
-		} {
-			assertUpload(
-				5+i,
-				"domains/"+domain+"/meta.json",
-				"application/json",
-				[]byte(fmt.Sprintf(`{
-					"prefix": "%s"
-				}`, depl.PrefixID())),
-			)
-		}
+		// upload meta.json for default domain
+		assertUpload(
+			5,
+			"domains/"+proj.DefaultDomainName()+"/meta.json",
+			"application/json",
+			[]byte(fmt.Sprintf(`{
+				"prefix": "%s",
+				"force_https": %v
+			}`, depl.PrefixID(), proj.DefaultDomainForceHTTPS)),
+		)
+
+		// upload meta.json for custom domains
+		assertUpload(
+			6,
+			"domains/"+dm.Name+"/meta.json",
+			"application/json",
+			[]byte(fmt.Sprintf(`{
+				"prefix": "%s",
+				"force_https": %v
+			}`, depl.PrefixID(), dm.ForceHTTPS)),
+		)
 
 		// it should publish invalidation message
 		d := testhelper.ConsumeQueue(mq, qName)
@@ -209,19 +249,15 @@ var _ = Describe("Deployer", func() {
 			}`, depl.ID)))
 			Expect(err).To(BeNil())
 
-			// it should upload meta.json for each domain
-			for i, domain := range []string{
-				"www.foo-bar-express.com",
-			} {
-				assertUpload(
-					5+i,
-					"domains/"+domain+"/meta.json",
-					"application/json",
-					[]byte(fmt.Sprintf(`{
-						"prefix": "%s"
-					}`, depl.PrefixID())),
-				)
-			}
+			assertUpload(
+				5,
+				"domains/"+dm.Name+"/meta.json",
+				"application/json",
+				[]byte(fmt.Sprintf(`{
+					"prefix": "%s",
+					"force_https": %v
+				}`, depl.PrefixID(), dm.ForceHTTPS)),
+			)
 
 			// it should publish invalidation message
 			d := testhelper.ConsumeQueue(mq, qName)
@@ -235,21 +271,6 @@ var _ = Describe("Deployer", func() {
 	})
 
 	Context("when skip_webroot_upload is true", func() {
-		assertMetaDataUpload := func(doms []string) {
-			Expect(fakeS3.UploadCalls.Count()).To(Equal(len(doms)))
-
-			for i, domain := range doms {
-				assertUpload(
-					1+i,
-					"domains/"+domain+"/meta.json",
-					"application/json",
-					[]byte(fmt.Sprintf(`{
-						"prefix": "%s"
-					}`, depl.PrefixID())),
-				)
-			}
-		}
-
 		It("only uploads metadata to S3, and publishes invalidation message to edges", func() {
 			err = deployer.Work([]byte(fmt.Sprintf(`
 				{
@@ -259,11 +280,7 @@ var _ = Describe("Deployer", func() {
 			`, depl.ID)))
 			Expect(err).To(BeNil())
 
-			// it should upload meta.json for each domain
-			assertMetaDataUpload([]string{
-				proj.Name + "." + shared.DefaultDomain,
-				"www.foo-bar-express.com",
-			})
+			assertMetaDataUpload()
 
 			// it should publish invalidation message
 			d := testhelper.ConsumeQueue(mq, qName)
@@ -294,9 +311,7 @@ var _ = Describe("Deployer", func() {
 				`, depl.ID)))
 				Expect(err).To(BeNil())
 
-				assertMetaDataUpload([]string{
-					"www.foo-bar-express.com",
-				})
+				assertMetaDataUploadWithoutDefaultDomain()
 
 				d := testhelper.ConsumeQueue(mq, qName)
 				Expect(d).NotTo(BeNil())
@@ -319,11 +334,7 @@ var _ = Describe("Deployer", func() {
 				`, depl.ID)))
 				Expect(err).To(BeNil())
 
-				// it should upload meta.json for each domain
-				assertMetaDataUpload([]string{
-					proj.Name + "." + shared.DefaultDomain,
-					"www.foo-bar-express.com",
-				})
+				assertMetaDataUpload()
 
 				// it should NOT publish invalidation message
 				d := testhelper.ConsumeQueue(mq, qName)
@@ -349,10 +360,7 @@ var _ = Describe("Deployer", func() {
 					`, depl.ID)))
 					Expect(err).To(BeNil())
 
-					// it should upload meta.json
-					assertMetaDataUpload([]string{
-						"www.foo-bar-express.com",
-					})
+					assertMetaDataUploadWithoutDefaultDomain()
 				})
 			})
 		})

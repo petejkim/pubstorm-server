@@ -18,6 +18,7 @@ import (
 
 	"github.com/nitrous-io/rise-server/apiserver/dbconn"
 	"github.com/nitrous-io/rise-server/apiserver/models/deployment"
+	"github.com/nitrous-io/rise-server/apiserver/models/domain"
 	"github.com/nitrous-io/rise-server/apiserver/models/project"
 	"github.com/nitrous-io/rise-server/pkg/filetransfer"
 	"github.com/nitrous-io/rise-server/pkg/pubsub"
@@ -134,31 +135,31 @@ func Work(data []byte) error {
 		}
 	}
 
-	// the metadata file is also publicly readable, do not put sensitive data
-	metaJson, err := json.Marshal(map[string]interface{}{
-		"prefix": prefixID,
-	})
-	if err != nil {
-		return err
-	}
-
-	reader := bytes.NewReader(metaJson)
-
 	proj := &project.Project{}
 	if err := db.First(proj, depl.ProjectID).Error; err != nil {
 		return err
 	}
 
-	domainNames, err := proj.DomainNames(db)
-	if err != nil {
+	var domainNames []string
+	if proj.DefaultDomainEnabled {
+		if err := uploadMataJSON(prefixID, proj.DefaultDomainName(), proj.DefaultDomainForceHTTPS); err != nil {
+			return err
+		}
+
+		domainNames = append(domainNames, proj.DefaultDomainName())
+	}
+
+	var domains []*domain.Domain
+	if err := db.Where("project_id = ?", proj.ID).Find(&domains).Error; err != nil {
 		return err
 	}
 
-	for _, domain := range domainNames {
-		reader.Seek(0, 0)
-		if err := S3.Upload(s3client.BucketRegion, s3client.BucketName, "domains/"+domain+"/meta.json", reader, "application/json", "public-read"); err != nil {
+	for _, domain := range domains {
+		if err := uploadMataJSON(prefixID, domain.Name, domain.ForceHTTPS); err != nil {
 			return err
 		}
+
+		domainNames = append(domainNames, domain.Name)
 	}
 
 	if !d.SkipInvalidation {
@@ -189,6 +190,25 @@ func Work(data []byte) error {
 	}
 
 	if err := tx.Commit().Error; err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func uploadMataJSON(prefixID, domainName string, forceHTTPS bool) error {
+	// the metadata file is also publicly readable, do not put sensitive data
+	metaJson, err := json.Marshal(map[string]interface{}{
+		"prefix":      prefixID,
+		"force_https": forceHTTPS,
+	})
+
+	if err != nil {
+		return err
+	}
+
+	reader := bytes.NewReader(metaJson)
+	if err := S3.Upload(s3client.BucketRegion, s3client.BucketName, "domains/"+domainName+"/meta.json", reader, "application/json", "public-read"); err != nil {
 		return err
 	}
 
