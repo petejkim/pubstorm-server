@@ -599,5 +599,12 @@ var _ = Describe("Domains", func() {
 			doRequest()
 			return res
 		}, nil)
+
+		sharedexamples.ItRequiresDomain(func() (*gorm.DB, *project.Project, *domain.Domain) {
+			return db, proj, d
+		}, func() *http.Response {
+			doRequest()
+			return res
+		}, nil)
 	})
 })
