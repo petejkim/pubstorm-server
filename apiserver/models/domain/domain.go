@@ -15,6 +15,8 @@ type Domain struct {
 
 	ProjectID uint
 	Name      string
+
+	ForceHTTPS bool `gorm:"column:force_https; default:false"`
 }
 
 // Sanitizes domain, e.g. Prepends www if an apex domain is given

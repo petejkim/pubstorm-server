@@ -188,3 +188,78 @@ func Destroy(c *gin.Context) {
 		"deleted": true,
 	})
 }
+
+func Update(c *gin.Context) {
+	proj := controllers.CurrentProject(c)
+	domainName := c.Param("name")
+	forceHTTPS := c.PostForm("force_https") == "true"
+
+	db, err := dbconn.DB()
+	if err != nil {
+		controllers.InternalServerError(c, err)
+		return
+	}
+
+	var d domain.Domain
+	if err := db.Where("name = ? AND project_id = ?", domainName, proj.ID).First(&d).Error; err != nil {
+		if err == gorm.RecordNotFound {
+			c.JSON(http.StatusNotFound, gin.H{
+				"error":             "not_found",
+				"error_description": "domain could not be found",
+			})
+			return
+		}
+		controllers.InternalServerError(c, err)
+		return
+	}
+
+	if d.ForceHTTPS == forceHTTPS {
+		c.JSON(http.StatusOK, gin.H{
+			"updated": true,
+		})
+		return
+	}
+
+	if forceHTTPS {
+		var count int
+		if err := db.Model(cert.Cert{}).Where("domain_id = ?", d.ID).Count(&count).Error; err != nil {
+			controllers.InternalServerError(c, err)
+			return
+		}
+
+		if count == 0 {
+			c.JSON(http.StatusForbidden, gin.H{
+				"error":             "forbidden",
+				"error_description": "ssl cert could not be found for the domain",
+			})
+			return
+		}
+	}
+
+	if proj.ActiveDeploymentID != nil {
+		j, err := job.NewWithJSON(queues.Deploy, &messages.DeployJobData{
+			DeploymentID:      *proj.ActiveDeploymentID,
+			SkipWebrootUpload: true,
+			SkipInvalidation:  false,
+		})
+
+		if err != nil {
+			controllers.InternalServerError(c, err)
+			return
+		}
+
+		if err := j.Enqueue(); err != nil {
+			controllers.InternalServerError(c, err)
+			return
+		}
+	}
+
+	if err := db.Model(domain.Domain{}).Where("id = ?", d.ID).Update("force_https", forceHTTPS).Error; err != nil {
+		controllers.InternalServerError(c, err)
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"updated": true,
+	})
+}

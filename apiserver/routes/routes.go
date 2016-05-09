@@ -51,6 +51,7 @@ func Draw(r *gin.Engine) {
 				lock.POST("/deployments", deployments.Create)
 				lock.POST("/domains", domains.Create)
 				lock.DELETE("/domains/:name", domains.Destroy)
+				lock.PUT("/domains/:name", domains.Update)
 				lock.POST("/rollback", deployments.Rollback)
 			}
 		}
