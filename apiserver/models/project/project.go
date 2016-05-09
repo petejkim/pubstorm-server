@@ -27,9 +27,10 @@ var (
 type Project struct {
 	gorm.Model
 
-	Name                 string
-	UserID               uint
-	DefaultDomainEnabled bool `sql:"default:true"`
+	Name                    string
+	UserID                  uint
+	DefaultDomainEnabled    bool `sql:"default:true"`
+	DefaultDomainForceHTTPS bool `sql:"column:default_domain_force_https; default:false"`
 
 	ActiveDeploymentID *uint // pointer to be nullable. remember to dereference by using *ActiveDeploymentID to get actual value
 

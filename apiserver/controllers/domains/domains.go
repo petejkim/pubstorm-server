@@ -7,6 +7,7 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/jinzhu/gorm"
 	"github.com/lib/pq"
+	"github.com/nitrous-io/rise-cli-go/project"
 	"github.com/nitrous-io/rise-server/apiserver/controllers"
 	"github.com/nitrous-io/rise-server/apiserver/dbconn"
 	"github.com/nitrous-io/rise-server/apiserver/models/cert"
@@ -200,38 +201,65 @@ func Update(c *gin.Context) {
 		return
 	}
 
-	var d domain.Domain
-	if err := db.Where("name = ? AND project_id = ?", domainName, proj.ID).First(&d).Error; err != nil {
-		if err == gorm.RecordNotFound {
-			c.JSON(http.StatusNotFound, gin.H{
-				"error":             "not_found",
-				"error_description": "domain could not be found",
+	if domainName == proj.DefaultDomainName() {
+		if !proj.DefaultDomainEnabled {
+			c.JSON(http.StatusForbidden, gin.H{
+				"error":             "forbidden",
+				"error_description": "default domain is not enabled",
 			})
 			return
 		}
-		controllers.InternalServerError(c, err)
-		return
-	}
 
-	if d.ForceHTTPS == forceHTTPS {
-		c.JSON(http.StatusOK, gin.H{
-			"updated": true,
-		})
-		return
-	}
+		if proj.DefaultDomainForceHTTPS == forceHTTPS {
+			c.JSON(http.StatusOK, gin.H{
+				"updated": true,
+			})
+			return
+		}
 
-	if forceHTTPS {
-		var count int
-		if err := db.Model(cert.Cert{}).Where("domain_id = ?", d.ID).Count(&count).Error; err != nil {
+		if err := db.Model(project.Project{}).Where("id = ?", proj.ID).Update("default_domain_force_https", forceHTTPS).Error; err != nil {
+			controllers.InternalServerError(c, err)
+			return
+		}
+	} else {
+		d := &domain.Domain{}
+		if err := db.Where("name = ? AND project_id = ?", domainName, proj.ID).First(&d).Error; err != nil {
+			if err == gorm.RecordNotFound {
+				c.JSON(http.StatusNotFound, gin.H{
+					"error":             "not_found",
+					"error_description": "domain could not be found",
+				})
+				return
+			}
 			controllers.InternalServerError(c, err)
 			return
 		}
 
-		if count == 0 {
-			c.JSON(http.StatusForbidden, gin.H{
-				"error":             "forbidden",
-				"error_description": "ssl cert could not be found for the domain",
+		if d.ForceHTTPS == forceHTTPS {
+			c.JSON(http.StatusOK, gin.H{
+				"updated": true,
 			})
+			return
+		}
+
+		if forceHTTPS {
+			var count int
+			if err := db.Model(cert.Cert{}).Where("domain_id = ?", d.ID).Count(&count).Error; err != nil {
+				controllers.InternalServerError(c, err)
+				return
+			}
+
+			if count == 0 {
+				c.JSON(http.StatusForbidden, gin.H{
+					"error":             "forbidden",
+					"error_description": "ssl cert could not be found for the domain",
+				})
+				return
+			}
+		}
+
+		if err := db.Model(domain.Domain{}).Where("id = ?", d.ID).Update("force_https", forceHTTPS).Error; err != nil {
+			controllers.InternalServerError(c, err)
 			return
 		}
 	}
@@ -252,11 +280,6 @@ func Update(c *gin.Context) {
 			controllers.InternalServerError(c, err)
 			return
 		}
-	}
-
-	if err := db.Model(domain.Domain{}).Where("id = ?", d.ID).Update("force_https", forceHTTPS).Error; err != nil {
-		controllers.InternalServerError(c, err)
-		return
 	}
 
 	c.JSON(http.StatusOK, gin.H{

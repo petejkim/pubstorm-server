@@ -707,6 +707,60 @@ var _ = Describe("Domains", func() {
 			})
 		})
 
+		Context("when default domain is given", func() {
+			BeforeEach(func() {
+				domainName = proj.DefaultDomainName()
+			})
+
+			It("return 200 OK", func() {
+				doRequest()
+
+				b := &bytes.Buffer{}
+				_, err := b.ReadFrom(res.Body)
+				Expect(err).To(BeNil())
+
+				Expect(res.StatusCode).To(Equal(http.StatusOK))
+				Expect(b.String()).To(MatchJSON(`{
+					"updated": true
+				}`))
+			})
+
+			It("updates default_domain_force_https", func() {
+				doRequest()
+
+				Expect(db.First(proj, proj.ID).Error).To(BeNil())
+				Expect(proj.DefaultDomainForceHTTPS).To(BeTrue())
+			})
+
+			Context("when default domain is not enabled", func() {
+				BeforeEach(func() {
+					proj.DefaultDomainEnabled = false
+					Expect(db.Save(proj).Error).To(BeNil())
+				})
+
+				It("return 403 forbidden", func() {
+					doRequest()
+
+					b := &bytes.Buffer{}
+					_, err := b.ReadFrom(res.Body)
+					Expect(err).To(BeNil())
+
+					Expect(res.StatusCode).To(Equal(http.StatusForbidden))
+					Expect(b.String()).To(MatchJSON(`{
+						"error": "forbidden",
+						"error_description": "default domain is not enabled"
+					}`))
+				})
+
+				It("does not update default_domain_force_https", func() {
+					doRequest()
+
+					Expect(db.First(proj, proj.ID).Error).To(BeNil())
+					Expect(proj.DefaultDomainForceHTTPS).To(BeFalse())
+				})
+			})
+		})
+
 		Context("when the cert does not exist", func() {
 			BeforeEach(func() {
 				Expect(db.Delete(ct).Error).To(BeNil())
@@ -787,6 +841,62 @@ var _ = Describe("Domains", func() {
 					It("does not enqueue a deploy job", func() {
 						doRequest()
 						Expect(testhelper.ConsumeQueue(mq, queues.Deploy)).To(BeNil())
+					})
+				})
+			})
+
+			Context("when default domain is given", func() {
+				BeforeEach(func() {
+					domainName = proj.DefaultDomainName()
+					proj.DefaultDomainForceHTTPS = true
+					Expect(db.Save(proj).Error).To(BeNil())
+				})
+
+				It("return 200 OK", func() {
+					doRequest()
+
+					b := &bytes.Buffer{}
+					_, err := b.ReadFrom(res.Body)
+					Expect(err).To(BeNil())
+
+					Expect(res.StatusCode).To(Equal(http.StatusOK))
+					Expect(b.String()).To(MatchJSON(`{
+						"updated": true
+					}`))
+				})
+
+				It("updates default_domain_force_https", func() {
+					doRequest()
+
+					Expect(db.First(proj, proj.ID).Error).To(BeNil())
+					Expect(proj.DefaultDomainForceHTTPS).To(BeFalse())
+				})
+
+				Context("when default domain is not enabled", func() {
+					BeforeEach(func() {
+						proj.DefaultDomainEnabled = false
+						Expect(db.Save(proj).Error).To(BeNil())
+					})
+
+					It("return 403 forbidden", func() {
+						doRequest()
+
+						b := &bytes.Buffer{}
+						_, err := b.ReadFrom(res.Body)
+						Expect(err).To(BeNil())
+
+						Expect(res.StatusCode).To(Equal(http.StatusForbidden))
+						Expect(b.String()).To(MatchJSON(`{
+							"error": "forbidden",
+							"error_description": "default domain is not enabled"
+						}`))
+					})
+
+					It("does not update default_domain_force_https", func() {
+						doRequest()
+
+						Expect(db.First(proj, proj.ID).Error).To(BeNil())
+						Expect(proj.DefaultDomainForceHTTPS).To(BeTrue())
 					})
 				})
 			})
