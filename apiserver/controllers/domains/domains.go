@@ -116,6 +116,7 @@ func Create(c *gin.Context) {
 }
 
 func Destroy(c *gin.Context) {
+	proj := controllers.CurrentProject(c)
 	domainName := c.Param("name")
 
 	db, err := dbconn.DB()
@@ -132,7 +133,7 @@ func Destroy(c *gin.Context) {
 	defer tx.Rollback()
 
 	var d domain.Domain
-	if err := tx.Where("name = ?", domainName).First(&d).Error; err != nil {
+	if err := tx.Where("name = ? AND project_id = ?", domainName, proj.ID).First(&d).Error; err != nil {
 		if err == gorm.RecordNotFound {
 			c.JSON(http.StatusNotFound, gin.H{
 				"error":             "not_found",

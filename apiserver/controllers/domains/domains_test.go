@@ -507,9 +507,9 @@ var _ = Describe("Domains", func() {
 			It("publishes invalidation message for the domain", func() {
 				doRequest()
 
-				d := testhelper.ConsumeQueue(mq, qName)
-				Expect(d).NotTo(BeNil())
-				Expect(d.Body).To(MatchJSON(fmt.Sprintf(`{
+				m := testhelper.ConsumeQueue(mq, qName)
+				Expect(m).NotTo(BeNil())
+				Expect(m.Body).To(MatchJSON(fmt.Sprintf(`{
 					"domains": ["%s"]
 				}`, domainName)))
 			})
