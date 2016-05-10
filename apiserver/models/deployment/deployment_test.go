@@ -123,5 +123,15 @@ var _ = Describe("Deployment", func() {
 			Expect(d.DeployedAt).NotTo(BeNil())
 			Expect(d.DeployedAt.Unix()).To(BeNumerically("~", time.Now().Unix(), 1))
 		})
+
+		It("updates state and checksum if updates to uploaded state and checksum is not empty", func() {
+			d.Checksum = "checksum123456"
+			err := d.UpdateState(db, deployment.StateUploaded)
+			Expect(err).To(BeNil())
+
+			Expect(d.State).To(Equal(deployment.StateUploaded))
+			Expect(d.Checksum).To(Equal("checksum123456"))
+			Expect(d.DeployedAt).To(BeNil())
+		})
 	})
 })

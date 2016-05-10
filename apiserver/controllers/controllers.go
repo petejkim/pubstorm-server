@@ -61,6 +61,7 @@ func CurrentProject(c *gin.Context) *project.Project {
 }
 
 func InternalServerError(c *gin.Context, err error) {
+	fmt.Println(err)
 	var (
 		errMsg  = "internal server error"
 		errHash string

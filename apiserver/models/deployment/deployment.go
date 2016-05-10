@@ -30,6 +30,7 @@ type Deployment struct {
 	ProjectID uint
 	UserID    uint
 
+	Checksum   string
 	DeployedAt *time.Time
 }
 
@@ -39,6 +40,7 @@ type DeploymentJSON struct {
 	Version    int64      `json:"version"`
 	Active     bool       `json:"active,omitempty"`
 	DeployedAt *time.Time `json:"deployed_at,omitempty"`
+	Checksum   string     `json:"checksum,omitempty"`
 }
 
 // Returns a struct that can be converted to JSON
@@ -47,6 +49,16 @@ func (d *Deployment) AsJSON() *DeploymentJSON {
 		ID:         d.ID,
 		State:      d.State,
 		Version:    d.Version,
+		DeployedAt: d.DeployedAt,
+	}
+}
+
+func (d *Deployment) AsJSONWithChecksum() *DeploymentJSON {
+	return &DeploymentJSON{
+		ID:         d.ID,
+		State:      d.State,
+		Version:    d.Version,
+		Checksum:   d.Checksum,
 		DeployedAt: d.DeployedAt,
 	}
 }
@@ -94,6 +106,10 @@ func (d *Deployment) UpdateState(db *gorm.DB, state string) error {
 	q := db.Model(Deployment{}).Where("id = ?", d.ID).Update("state", state)
 	if state == StateDeployed {
 		q = q.Update("deployed_at", gorm.Expr("now()"))
+	}
+
+	if state == StateUploaded && d.Checksum != "" {
+		q = q.Update("checksum", d.Checksum)
 	}
 
 	if err := q.Scan(d).Error; err != nil {

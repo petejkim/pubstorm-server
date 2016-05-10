@@ -11,6 +11,7 @@ import (
 	"github.com/nitrous-io/rise-server/apiserver/controllers"
 	"github.com/nitrous-io/rise-server/apiserver/dbconn"
 	"github.com/nitrous-io/rise-server/apiserver/models/deployment"
+	"github.com/nitrous-io/rise-server/pkg/hasher"
 	"github.com/nitrous-io/rise-server/pkg/job"
 	"github.com/nitrous-io/rise-server/shared/messages"
 	"github.com/nitrous-io/rise-server/shared/queues"
@@ -83,12 +84,14 @@ func Create(c *gin.Context) {
 				return
 			}
 
+			hashReader := hasher.NewReader(part)
 			uploadKey := fmt.Sprintf("deployments/%s-%d/raw-bundle.tar.gz", depl.Prefix, depl.ID)
-
-			if err := s3client.Upload(uploadKey, part, "", "private"); err != nil {
+			if err := s3client.Upload(uploadKey, hashReader, "", "private"); err != nil {
 				controllers.InternalServerError(c, err)
 				return
 			}
+
+			depl.Checksum = hashReader.Checksum()
 			break
 		}
 	}
@@ -112,9 +115,7 @@ func Create(c *gin.Context) {
 		return
 	}
 
-	// Gorm does not refetch the row from DB after update.
-	// So we call `Find` again to fetch actual values particularly for time fields because of precision.
-	if err := db.Model(depl).Update("state", deployment.StatePendingDeploy).Find(depl).Error; err != nil {
+	if err := depl.UpdateState(db, deployment.StatePendingDeploy); err != nil {
 		controllers.InternalServerError(c, err)
 		return
 	}
@@ -279,5 +280,39 @@ func Index(c *gin.Context) {
 
 	c.JSON(http.StatusOK, gin.H{
 		"deployments": deplsToJSON,
+	})
+}
+
+func ActiveDeployment(c *gin.Context) {
+	proj := controllers.CurrentProject(c)
+	if proj.ActiveDeploymentID == nil {
+		c.JSON(http.StatusNotFound, gin.H{
+			"error":             "not_found",
+			"error_description": "deployment could not be found",
+		})
+		return
+	}
+
+	db, err := dbconn.DB()
+	if err != nil {
+		controllers.InternalServerError(c, err)
+		return
+	}
+
+	depl := &deployment.Deployment{}
+	if err := db.First(depl, *proj.ActiveDeploymentID).Error; err != nil {
+		if err == gorm.RecordNotFound {
+			c.JSON(http.StatusNotFound, gin.H{
+				"error":             "not_found",
+				"error_description": "deployment could not be found",
+			})
+			return
+		}
+		controllers.InternalServerError(c, err)
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"deployment": depl.AsJSONWithChecksum(),
 	})
 }
