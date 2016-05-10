@@ -121,33 +121,17 @@ var _ = Describe("Deployments", func() {
 			s3client.S3 = origS3
 		})
 
-		writeFilePart := func(writer *multipart.Writer, filePath string, partName string, data []byte) {
-			part, err := writer.CreateFormFile(partName, filePath)
-			Expect(err).To(BeNil())
-
-			_, err = part.Write(data)
-			Expect(err).To(BeNil())
-		}
-
-		writeFieldPart := func(writer *multipart.Writer, partName string, data []byte) {
-			part, err := writer.CreateFormField(partName)
-			Expect(err).To(BeNil())
-
-			_, err = part.Write(data)
-			Expect(err).To(BeNil())
-		}
-
-		doRequestWithMultipart := func(payloadPartName string, checksumPartName string) {
+		doRequestWithMultipart := func(partName string) {
 			s = httptest.NewServer(server.New())
 
 			body := &bytes.Buffer{}
 			writer := multipart.NewWriter(body)
 
-			if checksumPartName != "" {
-				writeFieldPart(writer, checksumPartName, []byte("e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"))
-			}
+			part, err := writer.CreateFormFile(partName, "/tmp/rise/foo.tar.gz")
+			Expect(err).To(BeNil())
 
-			writeFilePart(writer, "/tmp/rise/foo.tar.gz", payloadPartName, []byte("hello\nworld!"))
+			_, err = part.Write([]byte("hello\nworld!"))
+			Expect(err).To(BeNil())
 
 			Expect(writer.Close()).To(BeNil())
 
@@ -167,18 +151,21 @@ var _ = Describe("Deployments", func() {
 			Expect(err).To(BeNil())
 		}
 
+		doRequestWithBundleChecksum := func(checksum string) {
+			s = httptest.NewServer(server.New())
+			params := url.Values{
+				"bundle_checksum": {checksum},
+			}
+			res, err = testhelper.MakeRequest("POST", s.URL+"/projects/foo-bar-express/deployments", params, headers, nil)
+			Expect(err).To(BeNil())
+		}
+
 		doRequest := func() {
-			doRequestWithMultipart("payload", "")
+			doRequestWithMultipart("payload")
 		}
 
 		doRequestWithWrongPart := func() {
-			doRequestWithMultipart("upload", "")
-		}
-
-		doRequestWithoutMultipart := func() {
-			s = httptest.NewServer(server.New())
-			res, err = testhelper.MakeRequest("POST", s.URL+"/projects/foo-bar-express/deployments", nil, headers, nil)
-			Expect(err).To(BeNil())
+			doRequestWithMultipart("upload")
 		}
 
 		sharedexamples.ItRequiresAuthentication(func() (*gorm.DB, *user.User, *http.Header) {
@@ -213,25 +200,6 @@ var _ = Describe("Deployments", func() {
 		})
 
 		Context("when the project belongs to current user", func() {
-			Context("when the request is not multipart", func() {
-				It("returns 400 with invalid_request", func() {
-					doRequestWithoutMultipart()
-
-					b := &bytes.Buffer{}
-					_, err = b.ReadFrom(res.Body)
-
-					Expect(res.StatusCode).To(Equal(http.StatusBadRequest))
-					Expect(b.String()).To(MatchJSON(`{
-						"error": "invalid_request",
-						"error_description": "the request should be encoded in multipart/form-data format"
-					}`))
-					Expect(fakeS3.UploadCalls.Count()).To(Equal(0))
-
-					depl := &deployment.Deployment{}
-					Expect(db.Last(depl).Error).To(Equal(gorm.RecordNotFound))
-				})
-			})
-
 			Context("when the request does not contain payload part", func() {
 				It("returns 422 with invalid_params", func() {
 					doRequestWithWrongPart()
@@ -282,7 +250,7 @@ var _ = Describe("Deployments", func() {
 				})
 			})
 
-			Context("when the request is valid", func() {
+			Context("when the request is valid only payload is provided", func() {
 				var (
 					depl *deployment.Deployment
 					bun  *rawbundle.RawBundle
@@ -336,11 +304,7 @@ var _ = Describe("Deployments", func() {
 					Expect(bun.Checksum).To(Equal("db39e098913eee20e5371139022e4431ffe7b01baa524bd87e08f2763de3ea55"))
 				})
 
-				It("uploads bundle to s3", func() {
-					doRequest()
-					depl = &deployment.Deployment{}
-					db.Last(depl)
-
+				It("does not bundle to s3", func() {
 					Expect(fakeS3.UploadCalls.Count()).To(Equal(1))
 					call := fakeS3.UploadCalls.NthCall(1)
 					Expect(call).NotTo(BeNil())
@@ -463,6 +427,152 @@ var _ = Describe("Deployments", func() {
 						db.Last(depl)
 
 						Expect(depl.State).To(Equal(deployment.StatePendingDeploy))
+					})
+				})
+			})
+
+			Context("when request is not multpart", func() {
+				Context("when raw_bundle is not specified", func() {
+					BeforeEach(func() {
+						doRequestWithBundleChecksum("")
+					})
+
+					It("returns 422 with invalid request", func() {
+						b := &bytes.Buffer{}
+						_, err = b.ReadFrom(res.Body)
+						Expect(err).To(BeNil())
+
+						Expect(res.StatusCode).To(Equal(422))
+						Expect(b.String()).To(MatchJSON(`{
+							"error": "invalid_params",
+							"errors": {
+								"bundle_checksum": "is required"
+							}
+						}`))
+					})
+				})
+
+				Context("when bundle_checksum is specified and the raw bundle exists", func() {
+					var (
+						depl              *deployment.Deployment
+						existingRawBundle *rawbundle.RawBundle
+						checksum          string
+					)
+
+					BeforeEach(func() {
+						checksum = "db39e098913eee20e5371139022e4431ffe7b01baa524bd87e08f2763de3ea55"
+						existingRawBundle = &rawbundle.RawBundle{
+							ProjectID:    proj.ID,
+							Checksum:     checksum,
+							UploadedPath: "deployments/pr3f1x-1234/raw-bundle.tar.gz",
+						}
+						Expect(db.Create(existingRawBundle).Error).To(BeNil())
+					})
+
+					It("returns 202 accepted", func() {
+						doRequestWithBundleChecksum(checksum)
+						depl = &deployment.Deployment{}
+						db.Last(depl)
+
+						b := &bytes.Buffer{}
+						_, err = b.ReadFrom(res.Body)
+
+						j := map[string]interface{}{
+							"deployment": map[string]interface{}{
+								"id":      depl.ID,
+								"state":   deployment.StatePendingDeploy,
+								"version": 1,
+							},
+						}
+						expectedJSON, err := json.Marshal(j)
+						Expect(err).To(BeNil())
+						Expect(b.String()).To(MatchJSON(expectedJSON))
+					})
+
+					It("creates a deployment record", func() {
+						doRequestWithBundleChecksum(checksum)
+						depl = &deployment.Deployment{}
+						db.Last(depl)
+
+						Expect(depl).NotTo(BeNil())
+						Expect(depl.ProjectID).To(Equal(proj.ID))
+						Expect(depl.UserID).To(Equal(u.ID))
+						Expect(depl.State).To(Equal(deployment.StatePendingDeploy))
+						Expect(depl.Prefix).NotTo(HaveLen(0))
+						Expect(depl.Version).To(Equal(int64(1)))
+
+						Expect(existingRawBundle).NotTo(BeNil())
+						Expect(*depl.RawBundleID).To(Equal(existingRawBundle.ID))
+					})
+
+					It("uploads bundle to s3", func() {
+						doRequestWithBundleChecksum(checksum)
+						depl = &deployment.Deployment{}
+						db.Last(depl)
+
+						Expect(fakeS3.UploadCalls.Count()).To(Equal(0))
+					})
+
+					It("enqueues a deploy job", func() {
+						doRequestWithBundleChecksum(checksum)
+						depl = &deployment.Deployment{}
+						db.Last(depl)
+
+						m := testhelper.ConsumeQueue(mq, queues.Deploy)
+						Expect(m).NotTo(BeNil())
+						Expect(m.Body).To(MatchJSON(fmt.Sprintf(`
+						{
+							"deployment_id": %d,
+							"skip_webroot_upload": false,
+							"skip_invalidation": false
+						}
+					`, depl.ID)))
+					})
+
+					Context("when the raw bundle is not associated with the project", func() {
+						BeforeEach(func() {
+							proj2 := factories.Project(db, u)
+							existingRawBundle.ProjectID = proj2.ID
+							Expect(db.Save(existingRawBundle).Error).To(BeNil())
+						})
+
+						It("returns 422 with invalid request", func() {
+							doRequestWithBundleChecksum(checksum)
+							depl = &deployment.Deployment{}
+							db.Last(depl)
+
+							b := &bytes.Buffer{}
+							_, err = b.ReadFrom(res.Body)
+							Expect(err).To(BeNil())
+
+							Expect(res.StatusCode).To(Equal(422))
+							Expect(b.String()).To(MatchJSON(`{
+								"error": "invalid_params",
+								"errors": {
+									"bundle_checksum": "the bundle could not be found"
+								}
+							}`))
+						})
+					})
+				})
+
+				Context("when bundle checksum is specified and the bundle does not exist", func() {
+					BeforeEach(func() {
+						doRequestWithBundleChecksum("db39e098913eee20e5371139022e4431ffe7b01baa524bd87e08f2763de3ea55")
+					})
+
+					It("returns 422 with invalid request", func() {
+						b := &bytes.Buffer{}
+						_, err = b.ReadFrom(res.Body)
+						Expect(err).To(BeNil())
+
+						Expect(res.StatusCode).To(Equal(422))
+						Expect(b.String()).To(MatchJSON(`{
+							"error": "invalid_params",
+							"errors": {
+								"bundle_checksum": "the bundle could not be found"
+							}
+						}`))
 					})
 				})
 			})

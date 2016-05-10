@@ -5,6 +5,7 @@ import (
 	"io"
 	"net/http"
 	"strconv"
+	"strings"
 
 	log "github.com/Sirupsen/logrus"
 	"github.com/gin-gonic/gin"
@@ -26,16 +27,6 @@ func Create(c *gin.Context) {
 	u := controllers.CurrentUser(c)
 	proj := controllers.CurrentProject(c)
 
-	// get the multipart reader for the request.
-	reader, err := c.Request.MultipartReader()
-	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{
-			"error":             "invalid_request",
-			"error_description": "the request should be encoded in multipart/form-data format",
-		})
-		return
-	}
-
 	db, err := dbconn.DB()
 	if err != nil {
 		controllers.InternalServerError(c, err)
@@ -47,66 +38,115 @@ func Create(c *gin.Context) {
 		UserID:    u.ID,
 	}
 
-	if n, err := strconv.ParseInt(c.Request.Header.Get("Content-Length"), 10, 64); err != nil || n > s3client.MaxUploadSize {
+	if strings.HasPrefix(c.Request.Header.Get("Content-Type"), "multipart/form-data; boundary=") {
+		reader, err := c.Request.MultipartReader()
 		if err != nil {
 			c.JSON(http.StatusBadRequest, gin.H{
 				"error":             "invalid_request",
-				"error_description": "Content-Length header is required",
+				"error_description": "the request should be encoded in multipart/form-data format",
 			})
-		} else {
-			c.JSON(http.StatusBadRequest, gin.H{
-				"error":             "invalid_request",
-				"error_description": "request body is too large",
-			})
+			return
 		}
-		return
-	}
 
-	// upload "payload" part to s3
-	for {
-		part, err := reader.NextPart()
-		if err == io.EOF {
+		if n, err := strconv.ParseInt(c.Request.Header.Get("Content-Length"), 10, 64); err != nil || n > s3client.MaxUploadSize {
+			if err != nil {
+				c.JSON(http.StatusBadRequest, gin.H{
+					"error":             "invalid_request",
+					"error_description": "Content-Length header is required",
+				})
+			} else {
+				c.JSON(http.StatusBadRequest, gin.H{
+					"error":             "invalid_request",
+					"error_description": "request body is too large",
+				})
+			}
+			return
+		}
+
+		for {
+			part, err := reader.NextPart()
+			if err == io.EOF {
+				c.JSON(422, gin.H{
+					"error": "invalid_params",
+					"errors": map[string]interface{}{
+						"payload": "is required",
+					},
+				})
+				return
+			}
+
+			if part.FormName() == "payload" {
+				ver, err := proj.NextVersion(db)
+				if err != nil {
+					controllers.InternalServerError(c, err)
+					return
+				}
+
+				depl.Version = ver
+				if err := db.Create(depl).Error; err != nil {
+					controllers.InternalServerError(c, err)
+					return
+				}
+
+				hashReader := hasher.NewReader(part)
+				uploadKey := fmt.Sprintf("deployments/%s-%d/raw-bundle.tar.gz", depl.Prefix, depl.ID)
+				if err := s3client.Upload(uploadKey, hashReader, "", "private"); err != nil {
+					controllers.InternalServerError(c, err)
+					return
+				}
+
+				bun := &rawbundle.RawBundle{}
+				bun.ProjectID = proj.ID
+				bun.Checksum = hashReader.Checksum()
+				bun.UploadedPath = uploadKey
+				if err := db.Create(bun).Error; err != nil {
+					controllers.InternalServerError(c, err)
+					return
+				}
+
+				depl.RawBundleID = &bun.ID
+				break
+			}
+		}
+	} else {
+		ver, err := proj.NextVersion(db)
+		if err != nil {
+			controllers.InternalServerError(c, err)
+			return
+		}
+
+		depl.Version = ver
+		if err := db.Create(depl).Error; err != nil {
+			controllers.InternalServerError(c, err)
+			return
+		}
+
+		checksum := c.PostForm("bundle_checksum")
+		if checksum == "" {
 			c.JSON(422, gin.H{
 				"error": "invalid_params",
-				"errors": map[string]interface{}{
-					"payload": "is required",
+				"errors": map[string]string{
+					"bundle_checksum": "is required",
 				},
 			})
 			return
 		}
 
-		if part.FormName() == "payload" {
-			ver, err := proj.NextVersion(db)
-			if err != nil {
-				controllers.InternalServerError(c, err)
+		bun := &rawbundle.RawBundle{}
+		if err := db.Where("checksum = ? AND project_id = ?", checksum, proj.ID).First(bun).Error; err != nil {
+			if err == gorm.RecordNotFound {
+				c.JSON(422, gin.H{
+					"error": "invalid_params",
+					"errors": map[string]string{
+						"bundle_checksum": "the bundle could not be found",
+					},
+				})
 				return
 			}
-
-			depl.Version = ver
-			if err := db.Create(depl).Error; err != nil {
-				controllers.InternalServerError(c, err)
-				return
-			}
-
-			hashReader := hasher.NewReader(part)
-			uploadKey := fmt.Sprintf("deployments/%s-%d/raw-bundle.tar.gz", depl.Prefix, depl.ID)
-			if err := s3client.Upload(uploadKey, hashReader, "", "private"); err != nil {
-				controllers.InternalServerError(c, err)
-				return
-			}
-
-			bun := &rawbundle.RawBundle{}
-			bun.ProjectID = proj.ID
-			bun.Checksum = hashReader.Checksum()
-			bun.UploadedPath = uploadKey
-			if err := db.Create(bun).Error; err != nil {
-				controllers.InternalServerError(c, err)
-				return
-			}
-			depl.RawBundleID = &bun.ID
-
-			break
+			controllers.InternalServerError(c, err)
+			return
 		}
+		depl.RawBundleID = &bun.ID
 	}
 
 	if err = depl.UpdateState(db, deployment.StateUploaded); err != nil {
