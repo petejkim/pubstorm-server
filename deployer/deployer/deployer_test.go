@@ -11,6 +11,7 @@ import (
 	"github.com/nitrous-io/rise-server/apiserver/dbconn"
 	"github.com/nitrous-io/rise-server/apiserver/models/deployment"
 	"github.com/nitrous-io/rise-server/apiserver/models/project"
+	"github.com/nitrous-io/rise-server/apiserver/models/rawbundle"
 	"github.com/nitrous-io/rise-server/apiserver/models/user"
 	"github.com/nitrous-io/rise-server/deployer/deployer"
 	"github.com/nitrous-io/rise-server/pkg/filetransfer"
@@ -48,6 +49,7 @@ var _ = Describe("Deployer", func() {
 
 		u    *user.User
 		proj *project.Project
+		bun  *rawbundle.RawBundle
 		depl *deployment.Deployment
 	)
 
@@ -75,7 +77,11 @@ var _ = Describe("Deployer", func() {
 		proj = factories.Project(db, u)
 		factories.Domain(db, proj, "www.foo-bar-express.com")
 
-		depl = factories.Deployment(db, proj, u, deployment.StatePendingDeploy)
+		bun = factories.RawBundle(db, proj)
+		depl = factories.DeploymentWithAttrs(db, proj, u, deployment.Deployment{
+			State:       deployment.StatePendingDeploy,
+			RawBundleID: &bun.ID,
+		})
 	})
 
 	AfterEach(func() {
@@ -134,7 +140,7 @@ var _ = Describe("Deployer", func() {
 		}`, depl.ID)))
 		Expect(err).To(BeNil())
 
-		// it should download raw bundle from s3
+		// it should download optimized bundle from s3
 		Expect(fakeS3.DownloadCalls.Count()).To(Equal(1))
 		downloadCall := fakeS3.DownloadCalls.NthCall(1)
 		Expect(downloadCall).NotTo(BeNil())
@@ -412,7 +418,7 @@ var _ = Describe("Deployer", func() {
 
 			// it should upload meta.json for each domain
 			assertMetaDataUpload([]string{
-				proj.Name + "." + shared.DefaultDomain,
+				proj.DefaultDomainName(),
 				"www.foo-bar-express.com",
 			})
 
