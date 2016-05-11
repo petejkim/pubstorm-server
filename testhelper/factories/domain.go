@@ -40,3 +40,22 @@ func Domain(db *gorm.DB, proj *project.Project, domainNames ...string) (d *domai
 	// returns only the last domain created
 	return d
 }
+
+func DomainWithAttrs(db *gorm.DB, attrs domain.Domain) (d *domain.Domain) {
+	d = &attrs
+
+	if d.ProjectID == 0 {
+		proj := Project(db, nil)
+		d.ProjectID = proj.ID
+	}
+
+	if d.Name == "" {
+		domainN++
+		d.Name = fmt.Sprintf("www.dom%04d.com", domainN)
+	}
+
+	err := db.Create(d).Error
+	Expect(err).To(BeNil())
+
+	return d
+}
