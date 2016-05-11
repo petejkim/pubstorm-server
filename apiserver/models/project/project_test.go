@@ -13,6 +13,7 @@ import (
 	"github.com/nitrous-io/rise-server/apiserver/models/collab"
 	"github.com/nitrous-io/rise-server/apiserver/models/domain"
 	"github.com/nitrous-io/rise-server/apiserver/models/project"
+	"github.com/nitrous-io/rise-server/apiserver/models/rawbundle"
 	"github.com/nitrous-io/rise-server/apiserver/models/user"
 	"github.com/nitrous-io/rise-server/shared"
 	"github.com/nitrous-io/rise-server/testhelper"
@@ -410,11 +411,13 @@ var _ = Describe("Project", func() {
 
 		Context("when a project has domains and certs", func() {
 			var (
-				dm1 *domain.Domain
-				dm2 *domain.Domain
+				dm1  *domain.Domain
+				dm2  *domain.Domain
+				bun1 *rawbundle.RawBundle
 
-				dm3 *domain.Domain
-				ct3 *cert.Cert
+				dm3  *domain.Domain
+				ct3  *cert.Cert
+				bun2 *rawbundle.RawBundle
 			)
 
 			BeforeEach(func() {
@@ -443,13 +446,19 @@ var _ = Describe("Project", func() {
 					PrivateKeyPath:  "old/path",
 				}
 				Expect(db.Create(ct3).Error).To(BeNil())
+
+				bun1 = factories.RawBundle(db, proj)
+				bun2 = factories.RawBundle(db, proj2)
 			})
 
-			It("deletes associated domains and certs", func() {
+			It("deletes associated domains, certs and raw bundles", func() {
 				Expect(proj.Destroy(db)).To(BeNil())
 
 				var count int
 				Expect(db.Model(domain.Domain{}).Where("project_id = ?", proj.ID).Count(&count).Error).To(BeNil())
+				Expect(count).To(Equal(0))
+
+				Expect(db.Model(rawbundle.RawBundle{}).Where("id = ?", bun1.ID).Count(&count).Error).To(BeNil())
 				Expect(count).To(Equal(0))
 
 				Expect(db.Model(cert.Cert{}).Where("domain_id IN (?,?)", dm1.ID, dm2.ID).Count(&count).Error).To(BeNil())
@@ -457,6 +466,9 @@ var _ = Describe("Project", func() {
 
 				// Make sure it does not delete other project's domains and certs
 				Expect(db.Model(domain.Domain{}).Where("id = ?", dm3.ID).Count(&count).Error).To(BeNil())
+				Expect(count).To(Equal(1))
+
+				Expect(db.Model(rawbundle.RawBundle{}).Where("id = ?", bun2.ID).Count(&count).Error).To(BeNil())
 				Expect(count).To(Equal(1))
 
 				Expect(db.Model(cert.Cert{}).Where("id = ?", ct3.ID).Count(&count).Error).To(BeNil())

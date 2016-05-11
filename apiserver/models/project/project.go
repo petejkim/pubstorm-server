@@ -12,6 +12,7 @@ import (
 	"github.com/lib/pq"
 	"github.com/nitrous-io/rise-server/apiserver/models/collab"
 	"github.com/nitrous-io/rise-server/apiserver/models/domain"
+	"github.com/nitrous-io/rise-server/apiserver/models/rawbundle"
 	"github.com/nitrous-io/rise-server/apiserver/models/user"
 	"github.com/nitrous-io/rise-server/shared"
 
@@ -229,6 +230,10 @@ func (p *Project) NextVersion(db *gorm.DB) (int64, error) {
 // Destroy a project
 func (p *Project) Destroy(db *gorm.DB) error {
 	if err := db.Exec("UPDATE certs c SET deleted_at = now() FROM domains d WHERE c.domain_id = d.id AND d.project_id = ?", p.ID).Error; err != nil {
+		return err
+	}
+
+	if err := db.Delete(rawbundle.RawBundle{}, "project_id = ?", p.ID).Error; err != nil {
 		return err
 	}
 

@@ -18,6 +18,7 @@ import (
 	"github.com/nitrous-io/rise-server/apiserver/models/domain"
 	"github.com/nitrous-io/rise-server/apiserver/models/oauthtoken"
 	"github.com/nitrous-io/rise-server/apiserver/models/project"
+	"github.com/nitrous-io/rise-server/apiserver/models/rawbundle"
 	"github.com/nitrous-io/rise-server/apiserver/models/user"
 	"github.com/nitrous-io/rise-server/apiserver/server"
 	"github.com/nitrous-io/rise-server/pkg/filetransfer"
@@ -955,6 +956,50 @@ var _ = Describe("Projects", func() {
 
 			Expect(trackCall.Arguments[3]).To(BeNil())
 			Expect(trackCall.ReturnValues[0]).To(BeNil())
+		})
+
+		Context("when there are associated raw bundles", func() {
+			var (
+				bun1 *rawbundle.RawBundle
+				bun2 *rawbundle.RawBundle
+			)
+
+			BeforeEach(func() {
+				bun1 = factories.RawBundle(db, proj)
+				bun2 = factories.RawBundle(db, proj)
+			})
+
+			It("deletes associated raw bundles from DB and S3", func() {
+				doRequest()
+
+				Expect(db.First(bun1, bun1.ID).Error).To(Equal(gorm.RecordNotFound))
+				Expect(db.First(bun2, bun2.ID).Error).To(Equal(gorm.RecordNotFound))
+
+				Expect(fakeS3.DeleteCalls.Count()).To(Equal(1))
+
+				deleteCall := fakeS3.DeleteCalls.NthCall(1)
+				Expect(deleteCall).NotTo(BeNil())
+				Expect(deleteCall.Arguments[0]).To(Equal(s3client.BucketRegion))
+				Expect(deleteCall.Arguments[1]).To(Equal(s3client.BucketName))
+				Expect(deleteCall.ReturnValues[0]).To(BeNil())
+
+				filesToDelete := []string{
+					"domains/" + proj.DefaultDomainName() + "/meta.json",
+					"domains/" + dm1.Name + "/meta.json",
+					"certs/" + dm1.Name + "/ssl.crt",
+					"certs/" + dm1.Name + "/ssl.key",
+					"domains/" + dm2.Name + "/meta.json",
+					"certs/" + dm2.Name + "/ssl.crt",
+					"certs/" + dm2.Name + "/ssl.key",
+
+					bun1.UploadedPath,
+					bun2.UploadedPath,
+				}
+
+				for i, path := range filesToDelete {
+					Expect(deleteCall.Arguments[2+i]).To(Equal(path))
+				}
+			})
 		})
 
 		sharedexamples.ItRequiresAuthentication(func() (*gorm.DB, *user.User, *http.Header) {

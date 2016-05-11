@@ -13,6 +13,7 @@ import (
 	"github.com/nitrous-io/rise-server/apiserver/dbconn"
 	"github.com/nitrous-io/rise-server/apiserver/models/blacklistedname"
 	"github.com/nitrous-io/rise-server/apiserver/models/project"
+	"github.com/nitrous-io/rise-server/apiserver/models/rawbundle"
 	"github.com/nitrous-io/rise-server/pkg/job"
 	"github.com/nitrous-io/rise-server/pkg/pubsub"
 	"github.com/nitrous-io/rise-server/shared"
@@ -326,6 +327,12 @@ func Destroy(c *gin.Context) {
 		return
 	}
 
+	var rawBundles []*rawbundle.RawBundle
+	if err := db.Where("project_id = ?", proj.ID).Find(&rawBundles).Error; err != nil {
+		controllers.InternalServerError(c, err)
+		return
+	}
+
 	// Delete ssl certs from S3
 	var filesToDelete []string
 	for _, domainName := range domainNames {
@@ -334,6 +341,10 @@ func Destroy(c *gin.Context) {
 			filesToDelete = append(filesToDelete, "certs/"+domainName+"/ssl.crt")
 			filesToDelete = append(filesToDelete, "certs/"+domainName+"/ssl.key")
 		}
+	}
+
+	for _, rawBundle := range rawBundles {
+		filesToDelete = append(filesToDelete, rawBundle.UploadedPath)
 	}
 
 	if err := s3client.Delete(filesToDelete...); err != nil {
