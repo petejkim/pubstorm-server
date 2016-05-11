@@ -473,6 +473,30 @@ var _ = Describe("Projects", func() {
 		Context("when default domain is newly disabled (i.e. it was enabled)", func() {
 			BeforeEach(func() {
 				Expect(proj.DefaultDomainEnabled).To(Equal(true))
+				params = url.Values{
+					"default_domain_enabled": {"false"},
+				}
+			})
+
+			It("returns 200 OK", func() {
+				doRequest()
+
+				b := &bytes.Buffer{}
+				_, err := b.ReadFrom(res.Body)
+				Expect(err).To(BeNil())
+
+				Expect(res.StatusCode).To(Equal(http.StatusOK))
+
+				err = db.First(proj, proj.ID).Error
+				Expect(err).To(BeNil())
+				Expect(proj.DefaultDomainEnabled).To(Equal(false))
+
+				Expect(b.String()).To(MatchJSON(fmt.Sprintf(`{
+					"project":{
+						"name": "%s",
+						"default_domain_enabled": false
+					}
+				}`, proj.Name)))
 			})
 
 			Context("when there is an active deployment", func() {
@@ -484,34 +508,7 @@ var _ = Describe("Projects", func() {
 					Expect(err).To(BeNil())
 				})
 
-				It("returns 200 OK", func() {
-					params = url.Values{
-						"default_domain_enabled": {"false"},
-					}
-					doRequest()
-
-					b := &bytes.Buffer{}
-					_, err := b.ReadFrom(res.Body)
-					Expect(err).To(BeNil())
-
-					Expect(res.StatusCode).To(Equal(http.StatusOK))
-
-					err = db.First(proj, proj.ID).Error
-					Expect(err).To(BeNil())
-					Expect(proj.DefaultDomainEnabled).To(Equal(false))
-
-					Expect(b.String()).To(MatchJSON(fmt.Sprintf(`{
-						"project":{
-							"name": "%s",
-							"default_domain_enabled": false
-						}
-					}`, proj.Name)))
-				})
-
 				It("deletes the meta.json for the default domain from S3", func() {
-					params = url.Values{
-						"default_domain_enabled": {"false"},
-					}
 					doRequest()
 
 					Expect(fakeS3.DeleteCalls.Count()).To(Equal(1))
@@ -525,9 +522,6 @@ var _ = Describe("Projects", func() {
 				})
 
 				It("publishes invalidation message for the default domain", func() {
-					params = url.Values{
-						"default_domain_enabled": {"false"},
-					}
 					doRequest()
 
 					d := testhelper.ConsumeQueue(mq, invalidationQueueName)
@@ -539,43 +533,13 @@ var _ = Describe("Projects", func() {
 			})
 
 			Context("when there is no active deployment", func() {
-				It("returns 200 OK", func() {
-					params = url.Values{
-						"default_domain_enabled": {"false"},
-					}
-					doRequest()
-
-					b := &bytes.Buffer{}
-					_, err := b.ReadFrom(res.Body)
-					Expect(err).To(BeNil())
-
-					Expect(res.StatusCode).To(Equal(http.StatusOK))
-
-					err = db.First(proj, proj.ID).Error
-					Expect(err).To(BeNil())
-					Expect(proj.DefaultDomainEnabled).To(Equal(false))
-
-					Expect(b.String()).To(MatchJSON(fmt.Sprintf(`{
-						"project":{
-							"name": "%s",
-							"default_domain_enabled": false
-						}
-					}`, proj.Name)))
-				})
-
 				It("does not delete the meta.json for the default domain from S3", func() {
-					params = url.Values{
-						"default_domain_enabled": {"false"},
-					}
 					doRequest()
 
 					Expect(fakeS3.DeleteCalls.Count()).To(Equal(0))
 				})
 
 				It("does not enqueue any job", func() {
-					params = url.Values{
-						"default_domain_enabled": {"false"},
-					}
 					doRequest()
 
 					d := testhelper.ConsumeQueue(mq, queues.Deploy)
@@ -588,6 +552,30 @@ var _ = Describe("Projects", func() {
 			BeforeEach(func() {
 				proj.DefaultDomainEnabled = false
 				Expect(db.Save(proj).Error).To(BeNil())
+				params = url.Values{
+					"default_domain_enabled": {"true"},
+				}
+			})
+
+			It("returns 200 OK", func() {
+				doRequest()
+
+				b := &bytes.Buffer{}
+				_, err := b.ReadFrom(res.Body)
+				Expect(err).To(BeNil())
+
+				Expect(res.StatusCode).To(Equal(http.StatusOK))
+
+				err = db.First(proj, proj.ID).Error
+				Expect(err).To(BeNil())
+				Expect(proj.DefaultDomainEnabled).To(Equal(true))
+
+				Expect(b.String()).To(MatchJSON(fmt.Sprintf(`{
+					"project":{
+						"name": "%s",
+						"default_domain_enabled": true
+					}
+				}`, proj.Name)))
 			})
 
 			Context("when there is an active deployment", func() {
@@ -599,34 +587,7 @@ var _ = Describe("Projects", func() {
 					Expect(err).To(BeNil())
 				})
 
-				It("returns 200 OK", func() {
-					params = url.Values{
-						"default_domain_enabled": {"true"},
-					}
-					doRequest()
-
-					b := &bytes.Buffer{}
-					_, err := b.ReadFrom(res.Body)
-					Expect(err).To(BeNil())
-
-					Expect(res.StatusCode).To(Equal(http.StatusOK))
-
-					err = db.First(proj, proj.ID).Error
-					Expect(err).To(BeNil())
-					Expect(proj.DefaultDomainEnabled).To(Equal(true))
-
-					Expect(b.String()).To(MatchJSON(fmt.Sprintf(`{
-						"project":{
-							"name": "%s",
-							"default_domain_enabled": true
-						}
-					}`, proj.Name)))
-				})
-
 				It("enqueues a deploy job to upload meta.json", func() {
-					params = url.Values{
-						"default_domain_enabled": {"true"},
-					}
 					doRequest()
 
 					d := testhelper.ConsumeQueue(mq, queues.Deploy)
@@ -640,34 +601,7 @@ var _ = Describe("Projects", func() {
 			})
 
 			Context("when there is no active deployment", func() {
-				It("returns 200 OK", func() {
-					params = url.Values{
-						"default_domain_enabled": {"true"},
-					}
-					doRequest()
-
-					b := &bytes.Buffer{}
-					_, err := b.ReadFrom(res.Body)
-					Expect(err).To(BeNil())
-
-					Expect(res.StatusCode).To(Equal(http.StatusOK))
-
-					err = db.First(proj, proj.ID).Error
-					Expect(err).To(BeNil())
-					Expect(proj.DefaultDomainEnabled).To(Equal(true))
-
-					Expect(b.String()).To(MatchJSON(fmt.Sprintf(`{
-						"project":{
-							"name": "%s",
-							"default_domain_enabled": true
-						}
-					}`, proj.Name)))
-				})
-
 				It("does not enqueue any job", func() {
-					params = url.Values{
-						"default_domain_enabled": {"true"},
-					}
 					doRequest()
 
 					d := testhelper.ConsumeQueue(mq, queues.Deploy)

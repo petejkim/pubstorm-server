@@ -145,54 +145,49 @@ func Update(c *gin.Context) {
 			return
 		}
 		updatedProj.DefaultDomainEnabled = defaultDomainEnabled
-	}
 
-	// If default domain was just enabled, we need add it so that it'll actually
-	// work.
-	activate := !proj.DefaultDomainEnabled &&
-		updatedProj.DefaultDomainEnabled &&
-		proj.ActiveDeploymentID != nil
-	if activate {
-		j, err := job.NewWithJSON(queues.Deploy, &messages.DeployJobData{
-			DeploymentID:      *proj.ActiveDeploymentID,
-			SkipWebrootUpload: true,
-			SkipInvalidation:  true,
-		})
-		if err != nil {
-			controllers.InternalServerError(c, err)
-			return
-		}
+		// if default_domain_enabled changed
+		if proj.DefaultDomainEnabled != updatedProj.DefaultDomainEnabled && proj.ActiveDeploymentID != nil {
+			if updatedProj.DefaultDomainEnabled {
+				// If default domain was just enabled, we need add it so that it'll actually
+				// work.
+				j, err := job.NewWithJSON(queues.Deploy, &messages.DeployJobData{
+					DeploymentID:      *proj.ActiveDeploymentID,
+					SkipWebrootUpload: true,
+					SkipInvalidation:  true,
+				})
+				if err != nil {
+					controllers.InternalServerError(c, err)
+					return
+				}
 
-		if err := j.Enqueue(); err != nil {
-			controllers.InternalServerError(c, err)
-			return
-		}
-	}
+				if err := j.Enqueue(); err != nil {
+					controllers.InternalServerError(c, err)
+					return
+				}
+			} else {
+				// If default domain was just disabled, we need to remove it so that it no
+				// longer works.
+				defaultDomain := proj.Name + "." + shared.DefaultDomain
 
-	// If default domain was just disabled, we need to remove it so that it no
-	// longer works.
-	deactivate := proj.DefaultDomainEnabled &&
-		!updatedProj.DefaultDomainEnabled &&
-		proj.ActiveDeploymentID != nil
-	if deactivate {
-		defaultDomain := proj.Name + "." + shared.DefaultDomain
+				if err := s3client.Delete("/domains/" + defaultDomain + "/meta.json"); err != nil {
+					controllers.InternalServerError(c, err)
+					return
+				}
 
-		if err := s3client.Delete("/domains/" + defaultDomain + "/meta.json"); err != nil {
-			controllers.InternalServerError(c, err)
-			return
-		}
+				m, err := pubsub.NewMessageWithJSON(exchanges.Edges, exchanges.RouteV1Invalidation, &messages.V1InvalidationMessageData{
+					Domains: []string{defaultDomain},
+				})
+				if err != nil {
+					controllers.InternalServerError(c, err)
+					return
+				}
 
-		m, err := pubsub.NewMessageWithJSON(exchanges.Edges, exchanges.RouteV1Invalidation, &messages.V1InvalidationMessageData{
-			Domains: []string{defaultDomain},
-		})
-		if err != nil {
-			controllers.InternalServerError(c, err)
-			return
-		}
-
-		if err := m.Publish(); err != nil {
-			controllers.InternalServerError(c, err)
-			return
+				if err := m.Publish(); err != nil {
+					controllers.InternalServerError(c, err)
+					return
+				}
+			}
 		}
 	}
 
