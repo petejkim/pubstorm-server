@@ -18,7 +18,10 @@ import (
 	"github.com/nitrous-io/rise-server/apiserver/models/domain"
 	"github.com/nitrous-io/rise-server/pkg/aesencrypter"
 	"github.com/nitrous-io/rise-server/pkg/certhelper"
+	"github.com/nitrous-io/rise-server/pkg/pubsub"
 	"github.com/nitrous-io/rise-server/shared"
+	"github.com/nitrous-io/rise-server/shared/exchanges"
+	"github.com/nitrous-io/rise-server/shared/messages"
 	"github.com/nitrous-io/rise-server/shared/s3client"
 )
 
@@ -198,6 +201,21 @@ func Create(c *gin.Context) {
 			controllers.InternalServerError(c, err)
 			return
 		}
+	}
+
+	// Invalidate cert cache
+	m, err := pubsub.NewMessageWithJSON(exchanges.Edges, exchanges.RouteV1Invalidation, &messages.V1InvalidationMessageData{
+		Domains: []string{domainName},
+	})
+
+	if err != nil {
+		controllers.InternalServerError(c, err)
+		return
+	}
+
+	if err := m.Publish(); err != nil {
+		controllers.InternalServerError(c, err)
+		return
 	}
 
 	if err := cert.Upsert(db, ct); err != nil {
