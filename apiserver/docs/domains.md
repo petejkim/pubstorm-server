@@ -88,7 +88,7 @@ DELETE /projects/:project_name/domains/:name
 
 **Possible responses**
 
-* **200** - Domain deleted
+* **200** - Domain
   Example:
   ```json
   {
@@ -105,3 +105,30 @@ DELETE /projects/:project_name/domains/:name
   }
   ```
 
+## Fetch list of domains
+
+```
+GET /projects/:projectName/domains
+```
+
+**Possible responses**
+
+* **200** - Domains fetched
+  * Example:
+  ```json
+  {
+    "domains": [
+      "foo-bar-express.pubstorm.site",
+      "www.foo-bar-express.com",
+    ]
+  }
+  ```
+
+* **404** - Project not found
+  * Example:
+  ```json
+  {
+    "error": "not_found",
+    "error_description": "project could not be found"
+  }
+  ```

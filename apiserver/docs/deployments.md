@@ -23,7 +23,8 @@ POST /projects/:projectName/deployments
   {
     "deployment": {
       "id": 123,
-      "state": "uploaded"
+      "state": "uploaded",
+      "version": 1
     }
   }
   ```
@@ -65,6 +66,7 @@ GET /projects/:projectName/deployments/:id
     "deployment": {
       "id": 123,
       "state": "deployed",
+      "version": 1,
       "deployed_at": "2016-04-23T18:25:43.511Z"
     }
   }
@@ -87,9 +89,9 @@ POST /projects/:projectName/rollback
 
 **POST Form Params**
 
-| Key            | Type | Required? | Description                  |
-| -------------- | ---- | --------- | -----------------------------|
-| deployment\_id | int  | Optional  | deployment id to rollback to |
+| Key     | Type | Required? | Description                  |
+| --------| ---- | --------- | -----------------------------|
+| version | int  | Required  | verision to rollback to      |
 
 
 **Possible responses**
@@ -101,6 +103,7 @@ POST /projects/:projectName/rollback
     "deployment": {
       "id": 123,
       "state": "pending_rollback",
+      "version": 1,
       "deployed_at": "2016-04-23T18:25:43.511Z"
     }
   }
@@ -149,12 +152,14 @@ GET /projects/:projectName/deployments
       {
         "id": 123,
         "state": "deployed",
+        "version": 2,
         "active": true,
         "deployed_at": "2016-04-23T18:25:43.511Z"
       },
       {
         "id": 456,
         "state": "deployed",
+        "version": 1,
         "deployed_at": "2016-04-22T18:25:43.511Z"
       },
     ]
