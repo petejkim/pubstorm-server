@@ -154,6 +154,12 @@
 			"revisionTime": "2016-02-02T18:33:00+11:00"
 		},
 		{
+			"checksumSHA1": "bXHP00GWjyGEna9Gh5lAhxE6dLA=",
+			"path": "github.com/jehiah/go-strftime",
+			"revision": "2efbe75097a505e2789f7e39cb9da067b5be8e3e",
+			"revisionTime": "2015-12-06T19:48:10Z"
+		},
+		{
 			"path": "github.com/jinzhu/gorm",
 			"revision": "aa45da15421ddb1549a7060e5c189f8350a29166",
 			"revisionTime": "2016-02-14T21:47:13+08:00"
@@ -335,6 +341,18 @@
 			"revisionTime": "2016-03-05T13:39:52-08:00"
 		},
 		{
+			"checksumSHA1": "2I0GZtkkA6L4okm5CMXDDMA5kjE=",
+			"path": "github.com/segmentio/analytics-go",
+			"revision": "2d840d861c322bdf5346ba7917af1c2285e653d3",
+			"revisionTime": "2016-04-26T18:14:48Z"
+		},
+		{
+			"checksumSHA1": "jK8cjKr2eA3JiQP+T4HLjQRV5ak=",
+			"path": "github.com/segmentio/backo-go",
+			"revision": "204274ad699c0983a70203a566887f17a717fef4",
+			"revisionTime": "2016-04-24T05:23:52Z"
+		},
+		{
 			"path": "github.com/sendgrid/sendgrid-go",
 			"revision": "618ae01fc450f11509a8dee37756036780338593",
 			"revisionTime": "2016-02-03T22:15:10-08:00"
@@ -348,6 +366,12 @@
 			"path": "github.com/streadway/amqp",
 			"revision": "56eb08f0d1f9d90936ab1ab4e20ee9b9bf45ce26",
 			"revisionTime": "2015-08-19T17:11:42-07:00"
+		},
+		{
+			"checksumSHA1": "LAL/r7KfCdqp4M6MM13+7NWsUNc=",
+			"path": "github.com/xtgo/uuid",
+			"revision": "a0b114877d4caeffbd7f87e3757c17fce570fea7",
+			"revisionTime": "2014-08-04T02:12:11Z"
 		},
 		{
 			"path": "golang.org/x/net/context",
@@ -364,5 +388,6 @@
 			"revision": "4c79e698231042063ef780f52bd0295392de42d7",
 			"revisionTime": "2016-02-02T20:01:43-05:00"
 		}
-	]
+	],
+	"rootPath": "github.com/nitrous-io/rise-server"
 }
