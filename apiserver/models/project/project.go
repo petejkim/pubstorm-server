@@ -30,6 +30,7 @@ type Project struct {
 	Name                 string
 	UserID               uint
 	DefaultDomainEnabled bool `sql:"default:true"`
+	ForceHTTPS           bool `sql:"column:force_https"`
 
 	ActiveDeploymentID *uint // pointer to be nullable. remember to dereference by using *ActiveDeploymentID to get actual value
 
@@ -62,9 +63,11 @@ func (p *Project) AsJSON() interface{} {
 	return struct {
 		Name                 string `json:"name"`
 		DefaultDomainEnabled bool   `json:"default_domain_enabled"`
+		ForceHTTPS           bool   `json:"force_https"`
 	}{
 		p.Name,
 		p.DefaultDomainEnabled,
+		p.ForceHTTPS,
 	}
 }
 

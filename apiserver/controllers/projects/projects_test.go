@@ -193,7 +193,8 @@ var _ = Describe("Projects", func() {
 				Expect(b.String()).To(MatchJSON(`{
 					"project": {
 						"name": "foo-bar-express",
-						"default_domain_enabled": true
+						"default_domain_enabled": true,
+						"force_https": false
 					}
 				}`))
 			})
@@ -218,7 +219,8 @@ var _ = Describe("Projects", func() {
 				Expect(b.String()).To(MatchJSON(`{
 					"project": {
 						"name": "foo-bar-express",
-						"default_domain_enabled": true
+						"default_domain_enabled": true,
+						"force_https": false
 					}
 				}`))
 			})
@@ -267,7 +269,8 @@ var _ = Describe("Projects", func() {
 			Expect(b.String()).To(MatchJSON(fmt.Sprintf(`{
 				"project": {
 					"name": "%s",
-					"default_domain_enabled": true
+					"default_domain_enabled": true,
+					"force_https": false
 				}
 			}`, proj.Name)))
 		})
@@ -327,11 +330,13 @@ var _ = Describe("Projects", func() {
 				"projects": [
 					{
 						"name": "%s",
-						"default_domain_enabled": true
+						"default_domain_enabled": true,
+						"force_https": false
 					},
 					{
 						"name": "%s",
-						"default_domain_enabled": true
+						"default_domain_enabled": true,
+						"force_https": false
 					}
 				],
 				"shared_projects": []
@@ -371,21 +376,25 @@ var _ = Describe("Projects", func() {
 					"projects": [
 						{
 							"name": "%s",
-							"default_domain_enabled": true
+							"default_domain_enabled": true,
+							"force_https": false
 						},
 						{
 							"name": "%s",
-							"default_domain_enabled": true
+							"default_domain_enabled": true,
+							"force_https": false
 						}
 					],
 					"shared_projects": [
 						{
 							"name": "%s",
-							"default_domain_enabled": true
+							"default_domain_enabled": true,
+							"force_https": false
 						},
 						{
 							"name": "%s",
-							"default_domain_enabled": true
+							"default_domain_enabled": true,
+							"force_https": false
 						}
 					]
 				}`, proj.Name, proj3.Name, proj4.Name, proj5.Name)))
@@ -443,33 +452,6 @@ var _ = Describe("Projects", func() {
 			Expect(err).To(BeNil())
 		}
 
-		It("returns 200 OK and updates the project", func() {
-			Expect(proj.DefaultDomainEnabled).To(Equal(true))
-
-			params = url.Values{
-				"default_domain_enabled": {"false"},
-			}
-			doRequest()
-
-			b := &bytes.Buffer{}
-			_, err := b.ReadFrom(res.Body)
-			Expect(err).To(BeNil())
-
-			Expect(res.StatusCode).To(Equal(http.StatusOK))
-
-			// Re-fetch from database to get the updated record.
-			err = db.First(proj, proj.ID).Error
-			Expect(err).To(BeNil())
-			Expect(proj.DefaultDomainEnabled).To(Equal(false))
-
-			Expect(b.String()).To(MatchJSON(fmt.Sprintf(`{
-				"project":{
-					"name": "%s",
-					"default_domain_enabled": false
-				}
-			}`, proj.Name)))
-		})
-
 		Context("when default domain is newly disabled (i.e. it was enabled)", func() {
 			BeforeEach(func() {
 				Expect(proj.DefaultDomainEnabled).To(Equal(true))
@@ -494,7 +476,8 @@ var _ = Describe("Projects", func() {
 				Expect(b.String()).To(MatchJSON(fmt.Sprintf(`{
 					"project":{
 						"name": "%s",
-						"default_domain_enabled": false
+						"default_domain_enabled": false,
+						"force_https": false
 					}
 				}`, proj.Name)))
 			})
@@ -573,7 +556,8 @@ var _ = Describe("Projects", func() {
 				Expect(b.String()).To(MatchJSON(fmt.Sprintf(`{
 					"project":{
 						"name": "%s",
-						"default_domain_enabled": true
+						"default_domain_enabled": true,
+						"force_https": false
 					}
 				}`, proj.Name)))
 			})
@@ -606,6 +590,114 @@ var _ = Describe("Projects", func() {
 
 					d := testhelper.ConsumeQueue(mq, queues.Deploy)
 					Expect(d).To(BeNil())
+				})
+			})
+		})
+
+		Context("when force_https is newly enabled (i.e. it was disabled)", func() {
+			BeforeEach(func() {
+				proj.ForceHTTPS = false
+				Expect(db.Save(proj).Error).To(BeNil())
+				params = url.Values{
+					"force_https": {"true"},
+				}
+			})
+
+			It("returns 200 OK", func() {
+				doRequest()
+
+				b := &bytes.Buffer{}
+				_, err := b.ReadFrom(res.Body)
+				Expect(err).To(BeNil())
+
+				Expect(res.StatusCode).To(Equal(http.StatusOK))
+
+				err = db.First(proj, proj.ID).Error
+				Expect(err).To(BeNil())
+				Expect(proj.DefaultDomainEnabled).To(Equal(true))
+
+				Expect(b.String()).To(MatchJSON(fmt.Sprintf(`{
+					"project":{
+						"name": "%s",
+						"default_domain_enabled": true,
+						"force_https": true
+					}
+				}`, proj.Name)))
+			})
+
+			Context("when there is an active deployment", func() {
+				var depl *deployment.Deployment
+
+				BeforeEach(func() {
+					depl = factories.Deployment(db, proj, u, deployment.StateDeployed)
+					err := db.Model(proj).Update("active_deployment_id", depl.ID).Error
+					Expect(err).To(BeNil())
+				})
+
+				It("enqueues a deploy job to update meta.json", func() {
+					doRequest()
+
+					d := testhelper.ConsumeQueue(mq, queues.Deploy)
+					Expect(d).NotTo(BeNil())
+					Expect(d.Body).To(MatchJSON(fmt.Sprintf(`{
+						"deployment_id": %d,
+						"skip_webroot_upload": true,
+						"skip_invalidation": false
+					}`, *proj.ActiveDeploymentID)))
+				})
+			})
+		})
+
+		Context("when force_https is newly disabled (i.e. it was enabled)", func() {
+			BeforeEach(func() {
+				proj.ForceHTTPS = true
+				Expect(db.Save(proj).Error).To(BeNil())
+				params = url.Values{
+					"force_https": {"false"},
+				}
+			})
+
+			It("returns 200 OK", func() {
+				doRequest()
+
+				b := &bytes.Buffer{}
+				_, err := b.ReadFrom(res.Body)
+				Expect(err).To(BeNil())
+
+				Expect(res.StatusCode).To(Equal(http.StatusOK))
+
+				err = db.First(proj, proj.ID).Error
+				Expect(err).To(BeNil())
+				Expect(proj.DefaultDomainEnabled).To(Equal(true))
+
+				Expect(b.String()).To(MatchJSON(fmt.Sprintf(`{
+					"project":{
+						"name": "%s",
+						"default_domain_enabled": true,
+						"force_https": false
+					}
+				}`, proj.Name)))
+			})
+
+			Context("when there is an active deployment", func() {
+				var depl *deployment.Deployment
+
+				BeforeEach(func() {
+					depl = factories.Deployment(db, proj, u, deployment.StateDeployed)
+					err := db.Model(proj).Update("active_deployment_id", depl.ID).Error
+					Expect(err).To(BeNil())
+				})
+
+				It("enqueues a deploy job to update meta.json", func() {
+					doRequest()
+
+					d := testhelper.ConsumeQueue(mq, queues.Deploy)
+					Expect(d).NotTo(BeNil())
+					Expect(d.Body).To(MatchJSON(fmt.Sprintf(`{
+						"deployment_id": %d,
+						"skip_webroot_upload": true,
+						"skip_invalidation": false
+					}`, *proj.ActiveDeploymentID)))
 				})
 			})
 		})

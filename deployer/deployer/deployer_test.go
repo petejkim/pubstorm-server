@@ -106,8 +106,8 @@ var _ = Describe("Deployer", func() {
 				"domains/"+domain+"/meta.json",
 				"application/json",
 				[]byte(fmt.Sprintf(`{
-						"prefix": "%s"
-					}`, depl.PrefixID())),
+					"prefix": "%s"
+				}`, depl.PrefixID())),
 			)
 		}
 	}
@@ -231,6 +231,39 @@ var _ = Describe("Deployer", func() {
 					"www.foo-bar-express.com"
 				]
 			}`))
+		})
+	})
+
+	Context("when project has ForceHTTPS enabled", func() {
+		BeforeEach(func() {
+			proj.ForceHTTPS = true
+			Expect(db.Save(proj).Error).To(BeNil())
+		})
+
+		It("uploads meta.json with force_https set", func() {
+			// mock download
+			fakeS3.DownloadContent, err = ioutil.ReadFile("../../testhelper/fixtures/website.tar.gz")
+			Expect(err).To(BeNil())
+
+			err = deployer.Work([]byte(fmt.Sprintf(`{
+				"deployment_id": %d
+			}`, depl.ID)))
+			Expect(err).To(BeNil())
+
+			for i, domain := range []string{
+				proj.DefaultDomainName(),
+				"www.foo-bar-express.com",
+			} {
+				assertUpload(
+					5+i,
+					"domains/"+domain+"/meta.json",
+					"application/json",
+					[]byte(fmt.Sprintf(`{
+						"prefix": "%s",
+						"force_https": true
+					}`, depl.PrefixID())),
+				)
+			}
 		})
 	})
 

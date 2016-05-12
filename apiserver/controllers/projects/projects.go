@@ -135,26 +135,75 @@ func Update(c *gin.Context) {
 
 	// Make a copy of the original project.
 	updatedProj := *proj
+	projChanged := false
 
 	if c.PostForm("default_domain_enabled") != "" {
 		defaultDomainEnabled, _ := strconv.ParseBool(c.PostForm("default_domain_enabled"))
-		if defaultDomainEnabled == proj.DefaultDomainEnabled {
-			c.JSON(http.StatusOK, gin.H{
-				"project": proj.AsJSON(),
-			})
-			return
-		}
 		updatedProj.DefaultDomainEnabled = defaultDomainEnabled
 
 		// if default_domain_enabled changed
-		if proj.DefaultDomainEnabled != updatedProj.DefaultDomainEnabled && proj.ActiveDeploymentID != nil {
-			if updatedProj.DefaultDomainEnabled {
-				// If default domain was just enabled, we need add it so that it'll actually
-				// work.
+		if proj.DefaultDomainEnabled != updatedProj.DefaultDomainEnabled {
+			projChanged = true
+
+			// if there is an active deployment
+			if proj.ActiveDeploymentID != nil {
+				if defaultDomainEnabled {
+					// If default domain was just enabled, we need add it so that it'll actually work.
+					j, err := job.NewWithJSON(queues.Deploy, &messages.DeployJobData{
+						DeploymentID:      *proj.ActiveDeploymentID,
+						SkipWebrootUpload: true,
+						SkipInvalidation:  true,
+					})
+					if err != nil {
+						controllers.InternalServerError(c, err)
+						return
+					}
+
+					if err := j.Enqueue(); err != nil {
+						controllers.InternalServerError(c, err)
+						return
+					}
+				} else {
+					// If default domain was just disabled, we need to remove it so that it no longer works.
+					defaultDomain := proj.Name + "." + shared.DefaultDomain
+
+					if err := s3client.Delete("/domains/" + defaultDomain + "/meta.json"); err != nil {
+						controllers.InternalServerError(c, err)
+						return
+					}
+
+					m, err := pubsub.NewMessageWithJSON(exchanges.Edges, exchanges.RouteV1Invalidation, &messages.V1InvalidationMessageData{
+						Domains: []string{defaultDomain},
+					})
+					if err != nil {
+						controllers.InternalServerError(c, err)
+						return
+					}
+
+					if err := m.Publish(); err != nil {
+						controllers.InternalServerError(c, err)
+						return
+					}
+				}
+			}
+		}
+	}
+
+	if c.PostForm("force_https") != "" {
+		forceHTTPS, _ := strconv.ParseBool(c.PostForm("force_https"))
+		updatedProj.ForceHTTPS = forceHTTPS
+
+		// if default_domain_enabled changed
+		if proj.ForceHTTPS != updatedProj.ForceHTTPS {
+			projChanged = true
+
+			// if there is an active deployment
+			if proj.ActiveDeploymentID != nil {
+				// enqueue a deployment job with invalidation to update meta.json
 				j, err := job.NewWithJSON(queues.Deploy, &messages.DeployJobData{
 					DeploymentID:      *proj.ActiveDeploymentID,
 					SkipWebrootUpload: true,
-					SkipInvalidation:  true,
+					SkipInvalidation:  false,
 				})
 				if err != nil {
 					controllers.InternalServerError(c, err)
@@ -165,41 +214,21 @@ func Update(c *gin.Context) {
 					controllers.InternalServerError(c, err)
 					return
 				}
-			} else {
-				// If default domain was just disabled, we need to remove it so that it no
-				// longer works.
-				defaultDomain := proj.Name + "." + shared.DefaultDomain
-
-				if err := s3client.Delete("/domains/" + defaultDomain + "/meta.json"); err != nil {
-					controllers.InternalServerError(c, err)
-					return
-				}
-
-				m, err := pubsub.NewMessageWithJSON(exchanges.Edges, exchanges.RouteV1Invalidation, &messages.V1InvalidationMessageData{
-					Domains: []string{defaultDomain},
-				})
-				if err != nil {
-					controllers.InternalServerError(c, err)
-					return
-				}
-
-				if err := m.Publish(); err != nil {
-					controllers.InternalServerError(c, err)
-					return
-				}
 			}
 		}
 	}
 
-	db, err := dbconn.DB()
-	if err != nil {
-		controllers.InternalServerError(c, err)
-		return
-	}
+	if projChanged {
+		db, err := dbconn.DB()
+		if err != nil {
+			controllers.InternalServerError(c, err)
+			return
+		}
 
-	if err := db.Save(&updatedProj).Error; err != nil {
-		controllers.InternalServerError(c, err)
-		return
+		if err := db.Save(&updatedProj).Error; err != nil {
+			controllers.InternalServerError(c, err)
+			return
+		}
 	}
 
 	c.JSON(http.StatusOK, gin.H{

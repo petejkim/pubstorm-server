@@ -134,20 +134,24 @@ func Work(data []byte) error {
 		}
 	}
 
-	// the metadata file is also publicly readable, do not put sensitive data
-	metaJson, err := json.Marshal(map[string]interface{}{
-		"prefix": prefixID,
-	})
-	if err != nil {
-		return err
-	}
-
-	reader := bytes.NewReader(metaJson)
-
 	proj := &project.Project{}
 	if err := db.First(proj, depl.ProjectID).Error; err != nil {
 		return err
 	}
+
+	// the metadata file is also publicly readable, do not put sensitive data
+	metaJson, err := json.Marshal(struct {
+		Prefix     string `json:"prefix"`
+		ForceHTTPS bool   `json:"force_https,omitempty"`
+	}{
+		prefixID,
+		proj.ForceHTTPS,
+	})
+
+	if err != nil {
+		return err
+	}
+	reader := bytes.NewReader(metaJson)
 
 	domainNames, err := proj.DomainNames(db)
 	if err != nil {
