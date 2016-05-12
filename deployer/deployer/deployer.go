@@ -27,6 +27,8 @@ import (
 	"github.com/nitrous-io/rise-server/shared/s3client"
 )
 
+var ErrProjectLocked = errors.New("project is locked")
+
 func init() {
 	riseEnv := os.Getenv("RISE_ENV")
 	if riseEnv == "" {
@@ -135,8 +137,12 @@ func Work(data []byte) error {
 	}
 
 	proj := &project.Project{}
-	if err := db.First(proj, depl.ProjectID).Error; err != nil {
+	if err := db.Where("id = ?", depl.ProjectID).First(proj).Error; err != nil {
 		return err
+	}
+
+	if proj.LockedAt != nil {
+		return ErrProjectLocked
 	}
 
 	// the metadata file is also publicly readable, do not put sensitive data
