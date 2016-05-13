@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/jinzhu/gorm"
+	"github.com/nitrous-io/rise-server/apiserver/common"
 	"github.com/nitrous-io/rise-server/apiserver/dbconn"
 	"github.com/nitrous-io/rise-server/apiserver/models/deployment"
 	"github.com/nitrous-io/rise-server/apiserver/models/project"
@@ -14,6 +15,7 @@ import (
 	"github.com/nitrous-io/rise-server/deployer/deployer"
 	"github.com/nitrous-io/rise-server/pkg/filetransfer"
 	"github.com/nitrous-io/rise-server/pkg/mqconn"
+	"github.com/nitrous-io/rise-server/pkg/tracker"
 	"github.com/nitrous-io/rise-server/shared"
 	"github.com/nitrous-io/rise-server/shared/exchanges"
 	"github.com/nitrous-io/rise-server/shared/s3client"
@@ -36,6 +38,9 @@ var _ = Describe("Deployer", func() {
 		origS3 filetransfer.FileTransfer
 		err    error
 
+		fakeTracker *fake.Tracker
+		origTracker tracker.Trackable
+
 		db    *gorm.DB
 		mq    *amqp.Connection
 		qName string
@@ -49,6 +54,10 @@ var _ = Describe("Deployer", func() {
 		origS3 = s3client.S3
 		fakeS3 = &fake.S3{}
 		deployer.S3 = fakeS3
+
+		origTracker = common.Tracker
+		fakeTracker = &fake.Tracker{}
+		common.Tracker = fakeTracker
 
 		db, err = dbconn.DB()
 		Expect(err).To(BeNil())
@@ -69,6 +78,7 @@ var _ = Describe("Deployer", func() {
 
 	AfterEach(func() {
 		deployer.S3 = origS3
+		common.Tracker = origTracker
 	})
 
 	assertUpload := func(nthUpload int, uploadPath, contentType string, content []byte) {
@@ -191,6 +201,41 @@ var _ = Describe("Deployer", func() {
 
 		// it should set project's active deployment to current deployment id
 		assertActiveDeploymentIDUpdate()
+	})
+
+	It("tracks a 'Project Deployed' event", func() {
+		fakeS3.DownloadContent, err = ioutil.ReadFile("../../testhelper/fixtures/website.tar.gz")
+		Expect(err).To(BeNil())
+
+		err = deployer.Work([]byte(fmt.Sprintf(`{
+			"deployment_id": %d
+		}`, depl.ID)))
+		Expect(err).To(BeNil())
+
+		trackCall := fakeTracker.TrackCalls.NthCall(1)
+		Expect(trackCall).NotTo(BeNil())
+		Expect(trackCall.Arguments[0]).To(Equal(fmt.Sprintf("%d", u.ID)))
+		Expect(trackCall.Arguments[1]).To(Equal("Project Deployed"))
+
+		t := trackCall.Arguments[2]
+		props, ok := t.(map[string]interface{})
+		Expect(ok).To(BeTrue())
+		Expect(props["projectName"]).To(Equal(proj.Name))
+		Expect(props["deploymentId"]).To(Equal(depl.ID))
+		Expect(props["deploymentPrefix"]).To(Equal(depl.Prefix))
+		Expect(props["deploymentVersion"]).To(Equal(depl.Version))
+
+		err = db.First(depl, depl.ID).Error
+		Expect(err).To(BeNil())
+
+		startTime := depl.CreatedAt
+		Expect(depl.DeployedAt).NotTo(BeNil())
+		endTime := *depl.DeployedAt
+		dur := endTime.Sub(startTime)
+		Expect(props["timeTakenInSeconds"]).To(Equal(int64(dur / time.Second)))
+
+		Expect(trackCall.Arguments[3]).To(BeNil())
+		Expect(trackCall.ReturnValues[0]).To(BeNil())
 	})
 
 	Context("when default domain is disabled", func() {
