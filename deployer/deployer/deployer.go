@@ -14,11 +14,15 @@ import (
 	"os"
 	"path"
 	"path/filepath"
+	"strconv"
 	"strings"
+	"time"
 
+	"github.com/nitrous-io/rise-server/apiserver/common"
 	"github.com/nitrous-io/rise-server/apiserver/dbconn"
 	"github.com/nitrous-io/rise-server/apiserver/models/deployment"
 	"github.com/nitrous-io/rise-server/apiserver/models/project"
+	"github.com/nitrous-io/rise-server/apiserver/models/user"
 	"github.com/nitrous-io/rise-server/pkg/filetransfer"
 	"github.com/nitrous-io/rise-server/pkg/pubsub"
 	"github.com/nitrous-io/rise-server/shared/exchanges"
@@ -200,6 +204,28 @@ func Work(data []byte) error {
 
 	if err := tx.Commit().Error; err != nil {
 		return err
+	}
+
+	{
+		var u user.User
+		if err := db.First(&u, depl.UserID).Error; err == nil {
+			var (
+				event     = "Project Deployed"
+				timeTaken = depl.DeployedAt.Sub(depl.CreatedAt)
+				props     = map[string]interface{}{
+					"projectName":        proj.Name,
+					"deploymentId":       depl.ID,
+					"deploymentPrefix":   depl.Prefix,
+					"deploymentVersion":  depl.Version,
+					"timeTakenInSeconds": int64(timeTaken / time.Second),
+				}
+				context map[string]interface{}
+			)
+			if err := common.Track(strconv.Itoa(int(u.ID)), event, props, context); err != nil {
+				log.Printf("failed to track %q event for user ID %d, err: %v",
+					event, u.ID, err)
+			}
+		}
 	}
 
 	return nil
