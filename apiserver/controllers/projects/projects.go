@@ -5,8 +5,10 @@ import (
 	"strconv"
 	"strings"
 
+	log "github.com/Sirupsen/logrus"
 	"github.com/gin-gonic/gin"
 	"github.com/lib/pq"
+	"github.com/nitrous-io/rise-server/apiserver/common"
 	"github.com/nitrous-io/rise-server/apiserver/controllers"
 	"github.com/nitrous-io/rise-server/apiserver/dbconn"
 	"github.com/nitrous-io/rise-server/apiserver/models/blacklistedname"
@@ -50,6 +52,18 @@ func Create(c *gin.Context) {
 	}
 
 	if blacklisted {
+		{
+			var (
+				event   = "Used Blacklisted Project Name"
+				props   = map[string]interface{}{"projectName": proj.Name}
+				context map[string]interface{}
+			)
+			if err := common.Track(strconv.Itoa(int(u.ID)), event, props, context); err != nil {
+				log.Errorf("failed to track %q event for user ID %d, err: %v",
+					event, u.ID, err)
+			}
+		}
+
 		c.JSON(422, gin.H{
 			"error": "invalid_params",
 			"errors": map[string]interface{}{
@@ -72,6 +86,18 @@ func Create(c *gin.Context) {
 
 		controllers.InternalServerError(c, err)
 		return
+	}
+
+	{
+		var (
+			event   = "Created Project"
+			props   = map[string]interface{}{"projectName": proj.Name}
+			context map[string]interface{}
+		)
+		if err := common.Track(strconv.Itoa(int(u.ID)), event, props, context); err != nil {
+			log.Errorf("failed to track %q event for user ID %d, err: %v",
+				event, u.ID, err)
+		}
 	}
 
 	c.JSON(http.StatusCreated, gin.H{
@@ -193,7 +219,7 @@ func Update(c *gin.Context) {
 		forceHTTPS, _ := strconv.ParseBool(c.PostForm("force_https"))
 		updatedProj.ForceHTTPS = forceHTTPS
 
-		// if default_domain_enabled changed
+		// if force_https changed
 		if proj.ForceHTTPS != updatedProj.ForceHTTPS {
 			projChanged = true
 
@@ -228,6 +254,40 @@ func Update(c *gin.Context) {
 		if err := db.Save(&updatedProj).Error; err != nil {
 			controllers.InternalServerError(c, err)
 			return
+		}
+
+		{
+			u := controllers.CurrentUser(c)
+
+			if proj.DefaultDomainEnabled != updatedProj.DefaultDomainEnabled {
+				var (
+					event   = "Disabled Default Domain"
+					props   = map[string]interface{}{"projectName": proj.Name}
+					context map[string]interface{}
+				)
+				if updatedProj.DefaultDomainEnabled {
+					event = "Enabled Default Domain"
+				}
+				if err := common.Track(strconv.Itoa(int(u.ID)), event, props, context); err != nil {
+					log.Errorf("failed to track %q event for user ID %d, err: %v",
+						event, u.ID, err)
+				}
+			}
+
+			if proj.ForceHTTPS != updatedProj.ForceHTTPS {
+				var (
+					event   = "Disabled Force HTTPS"
+					props   = map[string]interface{}{"projectName": proj.Name}
+					context map[string]interface{}
+				)
+				if updatedProj.ForceHTTPS {
+					event = "Enabled Force HTTPS"
+				}
+				if err := common.Track(strconv.Itoa(int(u.ID)), event, props, context); err != nil {
+					log.Errorf("failed to track %q event for user ID %d, err: %v",
+						event, u.ID, err)
+				}
+			}
 		}
 	}
 
@@ -276,7 +336,6 @@ func Destroy(c *gin.Context) {
 	m, err := pubsub.NewMessageWithJSON(exchanges.Edges, exchanges.RouteV1Invalidation, &messages.V1InvalidationMessageData{
 		Domains: domainNames,
 	})
-
 	if err != nil {
 		controllers.InternalServerError(c, err)
 		return
@@ -295,6 +354,20 @@ func Destroy(c *gin.Context) {
 	if err := tx.Commit().Error; err != nil {
 		controllers.InternalServerError(c, err)
 		return
+	}
+
+	{
+		u := controllers.CurrentUser(c)
+
+		var (
+			event   = "Deleted Project"
+			props   = map[string]interface{}{"projectName": proj.Name}
+			context map[string]interface{}
+		)
+		if err := common.Track(strconv.Itoa(int(u.ID)), event, props, context); err != nil {
+			log.Errorf("failed to track %q event for user ID %d, err: %v",
+				event, u.ID, err)
+		}
 	}
 
 	c.JSON(http.StatusOK, gin.H{
