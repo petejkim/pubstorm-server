@@ -35,16 +35,14 @@ func GetInfo(cert, pKey []byte, domainName string) (*CertInfo, error) {
 		return nil, ErrInvalidCommonName
 	}
 
-	cm := &CertInfo{
+	return &CertInfo{
 		ExpiresAt:  x509Cert.NotAfter,
 		StartsAt:   x509Cert.NotBefore,
 		CommonName: x509Cert.Subject.CommonName,
 
 		Issuer:  stringifyNameData(x509Cert.Issuer),
 		Subject: stringifyNameData(x509Cert.Subject),
-	}
-
-	return cm, nil
+	}, nil
 }
 
 // https://tools.ietf.org/html/rfc4211
