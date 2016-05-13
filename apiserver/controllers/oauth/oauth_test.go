@@ -2,19 +2,23 @@ package oauth_test
 
 import (
 	"bytes"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
 	"testing"
 
 	"github.com/jinzhu/gorm"
+	"github.com/nitrous-io/rise-server/apiserver/common"
 	"github.com/nitrous-io/rise-server/apiserver/dbconn"
 	"github.com/nitrous-io/rise-server/apiserver/models/oauthclient"
 	"github.com/nitrous-io/rise-server/apiserver/models/oauthtoken"
 	"github.com/nitrous-io/rise-server/apiserver/models/user"
 	"github.com/nitrous-io/rise-server/apiserver/server"
+	"github.com/nitrous-io/rise-server/pkg/tracker"
 	"github.com/nitrous-io/rise-server/testhelper"
 	"github.com/nitrous-io/rise-server/testhelper/factories"
+	"github.com/nitrous-io/rise-server/testhelper/fake"
 	"github.com/nitrous-io/rise-server/testhelper/sharedexamples"
 	. "github.com/onsi/ginkgo"
 	. "github.com/onsi/ginkgo/extensions/table"
@@ -35,6 +39,9 @@ var _ = Describe("OAuth", func() {
 
 		u  *user.User
 		oc *oauthclient.OauthClient
+
+		fakeTracker *fake.Tracker
+		origTracker tracker.Trackable
 	)
 
 	BeforeEach(func() {
@@ -43,6 +50,10 @@ var _ = Describe("OAuth", func() {
 		testhelper.TruncateTables(db.DB())
 
 		u, oc = factories.AuthDuo(db)
+
+		origTracker = common.Tracker
+		fakeTracker = &fake.Tracker{}
+		common.Tracker = fakeTracker
 	})
 
 	AfterEach(func() {
@@ -50,6 +61,8 @@ var _ = Describe("OAuth", func() {
 			res.Body.Close()
 		}
 		s.Close()
+
+		common.Tracker = origTracker
 	})
 
 	Describe("POST /oauth/token", func() {
@@ -243,6 +256,22 @@ var _ = Describe("OAuth", func() {
 					"client_id": "` + oc.ClientID + `"
 				}`))
 			})
+
+			It("tracks a 'User Logged In' event", func() {
+				trackCall := fakeTracker.TrackCalls.NthCall(1)
+				Expect(trackCall).NotTo(BeNil())
+				Expect(trackCall.Arguments[0]).To(Equal(fmt.Sprintf("%d", u.ID)))
+				Expect(trackCall.Arguments[1]).To(Equal("User Logged In"))
+
+				t := trackCall.Arguments[2]
+				props, ok := t.(map[string]interface{})
+				Expect(ok).To(BeTrue())
+				Expect(props["oauthClientId"]).To(Equal(oc.ID))
+				Expect(props["oauthClientName"]).To(Equal(oc.Name))
+
+				Expect(trackCall.Arguments[3]).To(BeNil())
+				Expect(trackCall.ReturnValues[0]).To(BeNil())
+			})
 		})
 	})
 
@@ -290,6 +319,16 @@ var _ = Describe("OAuth", func() {
 				err = db.Model(oauthtoken.OauthToken{}).Where("token = ?", t.Token).Count(&count).Error
 				Expect(err).To(BeNil())
 				Expect(count).To(BeZero())
+			})
+
+			It("tracks a 'User Logged Out' event", func() {
+				trackCall := fakeTracker.TrackCalls.NthCall(1)
+				Expect(trackCall).NotTo(BeNil())
+				Expect(trackCall.Arguments[0]).To(Equal(fmt.Sprintf("%d", u.ID)))
+				Expect(trackCall.Arguments[1]).To(Equal("User Logged Out"))
+				Expect(trackCall.Arguments[2]).To(BeNil())
+				Expect(trackCall.Arguments[3]).To(BeNil())
+				Expect(trackCall.ReturnValues[0]).To(BeNil())
 			})
 		})
 
