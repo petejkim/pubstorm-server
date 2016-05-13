@@ -6,8 +6,10 @@ import (
 	"net/http"
 	"strconv"
 
+	log "github.com/Sirupsen/logrus"
 	"github.com/gin-gonic/gin"
 	"github.com/jinzhu/gorm"
+	"github.com/nitrous-io/rise-server/apiserver/common"
 	"github.com/nitrous-io/rise-server/apiserver/controllers"
 	"github.com/nitrous-io/rise-server/apiserver/dbconn"
 	"github.com/nitrous-io/rise-server/apiserver/models/deployment"
@@ -119,6 +121,23 @@ func Create(c *gin.Context) {
 		return
 	}
 
+	{
+		var (
+			event = "Initiated Project Deployment"
+			props = map[string]interface{}{
+				"projectName":       proj.Name,
+				"deploymentId":      depl.ID,
+				"deploymentPrefix":  depl.Prefix,
+				"deploymentVersion": depl.Version,
+			}
+			context map[string]interface{}
+		)
+		if err := common.Track(strconv.Itoa(int(u.ID)), event, props, context); err != nil {
+			log.Errorf("failed to track %q event for user ID %d, err: %v",
+				event, u.ID, err)
+		}
+	}
+
 	c.JSON(http.StatusAccepted, gin.H{
 		"deployment": depl.AsJSON(),
 	})
@@ -176,14 +195,14 @@ func Rollback(c *gin.Context) {
 		return
 	}
 
+	var currentDepl deployment.Deployment
+	if err := db.First(&currentDepl, *proj.ActiveDeploymentID).Error; err != nil {
+		controllers.InternalServerError(c, err)
+		return
+	}
+
 	var depl *deployment.Deployment
 	if c.PostForm("version") == "" {
-		var currentDepl deployment.Deployment
-		if err := db.First(&currentDepl, *proj.ActiveDeploymentID).Error; err != nil {
-			controllers.InternalServerError(c, err)
-			return
-		}
-
 		depl, err = currentDepl.PreviousCompletedDeployment(db)
 		if err != nil {
 			controllers.InternalServerError(c, err)
@@ -248,6 +267,24 @@ func Rollback(c *gin.Context) {
 	if err := depl.UpdateState(db, deployment.StatePendingRollback); err != nil {
 		controllers.InternalServerError(c, err)
 		return
+	}
+
+	{
+		u := controllers.CurrentUser(c)
+
+		var (
+			event = "Initiated Project Rollback"
+			props = map[string]interface{}{
+				"projectName":     proj.Name,
+				"deployedVersion": currentDepl.Version,
+				"targetVersion":   depl.Version,
+			}
+			context map[string]interface{}
+		)
+		if err := common.Track(strconv.Itoa(int(u.ID)), event, props, context); err != nil {
+			log.Errorf("failed to track %q event for user ID %d, err: %v",
+				event, u.ID, err)
+		}
 	}
 
 	c.JSON(http.StatusAccepted, gin.H{
