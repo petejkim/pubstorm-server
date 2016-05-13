@@ -24,6 +24,7 @@ import (
 	"github.com/nitrous-io/rise-server/pkg/aesencrypter"
 	"github.com/nitrous-io/rise-server/pkg/filetransfer"
 	"github.com/nitrous-io/rise-server/pkg/mqconn"
+	"github.com/nitrous-io/rise-server/pkg/tracker"
 	"github.com/nitrous-io/rise-server/shared"
 	"github.com/nitrous-io/rise-server/shared/exchanges"
 	"github.com/nitrous-io/rise-server/shared/queues"
@@ -49,6 +50,9 @@ var _ = Describe("Certs", func() {
 		s   *httptest.Server
 		res *http.Response
 		err error
+
+		fakeTracker *fake.Tracker
+		origTracker tracker.Trackable
 	)
 
 	BeforeEach(func() {
@@ -56,6 +60,10 @@ var _ = Describe("Certs", func() {
 		Expect(err).To(BeNil())
 
 		testhelper.TruncateTables(db.DB())
+
+		origTracker = common.Tracker
+		fakeTracker = &fake.Tracker{}
+		common.Tracker = fakeTracker
 	})
 
 	AfterEach(func() {
@@ -63,6 +71,8 @@ var _ = Describe("Certs", func() {
 			res.Body.Close()
 		}
 		s.Close()
+
+		common.Tracker = origTracker
 	})
 
 	formattedTimeForJSON := func(t time.Time) string {
@@ -334,6 +344,32 @@ A6ao9QSL1ryillYV9Y4001C3jApzmMtBWoMp3NPzwU8nacAOzClJYUcSLkbAIEWV
 			Expect(d.Body).To(MatchJSON(`{"domains": ["www.foo-bar-express.com"]}`))
 		})
 
+		It("tracks an 'Uploaded SSL Certificate' event", func() {
+			doRequest()
+
+			trackCall := fakeTracker.TrackCalls.NthCall(1)
+			Expect(trackCall).NotTo(BeNil())
+			Expect(trackCall.Arguments[0]).To(Equal(fmt.Sprintf("%d", u.ID)))
+			Expect(trackCall.Arguments[1]).To(Equal("Uploaded SSL Certificate"))
+
+			t := trackCall.Arguments[2]
+			props, ok := t.(map[string]interface{})
+			Expect(ok).To(BeTrue())
+			Expect(props["projectName"]).To(Equal("foo-bar-express"))
+			Expect(props["domain"]).To(Equal("www.foo-bar-express.com"))
+			Expect(props["certSize"]).To(Equal(len(certificate)))
+			Expect(props["certKeySize"]).To(Equal(len(privateKey)))
+
+			ct := &cert.Cert{}
+			Expect(db.Last(ct).Error).To(BeNil())
+			Expect(props["certId"]).To(Equal(ct.ID))
+			Expect(props["certIssuer"]).To(Equal(ct.Issuer))
+			Expect(props["certExpiresAt"]).To(Equal(ct.ExpiresAt))
+
+			Expect(trackCall.Arguments[3]).To(BeNil())
+			Expect(trackCall.ReturnValues[0]).To(BeNil())
+		})
+
 		Context("when given domain does not exist", func() {
 			BeforeEach(func() {
 				Expect(db.Delete(dm).Error).To(BeNil())
@@ -433,6 +469,32 @@ A6ao9QSL1ryillYV9Y4001C3jApzmMtBWoMp3NPzwU8nacAOzClJYUcSLkbAIEWV
 				d := testhelper.ConsumeQueue(mq, invalidationQueueName)
 				Expect(d).NotTo(BeNil())
 				Expect(d.Body).To(MatchJSON(`{"domains": ["www.foo-bar-express.com"]}`))
+			})
+
+			It("tracks an 'Uploaded SSL Certificate' event", func() {
+				doRequest()
+
+				trackCall := fakeTracker.TrackCalls.NthCall(1)
+				Expect(trackCall).NotTo(BeNil())
+				Expect(trackCall.Arguments[0]).To(Equal(fmt.Sprintf("%d", u.ID)))
+				Expect(trackCall.Arguments[1]).To(Equal("Uploaded SSL Certificate"))
+
+				t := trackCall.Arguments[2]
+				props, ok := t.(map[string]interface{})
+				Expect(ok).To(BeTrue())
+				Expect(props["projectName"]).To(Equal("foo-bar-express"))
+				Expect(props["domain"]).To(Equal("www.foo-bar-express.com"))
+				Expect(props["certSize"]).To(Equal(len(certificate)))
+				Expect(props["certKeySize"]).To(Equal(len(privateKey)))
+
+				ct := &cert.Cert{}
+				Expect(db.Last(ct).Error).To(BeNil())
+				Expect(props["certId"]).To(Equal(ct.ID))
+				Expect(props["certIssuer"]).To(Equal(ct.Issuer))
+				Expect(props["certExpiresAt"]).To(Equal(ct.ExpiresAt))
+
+				Expect(trackCall.Arguments[3]).To(BeNil())
+				Expect(trackCall.ReturnValues[0]).To(BeNil())
 			})
 		})
 
@@ -557,7 +619,7 @@ A6ao9QSL1ryillYV9Y4001C3jApzmMtBWoMp3NPzwU8nacAOzClJYUcSLkbAIEWV
 			})
 		})
 
-		Context("when the domain does not belongs to the project", func() {
+		Context("when the domain does not belong to the project", func() {
 			BeforeEach(func() {
 				proj2 := factories.Project(db, nil)
 
@@ -668,7 +730,7 @@ A6ao9QSL1ryillYV9Y4001C3jApzmMtBWoMp3NPzwU8nacAOzClJYUcSLkbAIEWV
 			})
 		})
 
-		Context("when the domain does not belongs to the project", func() {
+		Context("when the domain does not belong to the project", func() {
 			BeforeEach(func() {
 				proj2 := factories.Project(db, nil)
 
@@ -816,6 +878,25 @@ A6ao9QSL1ryillYV9Y4001C3jApzmMtBWoMp3NPzwU8nacAOzClJYUcSLkbAIEWV
 			Expect(d.Body).To(MatchJSON(`{ "domains": ["www.foo-bar-express.com"] }`))
 		})
 
+		It("tracks a 'Deleted SSL Certificate' event", func() {
+			doRequest()
+
+			trackCall := fakeTracker.TrackCalls.NthCall(1)
+			Expect(trackCall).NotTo(BeNil())
+			Expect(trackCall.Arguments[0]).To(Equal(fmt.Sprintf("%d", u.ID)))
+			Expect(trackCall.Arguments[1]).To(Equal("Deleted SSL Certificate"))
+
+			t := trackCall.Arguments[2]
+			props, ok := t.(map[string]interface{})
+			Expect(ok).To(BeTrue())
+			Expect(props["projectName"]).To(Equal("foo-bar-express"))
+			Expect(props["domain"]).To(Equal("www.foo-bar-express.com"))
+			Expect(props["certId"]).To(Equal(ct.ID))
+
+			Expect(trackCall.Arguments[3]).To(BeNil())
+			Expect(trackCall.ReturnValues[0]).To(BeNil())
+		})
+
 		Context("when the cert does not exist", func() {
 			BeforeEach(func() {
 				Expect(db.Delete(ct).Error).To(BeNil())
@@ -834,7 +915,7 @@ A6ao9QSL1ryillYV9Y4001C3jApzmMtBWoMp3NPzwU8nacAOzClJYUcSLkbAIEWV
 			})
 		})
 
-		Context("when the domain does not belongs to the project", func() {
+		Context("when the domain does not belong to the project", func() {
 			BeforeEach(func() {
 				proj2 := factories.Project(db, nil)
 

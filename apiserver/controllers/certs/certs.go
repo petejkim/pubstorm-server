@@ -9,6 +9,7 @@ import (
 	"strconv"
 	"strings"
 
+	log "github.com/Sirupsen/logrus"
 	"github.com/gin-gonic/gin"
 	"github.com/jinzhu/gorm"
 	"github.com/nitrous-io/rise-server/apiserver/common"
@@ -223,6 +224,28 @@ func Create(c *gin.Context) {
 		return
 	}
 
+	{
+		u := controllers.CurrentUser(c)
+
+		var (
+			event = "Uploaded SSL Certificate"
+			props = map[string]interface{}{
+				"projectName":   proj.Name,
+				"domain":        d.Name,
+				"certId":        ct.ID,
+				"certSize":      len(certBytes),
+				"certKeySize":   len(pKeyBytes),
+				"certIssuer":    ct.Issuer,
+				"certExpiresAt": ct.ExpiresAt,
+			}
+			context map[string]interface{}
+		)
+		if err := common.Track(strconv.Itoa(int(u.ID)), event, props, context); err != nil {
+			log.Errorf("failed to track %q event for user ID %d, err: %v",
+				event, u.ID, err)
+		}
+	}
+
 	c.JSON(http.StatusCreated, gin.H{
 		"cert": ct.AsJSON(),
 	})
@@ -251,17 +274,19 @@ func Destroy(c *gin.Context) {
 		return
 	}
 
-	q := db.Where("domain_id = ?", d.ID).Delete(cert.Cert{})
-	if q.Error != nil {
-		controllers.InternalServerError(c, err)
-		return
+	var crt cert.Cert
+	if err := db.Where("domain_id = ?", d.ID).First(&crt).Error; err != nil {
+		if err == gorm.RecordNotFound {
+			c.JSON(http.StatusNotFound, gin.H{
+				"error":             "not_found",
+				"error_description": "cert could not be found",
+			})
+			return
+		}
 	}
 
-	if q.RowsAffected == 0 {
-		c.JSON(http.StatusNotFound, gin.H{
-			"error":             "not_found",
-			"error_description": "cert could not be found",
-		})
+	if err := db.Delete(&crt).Error; err != nil {
+		controllers.InternalServerError(c, err)
 		return
 	}
 
@@ -284,6 +309,24 @@ func Destroy(c *gin.Context) {
 	if err := m.Publish(); err != nil {
 		controllers.InternalServerError(c, err)
 		return
+	}
+
+	{
+		u := controllers.CurrentUser(c)
+
+		var (
+			event = "Deleted SSL Certificate"
+			props = map[string]interface{}{
+				"projectName": proj.Name,
+				"domain":      d.Name,
+				"certId":      crt.ID,
+			}
+			context map[string]interface{}
+		)
+		if err := common.Track(strconv.Itoa(int(u.ID)), event, props, context); err != nil {
+			log.Errorf("failed to track %q event for user ID %d, err: %v",
+				event, u.ID, err)
+		}
 	}
 
 	c.JSON(http.StatusOK, gin.H{
