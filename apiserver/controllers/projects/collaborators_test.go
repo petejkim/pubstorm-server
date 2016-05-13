@@ -8,6 +8,7 @@ import (
 	"net/url"
 
 	"github.com/jinzhu/gorm"
+	"github.com/nitrous-io/rise-server/apiserver/common"
 	"github.com/nitrous-io/rise-server/apiserver/dbconn"
 	"github.com/nitrous-io/rise-server/apiserver/models/collab"
 	"github.com/nitrous-io/rise-server/apiserver/models/oauthclient"
@@ -15,8 +16,10 @@ import (
 	"github.com/nitrous-io/rise-server/apiserver/models/project"
 	"github.com/nitrous-io/rise-server/apiserver/models/user"
 	"github.com/nitrous-io/rise-server/apiserver/server"
+	"github.com/nitrous-io/rise-server/pkg/tracker"
 	"github.com/nitrous-io/rise-server/testhelper"
 	"github.com/nitrous-io/rise-server/testhelper/factories"
+	"github.com/nitrous-io/rise-server/testhelper/fake"
 	"github.com/nitrous-io/rise-server/testhelper/sharedexamples"
 
 	. "github.com/onsi/ginkgo"
@@ -35,6 +38,9 @@ var _ = Describe("Project collaborators", func() {
 		oc   *oauthclient.OauthClient
 		t    *oauthtoken.OauthToken
 		proj *project.Project
+
+		fakeTracker *fake.Tracker
+		origTracker tracker.Trackable
 	)
 
 	BeforeEach(func() {
@@ -53,6 +59,10 @@ var _ = Describe("Project collaborators", func() {
 			UserID: u.ID,
 		}
 		Expect(db.Create(proj).Error).To(BeNil())
+
+		origTracker = common.Tracker
+		fakeTracker = &fake.Tracker{}
+		common.Tracker = fakeTracker
 	})
 
 	AfterEach(func() {
@@ -60,6 +70,8 @@ var _ = Describe("Project collaborators", func() {
 			res.Body.Close()
 		}
 		s.Close()
+
+		common.Tracker = origTracker
 	})
 
 	Describe("GET /projects/collaborators", func() {
@@ -222,6 +234,24 @@ var _ = Describe("Project collaborators", func() {
 				Expect(cols[0].UserID).To(Equal(anotherU.ID))
 				Expect(cols[0].ProjectID).To(Equal(proj.ID))
 			})
+
+			It("tracks an 'Added Collaborator' event", func() {
+				doRequest(url.Values{"email": {anotherU.Email}})
+
+				trackCall := fakeTracker.TrackCalls.NthCall(1)
+				Expect(trackCall).NotTo(BeNil())
+				Expect(trackCall.Arguments[0]).To(Equal(fmt.Sprintf("%d", u.ID)))
+				Expect(trackCall.Arguments[1]).To(Equal("Added Collaborator"))
+
+				t := trackCall.Arguments[2]
+				props, ok := t.(map[string]interface{})
+				Expect(ok).To(BeTrue())
+				Expect(props["projectName"]).To(Equal("panda-express"))
+				Expect(props["collabEmail"]).To(Equal(anotherU.Email))
+
+				Expect(trackCall.Arguments[3]).To(BeNil())
+				Expect(trackCall.ReturnValues[0]).To(BeNil())
+			})
 		})
 
 		sharedexamples.ItRequiresAuthentication(func() (*gorm.DB, *user.User, *http.Header) {
@@ -282,10 +312,16 @@ var _ = Describe("Project collaborators", func() {
 		})
 
 		Context("when removing a user who is a collaborator", func() {
-			It("returns 200 OK and removes the user as a collaborator", func() {
-				u2 := factories.User(db)
-				u3 := factories.User(db)
+			var u2 *user.User
+
+			BeforeEach(func() {
+				u2 = factories.User(db)
 				factories.Collab(db, proj, u2)
+			})
+
+			It("returns 200 OK and removes the user as a collaborator", func() {
+				// Add another collaborator to test that it doesn't get removed.
+				u3 := factories.User(db)
 				factories.Collab(db, proj, u3)
 
 				doRequest(u2.Email)
@@ -305,6 +341,24 @@ var _ = Describe("Project collaborators", func() {
 				Expect(len(cols)).To(Equal(1))
 				Expect(cols[0].UserID).To(Equal(u3.ID))
 				Expect(cols[0].ProjectID).To(Equal(proj.ID))
+			})
+
+			It("tracks a 'Removed Collaborator' event", func() {
+				doRequest(u2.Email)
+
+				trackCall := fakeTracker.TrackCalls.NthCall(1)
+				Expect(trackCall).NotTo(BeNil())
+				Expect(trackCall.Arguments[0]).To(Equal(fmt.Sprintf("%d", u.ID)))
+				Expect(trackCall.Arguments[1]).To(Equal("Removed Collaborator"))
+
+				t := trackCall.Arguments[2]
+				props, ok := t.(map[string]interface{})
+				Expect(ok).To(BeTrue())
+				Expect(props["projectName"]).To(Equal("panda-express"))
+				Expect(props["collabEmail"]).To(Equal(u2.Email))
+
+				Expect(trackCall.Arguments[3]).To(BeNil())
+				Expect(trackCall.ReturnValues[0]).To(BeNil())
 			})
 		})
 
