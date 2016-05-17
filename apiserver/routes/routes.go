@@ -8,6 +8,7 @@ import (
 	"github.com/nitrous-io/rise-server/apiserver/controllers/oauth"
 	"github.com/nitrous-io/rise-server/apiserver/controllers/ping"
 	"github.com/nitrous-io/rise-server/apiserver/controllers/projects"
+	"github.com/nitrous-io/rise-server/apiserver/controllers/root"
 	"github.com/nitrous-io/rise-server/apiserver/controllers/users"
 	"github.com/nitrous-io/rise-server/apiserver/middleware"
 )
@@ -18,6 +19,9 @@ func Draw(r *gin.Engine) {
 		r.Use(gin.Recovery())
 	}
 
+	r.Use(middleware.CORS)
+
+	r.GET("/", root.Root)
 	r.GET("/ping", ping.Ping)
 	r.POST("/users", users.Create)
 	r.POST("/user/confirm", users.Confirm)
