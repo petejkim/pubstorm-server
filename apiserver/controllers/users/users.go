@@ -134,12 +134,21 @@ func Confirm(c *gin.Context) {
 		u, err := user.FindByEmail(db, email)
 		if err == nil {
 			var (
-				event          = "Confirmed Email"
+				event  = "Confirmed Email"
+				traits = map[string]interface{}{
+					"email":       u.Email,
+					"name":        u.Name,
+					"confirmedAt": u.ConfirmedAt,
+				}
 				props, context map[string]interface{}
 			)
 			if err := common.Track(strconv.Itoa(int(u.ID)), event, props, context); err != nil {
 				log.Errorf("failed to track %q event for user ID %d, err: %v",
 					event, u.ID, err)
+			}
+
+			if err := common.Identify(strconv.Itoa(int(u.ID)), traits, context); err != nil {
+				log.Errorf("failed to update user identity for user ID %d, err: %v", u.ID, err)
 			}
 		}
 	}
