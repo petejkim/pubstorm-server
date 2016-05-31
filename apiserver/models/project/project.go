@@ -1,6 +1,8 @@
 package project
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"regexp"
@@ -22,6 +24,8 @@ var (
 	ErrCollaboratorIsOwner       = errors.New("owner of project cannot be added as a collaborator")
 	ErrCollaboratorAlreadyExists = errors.New("collaborator already exists")
 	ErrNotCollaborator           = errors.New("user is not a collaborator of this project")
+
+	ErrBasicAuthCredentialRequired = errors.New("basic_auth_username or basic_auth_password is empty")
 )
 
 type Project struct {
@@ -36,6 +40,10 @@ type Project struct {
 	LastDigestSentAt     *time.Time
 
 	ActiveDeploymentID *uint // pointer to be nullable. remember to dereference by using *ActiveDeploymentID to get actual value
+	BasicAuthUsername  *string
+	BasicAuthPassword  string `sql:"-"`
+
+	EncryptedBasicAuthPassword *string
 
 	LockedAt *time.Time
 }
@@ -53,6 +61,14 @@ func (p *Project) Validate() map[string]string {
 		errors["name"] = "is too long (max. 63 characters)"
 	} else if !projectNameRe.MatchString(p.Name) {
 		errors["name"] = "is invalid"
+	}
+
+	if (p.BasicAuthUsername != nil && *p.BasicAuthUsername != "") || p.BasicAuthPassword != "" {
+		if p.BasicAuthUsername == nil || *p.BasicAuthUsername == "" {
+			errors["basic_auth_username"] = "is required"
+		} else if p.BasicAuthPassword == "" {
+			errors["basic_auth_password"] = "is required"
+		}
 	}
 
 	if len(errors) == 0 {
@@ -224,5 +240,21 @@ func (p *Project) Destroy(db *gorm.DB) error {
 		return err
 	}
 
+	return nil
+}
+
+// Encrypt `BasicAuthPassword` with bcrypt
+func (p *Project) EncryptBasicAuthPassword() error {
+	if p.BasicAuthUsername == nil || *p.BasicAuthUsername == "" || p.BasicAuthPassword == "" {
+		return ErrBasicAuthCredentialRequired
+	}
+
+	hasher := sha256.New()
+	if _, err := hasher.Write([]byte(*p.BasicAuthUsername + ":" + p.BasicAuthPassword)); err != nil {
+		return err
+	}
+
+	encryptedPassword := hex.EncodeToString(hasher.Sum(nil))
+	p.EncryptedBasicAuthPassword = &encryptedPassword
 	return nil
 }

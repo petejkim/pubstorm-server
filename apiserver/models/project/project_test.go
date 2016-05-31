@@ -1,6 +1,8 @@
 package project_test
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
 	"strings"
 	"testing"
 	"time"
@@ -69,6 +71,33 @@ var _ = Describe("Project", func() {
 			Entry("disallows multiline regex attack", "abc\ndef", "is invalid"),
 			Entry("disallows names shorter than 3 characters", "aa", "is too short (min. 3 characters)"),
 			Entry("disallows names longer than 63 characters", strings.Repeat("a", 64), "is too long (max. 63 characters)"),
+		)
+
+		DescribeTable("validates basic auth credential",
+			func(username, password, usernameErr, passwordErr string) {
+				proj.BasicAuthUsername = &username
+				proj.BasicAuthPassword = password
+				errors := proj.Validate()
+
+				if usernameErr == "" && passwordErr == "" {
+					Expect(errors).To(BeNil())
+				} else {
+					Expect(errors).NotTo(BeNil())
+
+					if usernameErr != "" {
+						Expect(errors["basic_auth_username"]).To(Equal(usernameErr))
+					}
+
+					if passwordErr != "" {
+						Expect(errors["basic_auth_password"]).To(Equal(passwordErr))
+					}
+				}
+			},
+
+			Entry("normal", "abc", "def", "", ""),
+			Entry("missing both", "", "", "", ""),
+			Entry("missing username", "", "def", "is required", ""),
+			Entry("missing password", "abc", "", "", "is required"),
 		)
 	})
 
@@ -433,6 +462,39 @@ var _ = Describe("Project", func() {
 				Expect(db.Model(cert.Cert{}).Where("id = ?", ct3.ID).Count(&count).Error).To(BeNil())
 				Expect(count).To(Equal(1))
 			})
+		})
+	})
+
+	Describe("EncryptBasicAuthPassword()", func() {
+		var proj *project.Project
+
+		BeforeEach(func() {
+			proj = factories.Project(db, u)
+			username := "hihihi"
+			proj.BasicAuthUsername = &username
+			proj.BasicAuthPassword = "hello"
+		})
+
+		It("encrypts basic auth password and set it to EncryptedBasicAuthPassword", func() {
+			Expect(proj.EncryptBasicAuthPassword()).To(BeNil())
+
+			hasher := sha256.New()
+			_, err := hasher.Write([]byte("hihihi:hello"))
+			Expect(err).To(BeNil())
+
+			Expect(*proj.EncryptedBasicAuthPassword).To(Equal(hex.EncodeToString(hasher.Sum(nil))))
+		})
+
+		It("returns error if BasicAuthPassword is empty", func() {
+			proj.BasicAuthPassword = ""
+			Expect(proj.EncryptBasicAuthPassword()).To(Equal(project.ErrBasicAuthCredentialRequired))
+			Expect(proj.EncryptedBasicAuthPassword).To(BeNil())
+		})
+
+		It("returns error if BasicAuthUsername is empty", func() {
+			proj.BasicAuthUsername = nil
+			Expect(proj.EncryptBasicAuthPassword()).To(Equal(project.ErrBasicAuthCredentialRequired))
+			Expect(proj.EncryptedBasicAuthPassword).To(BeNil())
 		})
 	})
 })
