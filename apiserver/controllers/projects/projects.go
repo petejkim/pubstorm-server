@@ -405,18 +405,7 @@ func CreateAuth(c *gin.Context) {
 	}
 
 	if proj.ActiveDeploymentID != nil {
-		j, err := job.NewWithJSON(queues.Deploy, &messages.DeployJobData{
-			DeploymentID:      *proj.ActiveDeploymentID,
-			SkipWebrootUpload: true,
-			SkipInvalidation:  false,
-		})
-
-		if err != nil {
-			controllers.InternalServerError(c, err)
-			return
-		}
-
-		if err := j.Enqueue(); err != nil {
+		if err := publishInvalidationJob(proj); err != nil {
 			controllers.InternalServerError(c, err)
 			return
 		}
@@ -436,4 +425,45 @@ func CreateAuth(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{
 		"protected": true,
 	})
+}
+
+func DeleteAuth(c *gin.Context) {
+	proj := controllers.CurrentProject(c)
+	if proj.ActiveDeploymentID != nil {
+		if err := publishInvalidationJob(proj); err != nil {
+			controllers.InternalServerError(c, err)
+			return
+		}
+	}
+
+	db, err := dbconn.DB()
+	if err != nil {
+		controllers.InternalServerError(c, err)
+		return
+	}
+
+	proj.BasicAuthUsername = nil
+	proj.EncryptedBasicAuthPassword = nil
+	if err := db.Save(&proj).Error; err != nil {
+		controllers.InternalServerError(c, err)
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"unprotected": true,
+	})
+}
+
+func publishInvalidationJob(proj *project.Project) error {
+	j, err := job.NewWithJSON(queues.Deploy, &messages.DeployJobData{
+		DeploymentID:      *proj.ActiveDeploymentID,
+		SkipWebrootUpload: true,
+		SkipInvalidation:  false,
+	})
+
+	if err != nil {
+		return err
+	}
+
+	return j.Enqueue()
 }

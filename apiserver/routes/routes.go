@@ -60,6 +60,7 @@ func Draw(r *gin.Engine) {
 				lock.DELETE("/domains/:name", domains.Destroy)
 				lock.POST("/rollback", deployments.Rollback)
 				lock.POST("/auth", projects.CreateAuth)
+				lock.DELETE("/auth", projects.DeleteAuth)
 			}
 		}
 
