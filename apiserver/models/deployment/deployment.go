@@ -15,6 +15,7 @@ const (
 	StateDeployed        = "deployed"
 	StatePendingRollback = "pending_rollback"
 	StatePendingBuild    = "pending_build"
+	StateBuilt           = "built"
 )
 
 var ErrInvalidState = errors.New("state is not valid")
@@ -110,5 +111,6 @@ func isValidState(state string) bool {
 		StatePendingDeploy == state ||
 		StateDeployed == state ||
 		StatePendingRollback == state ||
-		StatePendingBuild == state
+		StatePendingBuild == state ||
+		StateBuilt == state
 }
