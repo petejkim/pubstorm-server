@@ -6,6 +6,10 @@ type DeployJobData struct {
 	SkipInvalidation  bool `json:"skip_invalidation"`   // if true, prefix cache invalidation message will not be published
 }
 
+type BuildJobData struct {
+	DeploymentID uint `json:"deployment_id"`
+}
+
 type V1InvalidationMessageData struct {
 	Domains []string `json:"domains"`
 }
