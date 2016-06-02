@@ -85,8 +85,8 @@ func Work(data []byte) error {
 			return errUnexpectedState
 		}
 
-		rawBundle := "deployments/" + prefixID + "/raw-bundle.tar.gz"
-		tmpFileName := prefixID + "-raw-bundle.tar.gz"
+		rawBundle := "deployments/" + prefixID + "/optimized-bundle.tar.gz"
+		tmpFileName := prefixID + "-optimized-bundle.tar.gz"
 
 		f, err := ioutil.TempFile("", tmpFileName)
 		if err != nil {
