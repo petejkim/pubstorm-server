@@ -33,6 +33,8 @@ type Deployment struct {
 	UserID    uint
 
 	DeployedAt *time.Time
+
+	ErrorMessage *string
 }
 
 type DeploymentJSON struct {

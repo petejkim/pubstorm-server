@@ -120,6 +120,7 @@ var _ = Describe("Builder", func() {
 		err = db.First(depl, depl.ID).Error
 		Expect(err).To(BeNil())
 
+		Expect(depl.ErrorMessage).To(BeNil())
 		Expect(depl.State).To(Equal(deployment.StatePendingDeploy))
 	})
 
@@ -136,6 +137,26 @@ var _ = Describe("Builder", func() {
 
 			d := testhelper.ConsumeQueue(mq, queues.Deploy)
 			Expect(d).To(BeNil())
+		})
+	})
+
+	Context("when there are error messages from optimizer", func() {
+		It("updates `error_message` in deployments table", func() {
+			// mock download
+			fakeS3.DownloadContent, err = ioutil.ReadFile("../../testhelper/fixtures/malformed-website.tar.gz")
+			Expect(err).To(BeNil())
+
+			err = builder.Work([]byte(fmt.Sprintf(`{
+				"deployment_id": %d
+			}`, depl.ID)))
+			Expect(err).To(BeNil())
+
+			Expect(db.First(depl, depl.ID).Error).To(BeNil())
+			Expect(depl.ErrorMessage).NotTo(BeNil())
+			Expect(*depl.ErrorMessage).To(ContainSubstring(`index.html:Parse Error: <h1Give You Up</h1>    <iframe width="420" height="315" src="https://www.youtube.com/embed/dQw4w9WgXcQ" frameborder="0" allowfullscreen></iframe>    <img src="images/rick-astley.jpg" title="I love you">  </body  /html>`))
+			Expect(*depl.ErrorMessage).To(ContainSubstring(`js/app.js:11:Unexpected token`))
+			Expect(*depl.ErrorMessage).To(ContainSubstring(`css/app.css:Missing '}' after '  __ESCAPED_FREE_TEXT_CLEAN_CSS0____ESCAPED_SOURCE_END_CLEAN_CSS__'. Ignoring.`))
+			Expect(*depl.ErrorMessage).To(ContainSubstring(`images/astley.jpg:Failed to optimize`))
 		})
 	})
 })

@@ -5,6 +5,7 @@ import (
 	"compress/gzip"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"io/ioutil"
 	"log"
@@ -12,6 +13,7 @@ import (
 	"os/exec"
 	"path"
 	"path/filepath"
+	"strings"
 
 	"github.com/nitrous-io/rise-server/apiserver/dbconn"
 	"github.com/nitrous-io/rise-server/apiserver/models/deployment"
@@ -25,6 +27,7 @@ import (
 const (
 	OptimizePath         = "/tmp/optimizer/build"
 	OptimizerDockerImage = "quay.io/nitrous/pubstorm-optimizer"
+	ErrorMessagePrefix   = "[Error] "
 )
 
 var ErrProjectLocked = errors.New("project is locked")
@@ -152,9 +155,25 @@ func Work(data []byte) error {
 	defer optimizedBundleTarball.Close()
 
 	// Optimize assets
-	_, err = exec.Command("docker", "run", "-v", dirName+":"+OptimizePath, OptimizerDockerImage).CombinedOutput()
+	out, err := exec.Command("docker", "run", "-v", dirName+":"+OptimizePath, OptimizerDockerImage).CombinedOutput()
 	if err != nil {
 		return err
+	}
+
+	var errorMessages []string
+	outputs := strings.Split(string(out), "\n")
+	fmt.Printf("output: %+v\n", outputs)
+	for _, output := range outputs {
+		if strings.HasPrefix(output, ErrorMessagePrefix) {
+			errorMessages = append(errorMessages, strings.TrimLeft(output, ErrorMessagePrefix))
+		}
+	}
+
+	if len(errorMessages) > 0 {
+		fmt.Printf("error messages: %+v\n", errorMessages)
+		if err := db.Model(deployment.Deployment{}).Where("id = ?", depl.ID).Update("error_message", strings.Join(errorMessages, "\n")).Error; err != nil {
+			return err
+		}
 	}
 
 	if err := pack(optimizedBundleTarball, absPaths, relPaths); err != nil {
