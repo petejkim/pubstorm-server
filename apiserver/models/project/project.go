@@ -31,6 +31,7 @@ type Project struct {
 	UserID               uint
 	DefaultDomainEnabled bool `sql:"default:true"`
 	ForceHTTPS           bool `sql:"column:force_https"`
+	SkipBuild            bool
 
 	ActiveDeploymentID *uint // pointer to be nullable. remember to dereference by using *ActiveDeploymentID to get actual value
 

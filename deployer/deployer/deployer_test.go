@@ -124,7 +124,7 @@ var _ = Describe("Deployer", func() {
 		}
 	}
 
-	It("fetches the raw bundle from S3, uploads assets and meta data to S3, and publishes invalidation message to edges", func() {
+	It("fetches the optimized bundle from S3, uploads assets and meta data to S3, and publishes invalidation message to edges", func() {
 		// mock download
 		fakeS3.DownloadContent, err = ioutil.ReadFile("../../testhelper/fixtures/website.tar.gz")
 		Expect(err).To(BeNil())
@@ -529,6 +529,33 @@ var _ = Describe("Deployer", func() {
 				// it should set project's active deployment to current deployment id
 				assertActiveDeploymentIDUpdate()
 			})
+		})
+	})
+
+	Context("when `skip_build` is true for the project", func() {
+		BeforeEach(func() {
+			proj.SkipBuild = true
+			Expect(db.Save(proj).Error).To(BeNil())
+		})
+
+		It("downloads raw bundle to deploy", func() {
+			// mock download
+			fakeS3.DownloadContent, err = ioutil.ReadFile("../../testhelper/fixtures/website.tar.gz")
+			Expect(err).To(BeNil())
+
+			err = deployer.Work([]byte(fmt.Sprintf(`{
+				"deployment_id": %d
+			}`, depl.ID)))
+			Expect(err).To(BeNil())
+
+			// it should download raw bundle from s3
+			Expect(fakeS3.DownloadCalls.Count()).To(Equal(1))
+			downloadCall := fakeS3.DownloadCalls.NthCall(1)
+			Expect(downloadCall).NotTo(BeNil())
+			Expect(downloadCall.Arguments[0]).To(Equal(s3client.BucketRegion))
+			Expect(downloadCall.Arguments[1]).To(Equal(s3client.BucketName))
+			Expect(downloadCall.Arguments[2]).To(Equal(fmt.Sprintf("deployments/%s/raw-bundle.tar.gz", depl.PrefixID())))
+			Expect(downloadCall.ReturnValues[0]).To(BeNil())
 		})
 	})
 })

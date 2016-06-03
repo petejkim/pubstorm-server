@@ -79,13 +79,22 @@ func Work(data []byte) error {
 
 	prefixID := depl.PrefixID()
 
+	proj := &project.Project{}
+	if err := db.Where("id = ?", depl.ProjectID).First(proj).Error; err != nil {
+		return err
+	}
+
 	if !d.SkipWebrootUpload {
 		// We should not allow to re-upload for deployed project
 		if depl.State == deployment.StateDeployed {
 			return errUnexpectedState
 		}
 
-		rawBundle := "deployments/" + prefixID + "/optimized-bundle.tar.gz"
+		bundlePath := "deployments/" + prefixID + "/optimized-bundle.tar.gz"
+		if proj.SkipBuild {
+			bundlePath = "deployments/" + prefixID + "/raw-bundle.tar.gz"
+		}
+
 		tmpFileName := prefixID + "-optimized-bundle.tar.gz"
 
 		f, err := ioutil.TempFile("", tmpFileName)
@@ -97,7 +106,7 @@ func Work(data []byte) error {
 			os.Remove(f.Name())
 		}()
 
-		if err := S3.Download(s3client.BucketRegion, s3client.BucketName, rawBundle, f); err != nil {
+		if err := S3.Download(s3client.BucketRegion, s3client.BucketName, bundlePath, f); err != nil {
 			return err
 		}
 
@@ -138,11 +147,6 @@ func Work(data []byte) error {
 				return err
 			}
 		}
-	}
-
-	proj := &project.Project{}
-	if err := db.Where("id = ?", depl.ProjectID).First(proj).Error; err != nil {
-		return err
 	}
 
 	if proj.LockedAt != nil {
