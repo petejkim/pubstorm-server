@@ -38,20 +38,22 @@ type Deployment struct {
 }
 
 type DeploymentJSON struct {
-	ID         uint       `json:"id"`
-	State      string     `json:"state"`
-	Version    int64      `json:"version"`
-	Active     bool       `json:"active,omitempty"`
-	DeployedAt *time.Time `json:"deployed_at,omitempty"`
+	ID           uint       `json:"id"`
+	State        string     `json:"state"`
+	Version      int64      `json:"version"`
+	Active       bool       `json:"active,omitempty"`
+	DeployedAt   *time.Time `json:"deployed_at,omitempty"`
+	ErrorMessage *string    `json:"error_message,omitempty"`
 }
 
 // Returns a struct that can be converted to JSON
 func (d *Deployment) AsJSON() *DeploymentJSON {
 	return &DeploymentJSON{
-		ID:         d.ID,
-		State:      d.State,
-		Version:    d.Version,
-		DeployedAt: d.DeployedAt,
+		ID:           d.ID,
+		State:        d.State,
+		Version:      d.Version,
+		DeployedAt:   d.DeployedAt,
+		ErrorMessage: d.ErrorMessage,
 	}
 }
 

@@ -396,10 +396,12 @@ var _ = Describe("Deployments", func() {
 				"Authorization": {"Bearer " + t.Token},
 			}
 
+			errorMessage := "index.js:Missing Parent"
 			depl = factories.DeploymentWithAttrs(db, proj, u, deployment.Deployment{
-				Prefix:     "a1b2c3",
-				State:      deployment.StatePendingDeploy,
-				DeployedAt: timeAgo(-1 * time.Hour),
+				Prefix:       "a1b2c3",
+				State:        deployment.StatePendingDeploy,
+				DeployedAt:   timeAgo(-1 * time.Hour),
+				ErrorMessage: &errorMessage,
 			})
 		})
 
@@ -436,10 +438,11 @@ var _ = Describe("Deployments", func() {
 				Expect(db.First(&d, depl.ID).Error).To(BeNil())
 				j := map[string]interface{}{
 					"deployment": map[string]interface{}{
-						"id":          d.ID,
-						"state":       deployment.StatePendingDeploy,
-						"deployed_at": d.DeployedAt,
-						"version":     d.Version,
+						"id":            d.ID,
+						"state":         deployment.StatePendingDeploy,
+						"deployed_at":   d.DeployedAt,
+						"version":       d.Version,
+						"error_message": d.ErrorMessage,
 					},
 				}
 				expectedJSON, err := json.Marshal(j)
