@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/jinzhu/gorm"
+	"github.com/nitrous-io/rise-server/apiserver/common"
 	"github.com/nitrous-io/rise-server/apiserver/dbconn"
 	"github.com/nitrous-io/rise-server/apiserver/models/deployment"
 	"github.com/nitrous-io/rise-server/apiserver/models/domain"
@@ -23,6 +24,7 @@ import (
 	"github.com/nitrous-io/rise-server/apiserver/server"
 	"github.com/nitrous-io/rise-server/pkg/filetransfer"
 	"github.com/nitrous-io/rise-server/pkg/mqconn"
+	"github.com/nitrous-io/rise-server/pkg/tracker"
 	"github.com/nitrous-io/rise-server/shared/queues"
 	"github.com/nitrous-io/rise-server/shared/s3client"
 	"github.com/nitrous-io/rise-server/testhelper"
@@ -47,6 +49,9 @@ var _ = Describe("Deployments", func() {
 		s   *httptest.Server
 		res *http.Response
 		err error
+
+		fakeTracker *fake.Tracker
+		origTracker tracker.Trackable
 	)
 
 	timeAgo := func(ago time.Duration) *time.Time {
@@ -62,6 +67,10 @@ var _ = Describe("Deployments", func() {
 		mq, err = mqconn.MQ()
 		Expect(err).To(BeNil())
 
+		origTracker = common.Tracker
+		fakeTracker = &fake.Tracker{}
+		common.Tracker = fakeTracker
+
 		testhelper.TruncateTables(db.DB())
 		testhelper.DeleteQueue(mq, queues.All...)
 	})
@@ -71,6 +80,8 @@ var _ = Describe("Deployments", func() {
 			res.Body.Close()
 		}
 		s.Close()
+
+		common.Tracker = origTracker
 	})
 
 	Describe("POST /projects/:name/deployments", func() {
@@ -311,6 +322,24 @@ var _ = Describe("Deployments", func() {
 							"skip_invalidation": false
 						}
 					`, depl.ID)))
+				})
+
+				It("tracks an 'Initiated Project Deployment' event", func() {
+					trackCall := fakeTracker.TrackCalls.NthCall(1)
+					Expect(trackCall).NotTo(BeNil())
+					Expect(trackCall.Arguments[0]).To(Equal(fmt.Sprintf("%d", u.ID)))
+					Expect(trackCall.Arguments[1]).To(Equal("Initiated Project Deployment"))
+
+					t := trackCall.Arguments[2]
+					props, ok := t.(map[string]interface{})
+					Expect(ok).To(BeTrue())
+					Expect(props["projectName"]).To(Equal(proj.Name))
+					Expect(props["deploymentId"]).To(Equal(depl.ID))
+					Expect(props["deploymentPrefix"]).To(Equal(depl.Prefix))
+					Expect(props["deploymentVersion"]).To(Equal(depl.Version))
+
+					Expect(trackCall.Arguments[3]).To(BeNil())
+					Expect(trackCall.ReturnValues[0]).To(BeNil())
 				})
 
 				Describe("when deploying again", func() {
@@ -607,6 +636,25 @@ var _ = Describe("Deployments", func() {
 				Expect(db.First(&updatedDeployment, depl1.ID).Error).To(BeNil())
 				Expect(updatedDeployment.State).To(Equal(deployment.StatePendingRollback))
 			})
+
+			It("tracks an 'Initiated Project Rollback' event", func() {
+				doRequest()
+
+				trackCall := fakeTracker.TrackCalls.NthCall(1)
+				Expect(trackCall).NotTo(BeNil())
+				Expect(trackCall.Arguments[0]).To(Equal(fmt.Sprintf("%d", u.ID)))
+				Expect(trackCall.Arguments[1]).To(Equal("Initiated Project Rollback"))
+
+				t := trackCall.Arguments[2]
+				props, ok := t.(map[string]interface{})
+				Expect(ok).To(BeTrue())
+				Expect(props["projectName"]).To(Equal(proj.Name))
+				Expect(props["deployedVersion"]).To(Equal(depl3.Version))
+				Expect(props["targetVersion"]).To(Equal(depl1.Version))
+
+				Expect(trackCall.Arguments[3]).To(BeNil())
+				Expect(trackCall.ReturnValues[0]).To(BeNil())
+			})
 		})
 
 		Context("when the version is specified", func() {
@@ -657,12 +705,12 @@ var _ = Describe("Deployments", func() {
 				d := testhelper.ConsumeQueue(mq, queues.Deploy)
 				Expect(d).NotTo(BeNil())
 				Expect(d.Body).To(MatchJSON(fmt.Sprintf(`
-				{
-					"deployment_id": %d,
-					"skip_webroot_upload": true,
-					"skip_invalidation": false
-				}
-			`, depl4.ID)))
+					{
+						"deployment_id": %d,
+						"skip_webroot_upload": true,
+						"skip_invalidation": false
+					}
+				`, depl4.ID)))
 			})
 
 			It("marks the deployment as 'pending_rollback'", func() {
@@ -671,6 +719,25 @@ var _ = Describe("Deployments", func() {
 				var updatedDeployment deployment.Deployment
 				Expect(db.First(&updatedDeployment, depl4.ID).Error).To(BeNil())
 				Expect(updatedDeployment.State).To(Equal(deployment.StatePendingRollback))
+			})
+
+			It("tracks an 'Initiated Project Rollback' event", func() {
+				doRequest()
+
+				trackCall := fakeTracker.TrackCalls.NthCall(1)
+				Expect(trackCall).NotTo(BeNil())
+				Expect(trackCall.Arguments[0]).To(Equal(fmt.Sprintf("%d", u.ID)))
+				Expect(trackCall.Arguments[1]).To(Equal("Initiated Project Rollback"))
+
+				t := trackCall.Arguments[2]
+				props, ok := t.(map[string]interface{})
+				Expect(ok).To(BeTrue())
+				Expect(props["projectName"]).To(Equal(proj.Name))
+				Expect(props["deployedVersion"]).To(Equal(depl3.Version))
+				Expect(props["targetVersion"]).To(Equal(depl4.Version))
+
+				Expect(trackCall.Arguments[3]).To(BeNil())
+				Expect(trackCall.ReturnValues[0]).To(BeNil())
 			})
 
 			Context("when the deployment does not exist", func() {
@@ -689,6 +756,13 @@ var _ = Describe("Deployments", func() {
 						"error": "invalid_request",
 						"error_description": "completed deployment with a given version could not be found"
 					}`))
+				})
+
+				It("does not track any 'Initiated Project Rollback' event", func() {
+					doRequest()
+
+					trackCall := fakeTracker.TrackCalls.NthCall(1)
+					Expect(trackCall).To(BeNil())
 				})
 			})
 
@@ -709,6 +783,13 @@ var _ = Describe("Deployments", func() {
 						"error": "invalid_request",
 						"error_description": "the specified deployment is already active"
 					}`))
+				})
+
+				It("does not track any 'Initiated Project Rollback' event", func() {
+					doRequest()
+
+					trackCall := fakeTracker.TrackCalls.NthCall(1)
+					Expect(trackCall).To(BeNil())
 				})
 			})
 

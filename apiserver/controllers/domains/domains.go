@@ -2,11 +2,14 @@ package domains
 
 import (
 	"net/http"
+	"strconv"
 	"strings"
 
+	log "github.com/Sirupsen/logrus"
 	"github.com/gin-gonic/gin"
 	"github.com/jinzhu/gorm"
 	"github.com/lib/pq"
+	"github.com/nitrous-io/rise-server/apiserver/common"
 	"github.com/nitrous-io/rise-server/apiserver/controllers"
 	"github.com/nitrous-io/rise-server/apiserver/dbconn"
 	"github.com/nitrous-io/rise-server/apiserver/models/cert"
@@ -110,6 +113,23 @@ func Create(c *gin.Context) {
 		}
 	}
 
+	{
+		u := controllers.CurrentUser(c)
+
+		var (
+			event = "Added Custom Domain"
+			props = map[string]interface{}{
+				"projectName": proj.Name,
+				"domain":      dom.Name,
+			}
+			context map[string]interface{}
+		)
+		if err := common.Track(strconv.Itoa(int(u.ID)), event, props, context); err != nil {
+			log.Errorf("failed to track %q event for user ID %d, err: %v",
+				event, u.ID, err)
+		}
+	}
+
 	c.JSON(http.StatusCreated, gin.H{
 		"domain": dom.AsJSON(),
 	})
@@ -182,6 +202,23 @@ func Destroy(c *gin.Context) {
 	if err := tx.Commit().Error; err != nil {
 		controllers.InternalServerError(c, err)
 		return
+	}
+
+	{
+		u := controllers.CurrentUser(c)
+
+		var (
+			event = "Deleted Custom Domain"
+			props = map[string]interface{}{
+				"projectName": proj.Name,
+				"domain":      d.Name,
+			}
+			context map[string]interface{}
+		)
+		if err := common.Track(strconv.Itoa(int(u.ID)), event, props, context); err != nil {
+			log.Errorf("failed to track %q event for user ID %d, err: %v",
+				event, u.ID, err)
+		}
 	}
 
 	c.JSON(http.StatusOK, gin.H{

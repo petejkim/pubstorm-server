@@ -9,6 +9,7 @@ import (
 	"testing"
 
 	"github.com/jinzhu/gorm"
+	"github.com/nitrous-io/rise-server/apiserver/common"
 	"github.com/nitrous-io/rise-server/apiserver/dbconn"
 	"github.com/nitrous-io/rise-server/apiserver/models/cert"
 	"github.com/nitrous-io/rise-server/apiserver/models/deployment"
@@ -20,6 +21,7 @@ import (
 	"github.com/nitrous-io/rise-server/apiserver/server"
 	"github.com/nitrous-io/rise-server/pkg/filetransfer"
 	"github.com/nitrous-io/rise-server/pkg/mqconn"
+	"github.com/nitrous-io/rise-server/pkg/tracker"
 	"github.com/nitrous-io/rise-server/shared"
 	"github.com/nitrous-io/rise-server/shared/exchanges"
 	"github.com/nitrous-io/rise-server/shared/queues"
@@ -49,6 +51,9 @@ var _ = Describe("Projects", func() {
 		u  *user.User
 		oc *oauthclient.OauthClient
 		t  *oauthtoken.OauthToken
+
+		fakeTracker *fake.Tracker
+		origTracker tracker.Trackable
 	)
 
 	BeforeEach(func() {
@@ -57,6 +62,10 @@ var _ = Describe("Projects", func() {
 		testhelper.TruncateTables(db.DB())
 
 		u, oc, t = factories.AuthTrio(db)
+
+		origTracker = common.Tracker
+		fakeTracker = &fake.Tracker{}
+		common.Tracker = fakeTracker
 	})
 
 	AfterEach(func() {
@@ -64,6 +73,8 @@ var _ = Describe("Projects", func() {
 			res.Body.Close()
 		}
 		s.Close()
+
+		common.Tracker = origTracker
 	})
 
 	Describe("POST /projects", func() {
@@ -176,6 +187,21 @@ var _ = Describe("Projects", func() {
 					}
 				}`))
 			})
+
+			It("tracks a 'Used Blacklisted Project Name' event", func() {
+				trackCall := fakeTracker.TrackCalls.NthCall(1)
+				Expect(trackCall).NotTo(BeNil())
+				Expect(trackCall.Arguments[0]).To(Equal(fmt.Sprintf("%d", u.ID)))
+				Expect(trackCall.Arguments[1]).To(Equal("Used Blacklisted Project Name"))
+
+				t := trackCall.Arguments[2]
+				props, ok := t.(map[string]interface{})
+				Expect(ok).To(BeTrue())
+				Expect(props["projectName"]).To(Equal("foo-bar-express"))
+
+				Expect(trackCall.Arguments[3]).To(BeNil())
+				Expect(trackCall.ReturnValues[0]).To(BeNil())
+			})
 		})
 
 		Context("when the project name contains uppercase characters", func() {
@@ -227,6 +253,21 @@ var _ = Describe("Projects", func() {
 
 			It("creates a project record in the DB", func() {
 				Expect(proj.Name).To(Equal("foo-bar-express"))
+			})
+
+			It("tracks a 'Created Project' event", func() {
+				trackCall := fakeTracker.TrackCalls.NthCall(1)
+				Expect(trackCall).NotTo(BeNil())
+				Expect(trackCall.Arguments[0]).To(Equal(fmt.Sprintf("%d", u.ID)))
+				Expect(trackCall.Arguments[1]).To(Equal("Created Project"))
+
+				t := trackCall.Arguments[2]
+				props, ok := t.(map[string]interface{})
+				Expect(ok).To(BeTrue())
+				Expect(props["projectName"]).To(Equal("foo-bar-express"))
+
+				Expect(trackCall.Arguments[3]).To(BeNil())
+				Expect(trackCall.ReturnValues[0]).To(BeNil())
 			})
 		})
 
@@ -846,6 +887,23 @@ var _ = Describe("Projects", func() {
 			Expect(d.Body).To(MatchJSON(fmt.Sprintf(`{
 				"domains": ["%s", "%s", "%s"]
 			}`, proj.Name+"."+shared.DefaultDomain, dm1.Name, dm2.Name)))
+		})
+
+		It("tracks a 'Deleted Project' event", func() {
+			doRequest()
+
+			trackCall := fakeTracker.TrackCalls.NthCall(1)
+			Expect(trackCall).NotTo(BeNil())
+			Expect(trackCall.Arguments[0]).To(Equal(fmt.Sprintf("%d", u.ID)))
+			Expect(trackCall.Arguments[1]).To(Equal("Deleted Project"))
+
+			t := trackCall.Arguments[2]
+			props, ok := t.(map[string]interface{})
+			Expect(ok).To(BeTrue())
+			Expect(props["projectName"]).To(Equal(proj.Name))
+
+			Expect(trackCall.Arguments[3]).To(BeNil())
+			Expect(trackCall.ReturnValues[0]).To(BeNil())
 		})
 
 		sharedexamples.ItRequiresAuthentication(func() (*gorm.DB, *user.User, *http.Header) {

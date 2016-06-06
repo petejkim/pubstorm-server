@@ -3,6 +3,7 @@ package users_test
 import (
 	"bytes"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -16,6 +17,7 @@ import (
 	"github.com/nitrous-io/rise-server/apiserver/models/user"
 	"github.com/nitrous-io/rise-server/apiserver/server"
 	"github.com/nitrous-io/rise-server/pkg/mailer"
+	"github.com/nitrous-io/rise-server/pkg/tracker"
 	"github.com/nitrous-io/rise-server/testhelper"
 	"github.com/nitrous-io/rise-server/testhelper/factories"
 	"github.com/nitrous-io/rise-server/testhelper/fake"
@@ -58,12 +60,19 @@ var _ = Describe("Users", func() {
 
 			fakeMailer *fake.Mailer
 			origMailer mailer.Mailer
+
+			fakeTracker *fake.Tracker
+			origTracker tracker.Trackable
 		)
 
 		BeforeEach(func() {
 			origMailer = common.Mailer
 			fakeMailer = &fake.Mailer{}
 			common.Mailer = fakeMailer
+
+			origTracker = common.Tracker
+			fakeTracker = &fake.Tracker{}
+			common.Tracker = fakeTracker
 
 			params = url.Values{
 				"email":    {"foo@example.com"},
@@ -73,6 +82,7 @@ var _ = Describe("Users", func() {
 
 		AfterEach(func() {
 			common.Mailer = origMailer
+			common.Tracker = origTracker
 		})
 
 		doRequest := func() {
@@ -128,6 +138,20 @@ var _ = Describe("Users", func() {
 				Expect(fakeMailer.Subject).To(ContainSubstring("Please confirm"))
 				Expect(fakeMailer.Body).To(ContainSubstring(u.ConfirmationCode))
 				Expect(fakeMailer.HTML).To(ContainSubstring(u.ConfirmationCode))
+			})
+
+			It("tracks the new user", func() {
+				identifyCall := fakeTracker.IdentifyCalls.NthCall(1)
+				Expect(identifyCall).NotTo(BeNil())
+				Expect(identifyCall.Arguments[0]).To(Equal(fmt.Sprintf("%d", u.ID)))
+
+				t := identifyCall.Arguments[1]
+				traits, ok := t.(map[string]interface{})
+				Expect(ok).To(BeTrue())
+				Expect(traits["email"]).To(Equal(u.Email))
+
+				Expect(identifyCall.Arguments[2]).To(BeNil())
+				Expect(identifyCall.ReturnValues[0]).To(BeNil())
 			})
 		})
 
@@ -197,8 +221,13 @@ var _ = Describe("Users", func() {
 	})
 
 	Describe("POST /user/confirm", func() {
-		var u *user.User
-		var params url.Values
+		var (
+			u      *user.User
+			params url.Values
+
+			fakeTracker *fake.Tracker
+			origTracker tracker.Trackable
+		)
 
 		BeforeEach(func() {
 			u = &user.User{Email: "foo@example.com", Password: "foobar"}
@@ -211,6 +240,14 @@ var _ = Describe("Users", func() {
 				"email":             {u.Email},
 				"confirmation_code": {u.ConfirmationCode},
 			}
+
+			origTracker = common.Tracker
+			fakeTracker = &fake.Tracker{}
+			common.Tracker = fakeTracker
+		})
+
+		AfterEach(func() {
+			common.Tracker = origTracker
 		})
 
 		doRequest := func() {
@@ -278,6 +315,18 @@ var _ = Describe("Users", func() {
 
 				Expect(u.ConfirmedAt).NotTo(BeNil())
 				Expect(*u.ConfirmedAt).NotTo(BeZero())
+			})
+
+			It("tracks a 'Confirmed Email' event", func() {
+				doRequest()
+
+				trackCall := fakeTracker.TrackCalls.NthCall(1)
+				Expect(trackCall).NotTo(BeNil())
+				Expect(trackCall.Arguments[0]).To(Equal(fmt.Sprintf("%d", u.ID)))
+				Expect(trackCall.Arguments[1]).To(Equal("Confirmed Email"))
+				Expect(trackCall.Arguments[2]).To(BeNil())
+				Expect(trackCall.Arguments[3]).To(BeNil())
+				Expect(trackCall.ReturnValues[0]).To(BeNil())
 			})
 		})
 	})

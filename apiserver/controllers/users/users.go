@@ -2,7 +2,9 @@ package users
 
 import (
 	"net/http"
+	"strconv"
 
+	log "github.com/Sirupsen/logrus"
 	"github.com/gin-gonic/gin"
 	"github.com/nitrous-io/rise-server/apiserver/common"
 	"github.com/nitrous-io/rise-server/apiserver/controllers"
@@ -78,6 +80,17 @@ func Create(c *gin.Context) {
 		return
 	}
 
+	{
+		var traits, context map[string]interface{}
+		traits = map[string]interface{}{
+			"email": u.Email,
+			"name":  u.Name,
+		}
+		if err := common.Identify(strconv.Itoa(int(u.ID)), traits, context); err != nil {
+			log.Errorf("failed to track new user ID %d, err: %v", u.ID, err)
+		}
+	}
+
 	c.JSON(http.StatusCreated, gin.H{
 		"user": u.AsJSON(),
 	})
@@ -101,7 +114,8 @@ func Confirm(c *gin.Context) {
 		return
 	}
 
-	confirmed, err := user.Confirm(db, c.PostForm("email"), c.PostForm("confirmation_code"))
+	email := c.PostForm("email")
+	confirmed, err := user.Confirm(db, email, c.PostForm("confirmation_code"))
 	if err != nil {
 		controllers.InternalServerError(c, err)
 		return
@@ -114,6 +128,29 @@ func Confirm(c *gin.Context) {
 			"confirmed":         false,
 		})
 		return
+	}
+
+	{
+		u, err := user.FindByEmail(db, email)
+		if err == nil {
+			var (
+				event  = "Confirmed Email"
+				traits = map[string]interface{}{
+					"email":       u.Email,
+					"name":        u.Name,
+					"confirmedAt": u.ConfirmedAt,
+				}
+				props, context map[string]interface{}
+			)
+			if err := common.Track(strconv.Itoa(int(u.ID)), event, props, context); err != nil {
+				log.Errorf("failed to track %q event for user ID %d, err: %v",
+					event, u.ID, err)
+			}
+
+			if err := common.Identify(strconv.Itoa(int(u.ID)), traits, context); err != nil {
+				log.Errorf("failed to update user identity for user ID %d, err: %v", u.ID, err)
+			}
+		}
 	}
 
 	c.JSON(200, gin.H{

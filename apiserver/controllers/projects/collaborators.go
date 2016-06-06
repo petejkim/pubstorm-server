@@ -3,8 +3,11 @@ package projects
 import (
 	"fmt"
 	"net/http"
+	"strconv"
 
+	log "github.com/Sirupsen/logrus"
 	"github.com/gin-gonic/gin"
+	"github.com/nitrous-io/rise-server/apiserver/common"
 	"github.com/nitrous-io/rise-server/apiserver/controllers"
 	"github.com/nitrous-io/rise-server/apiserver/dbconn"
 	"github.com/nitrous-io/rise-server/apiserver/models/collab"
@@ -77,6 +80,23 @@ func AddCollaborator(c *gin.Context) {
 		return
 	}
 
+	{
+		currUser := controllers.CurrentUser(c)
+
+		var (
+			event = "Added Collaborator"
+			props = map[string]interface{}{
+				"projectName": proj.Name,
+				"collabEmail": u.Email,
+			}
+			context map[string]interface{}
+		)
+		if err := common.Track(strconv.Itoa(int(currUser.ID)), event, props, context); err != nil {
+			log.Errorf("failed to track %q event for user ID %d, err: %v",
+				event, currUser.ID, err)
+		}
+	}
+
 	c.JSON(http.StatusCreated, gin.H{
 		"added": true,
 	})
@@ -110,6 +130,23 @@ func RemoveCollaborator(c *gin.Context) {
 		if err != project.ErrNotCollaborator {
 			controllers.InternalServerError(c, err)
 			return
+		}
+	}
+
+	{
+		currUser := controllers.CurrentUser(c)
+
+		var (
+			event = "Removed Collaborator"
+			props = map[string]interface{}{
+				"projectName": proj.Name,
+				"collabEmail": u.Email,
+			}
+			context map[string]interface{}
+		)
+		if err := common.Track(strconv.Itoa(int(currUser.ID)), event, props, context); err != nil {
+			log.Errorf("failed to track %q event for user ID %d, err: %v",
+				event, currUser.ID, err)
 		}
 	}
 

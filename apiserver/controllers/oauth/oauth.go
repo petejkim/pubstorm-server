@@ -2,9 +2,12 @@ package oauth
 
 import (
 	"encoding/base64"
+	"strconv"
 	"strings"
 
+	log "github.com/Sirupsen/logrus"
 	"github.com/gin-gonic/gin"
+	"github.com/nitrous-io/rise-server/apiserver/common"
 	"github.com/nitrous-io/rise-server/apiserver/controllers"
 	"github.com/nitrous-io/rise-server/apiserver/dbconn"
 	"github.com/nitrous-io/rise-server/apiserver/models/oauthclient"
@@ -100,10 +103,24 @@ func CreateToken(c *gin.Context) {
 		UserID:        u.ID,
 		OauthClientID: client.ID,
 	}
-
 	if err := db.Create(token).Error; err != nil {
 		controllers.InternalServerError(c, err)
 		return
+	}
+
+	{
+		var (
+			event = "User Logged In"
+			props = map[string]interface{}{
+				"oauthClientId":   client.ID,
+				"oauthClientName": client.Name,
+			}
+			context map[string]interface{}
+		)
+		if err := common.Track(strconv.Itoa(int(u.ID)), event, props, context); err != nil {
+			log.Errorf("failed to track %q event for user ID %d, err: %v",
+				event, u.ID, err)
+		}
 	}
 
 	c.JSON(200, gin.H{
@@ -130,6 +147,19 @@ func DestroyToken(c *gin.Context) {
 	if err := delQuery.Error; err != nil {
 		controllers.InternalServerError(c, err)
 		return
+	}
+
+	{
+		u := controllers.CurrentUser(c)
+
+		var (
+			event          = "User Logged Out"
+			props, context map[string]interface{}
+		)
+		if err := common.Track(strconv.Itoa(int(u.ID)), event, props, context); err != nil {
+			log.Errorf("failed to track %q event for user ID %d, err: %v",
+				event, u.ID, err)
+		}
 	}
 
 	c.JSON(200, gin.H{

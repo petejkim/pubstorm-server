@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/jinzhu/gorm"
+	"github.com/nitrous-io/rise-server/apiserver/common"
 	"github.com/nitrous-io/rise-server/apiserver/dbconn"
 	"github.com/nitrous-io/rise-server/apiserver/models/cert"
 	"github.com/nitrous-io/rise-server/apiserver/models/deployment"
@@ -20,6 +21,7 @@ import (
 	"github.com/nitrous-io/rise-server/apiserver/server"
 	"github.com/nitrous-io/rise-server/pkg/filetransfer"
 	"github.com/nitrous-io/rise-server/pkg/mqconn"
+	"github.com/nitrous-io/rise-server/pkg/tracker"
 	"github.com/nitrous-io/rise-server/shared"
 	"github.com/nitrous-io/rise-server/shared/exchanges"
 	"github.com/nitrous-io/rise-server/shared/queues"
@@ -43,6 +45,9 @@ var _ = Describe("Domains", func() {
 		fakeS3 *fake.S3
 		origS3 filetransfer.FileTransfer
 
+		fakeTracker *fake.Tracker
+		origTracker tracker.Trackable
+
 		db *gorm.DB
 		mq *amqp.Connection
 
@@ -61,6 +66,10 @@ var _ = Describe("Domains", func() {
 		origS3 = s3client.S3
 		fakeS3 = &fake.S3{}
 		s3client.S3 = fakeS3
+
+		origTracker = common.Tracker
+		fakeTracker = &fake.Tracker{}
+		common.Tracker = fakeTracker
 
 		db, err = dbconn.DB()
 		Expect(err).To(BeNil())
@@ -88,6 +97,8 @@ var _ = Describe("Domains", func() {
 
 	AfterEach(func() {
 		s3client.S3 = origS3
+
+		common.Tracker = origTracker
 
 		if res != nil {
 			res.Body.Close()
@@ -321,6 +332,22 @@ var _ = Describe("Domains", func() {
 					Expect(err).To(BeNil())
 				})
 
+				It("tracks an 'Added Custom Domain' event", func() {
+					trackCall := fakeTracker.TrackCalls.NthCall(1)
+					Expect(trackCall).NotTo(BeNil())
+					Expect(trackCall.Arguments[0]).To(Equal(fmt.Sprintf("%d", u.ID)))
+					Expect(trackCall.Arguments[1]).To(Equal("Added Custom Domain"))
+
+					t := trackCall.Arguments[2]
+					props, ok := t.(map[string]interface{})
+					Expect(ok).To(BeTrue())
+					Expect(props["projectName"]).To(Equal(proj.Name))
+					Expect(props["domain"]).To(Equal("www.foo-bar-express.com"))
+
+					Expect(trackCall.Arguments[3]).To(BeNil())
+					Expect(trackCall.ReturnValues[0]).To(BeNil())
+				})
+
 				Context("when there is an active deployment", func() {
 					var depl *deployment.Deployment
 
@@ -512,6 +539,24 @@ var _ = Describe("Domains", func() {
 				Expect(m.Body).To(MatchJSON(fmt.Sprintf(`{
 					"domains": ["%s"]
 				}`, domainName)))
+			})
+
+			It("tracks a 'Deleted Custom Domain' event", func() {
+				doRequest()
+
+				trackCall := fakeTracker.TrackCalls.NthCall(1)
+				Expect(trackCall).NotTo(BeNil())
+				Expect(trackCall.Arguments[0]).To(Equal(fmt.Sprintf("%d", u.ID)))
+				Expect(trackCall.Arguments[1]).To(Equal("Deleted Custom Domain"))
+
+				t := trackCall.Arguments[2]
+				props, ok := t.(map[string]interface{})
+				Expect(ok).To(BeTrue())
+				Expect(props["projectName"]).To(Equal(proj.Name))
+				Expect(props["domain"]).To(Equal(domainName))
+
+				Expect(trackCall.Arguments[3]).To(BeNil())
+				Expect(trackCall.ReturnValues[0]).To(BeNil())
 			})
 
 			Context("domains has a ssl cert", func() {
