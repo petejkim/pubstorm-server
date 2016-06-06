@@ -3,7 +3,9 @@ package builder_test
 import (
 	"fmt"
 	"io/ioutil"
+	"os/exec"
 	"testing"
+	"time"
 
 	"github.com/jinzhu/gorm"
 	"github.com/nitrous-io/rise-server/apiserver/dbconn"
@@ -113,7 +115,8 @@ var _ = Describe("Builder", func() {
 		Expect(d.Body).To(MatchJSON(fmt.Sprintf(`{
 			"deployment_id": %d,
 			"skip_webroot_upload": false,
-			"skip_invalidation": false
+			"skip_invalidation": false,
+			"use_raw_bundle": false
 		}`, depl.ID)))
 
 		// it should update deployment's state to deployed
@@ -157,6 +160,80 @@ var _ = Describe("Builder", func() {
 			Expect(*depl.ErrorMessage).To(ContainSubstring(`js/app.js:11:Unexpected token`))
 			Expect(*depl.ErrorMessage).To(ContainSubstring(`css/app.css:Missing '}' after '  __ESCAPED_FREE_TEXT_CLEAN_CSS0____ESCAPED_SOURCE_END_CLEAN_CSS__'. Ignoring.`))
 			Expect(*depl.ErrorMessage).To(ContainSubstring(`images/astley.jpg:Failed to optimize`))
+		})
+	})
+
+	Context("when the optimizer timed out", func() {
+		var optimizerCmd *exec.Cmd
+
+		BeforeEach(func() {
+			builder.OptimizerCmd = func(srcDir string) *exec.Cmd {
+				optimizerCmd = exec.Command("sleep", "60")
+				return optimizerCmd
+			}
+			builder.OptimizerTimeout = 100 * time.Millisecond
+
+			fakeS3.DownloadContent, err = ioutil.ReadFile("../../testhelper/fixtures/malformed-website.tar.gz")
+			Expect(err).To(BeNil())
+		})
+
+		It("kills the optimizer", func() {
+			done := make(chan struct{})
+			errCh := make(chan error)
+			go func() {
+				err = builder.Work([]byte(fmt.Sprintf(`{
+					"deployment_id": %d
+				}`, depl.ID)))
+
+				if err != nil {
+					errCh <- err
+				}
+				done <- struct{}{}
+			}()
+
+			select {
+			case <-done:
+				time.Sleep(50 * time.Millisecond)
+				Expect(optimizerCmd.ProcessState.String()).To(Equal("signal: killed"))
+			case err := <-errCh:
+				Expect(err).To(BeNil())
+			case <-time.After(150 * time.Millisecond):
+				Fail("timed out on optimizer")
+			}
+		})
+
+		It("sets `UseRawBundle` to true in a deploy message", func() {
+			err = builder.Work([]byte(fmt.Sprintf(`{
+				"deployment_id": %d
+			}`, depl.ID)))
+			Expect(err).To(BeNil())
+
+			// it should publish deploy message
+			d := testhelper.ConsumeQueue(mq, queues.Deploy)
+			Expect(d).NotTo(BeNil())
+			Expect(d.Body).To(MatchJSON(fmt.Sprintf(`{
+				"deployment_id": %d,
+				"skip_webroot_upload": false,
+				"skip_invalidation": false,
+				"use_raw_bundle": true
+			}`, depl.ID)))
+
+			// it should update deployment's state to deployed
+			err = db.First(depl, depl.ID).Error
+			Expect(err).To(BeNil())
+
+			Expect(depl.State).To(Equal(deployment.StatePendingDeploy))
+		})
+
+		It("updates `error_message` in deployments table", func() {
+			err = builder.Work([]byte(fmt.Sprintf(`{
+				"deployment_id": %d
+			}`, depl.ID)))
+			Expect(err).To(BeNil())
+
+			Expect(db.First(depl, depl.ID).Error).To(BeNil())
+			Expect(depl.ErrorMessage).NotTo(BeNil())
+			Expect(*depl.ErrorMessage).To(Equal(builder.ErrOptimizerTimeout.Error()))
 		})
 	})
 })

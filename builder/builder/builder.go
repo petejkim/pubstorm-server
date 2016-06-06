@@ -5,7 +5,6 @@ import (
 	"compress/gzip"
 	"encoding/json"
 	"errors"
-	"fmt"
 	"io"
 	"io/ioutil"
 	"log"
@@ -14,6 +13,7 @@ import (
 	"path"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/nitrous-io/rise-server/apiserver/dbconn"
 	"github.com/nitrous-io/rise-server/apiserver/models/deployment"
@@ -29,8 +29,6 @@ const (
 	OptimizerDockerImage = "quay.io/nitrous/pubstorm-optimizer"
 	ErrorMessagePrefix   = "[Error] "
 )
-
-var ErrProjectLocked = errors.New("project is locked")
 
 func init() {
 	riseEnv := os.Getenv("RISE_ENV")
@@ -49,7 +47,14 @@ func init() {
 var (
 	S3 filetransfer.FileTransfer = filetransfer.NewS3(s3client.PartSize, s3client.MaxUploadParts)
 
-	errUnexpectedState = errors.New("deployment is in unexpected state")
+	errUnexpectedState  = errors.New("deployment is in unexpected state")
+	ErrProjectLocked    = errors.New("project is locked")
+	ErrOptimizerTimeout = errors.New("Timed out on optimizing assets. This might happen due to too large asset files. We will continue without optimizing your assets.")
+
+	OptimizerCmd = func(srcDir string) *exec.Cmd {
+		return exec.Command("docker", "run", "-v", srcDir+":"+OptimizePath, OptimizerDockerImage)
+	}
+	OptimizerTimeout = 5 * 60 * time.Second // 5 mins
 )
 
 func Work(data []byte) error {
@@ -107,7 +112,6 @@ func Work(data []byte) error {
 	defer gr.Close()
 
 	tr := tar.NewReader(gr)
-	// webroot is publicly readable
 
 	var (
 		absPaths []string
@@ -154,44 +158,55 @@ func Work(data []byte) error {
 	}
 	defer optimizedBundleTarball.Close()
 
+	deployJobMsg := messages.DeployJobData{
+		DeploymentID: depl.ID,
+	}
+
+	nextState := deployment.StateBuilt
+
 	// Optimize assets
-	out, err := exec.Command("docker", "run", "-v", dirName+":"+OptimizePath, OptimizerDockerImage).CombinedOutput()
-	if err != nil {
-		return err
-	}
-
-	var errorMessages []string
-	outputs := strings.Split(string(out), "\n")
-	fmt.Printf("output: %+v\n", outputs)
-	for _, output := range outputs {
-		if strings.HasPrefix(output, ErrorMessagePrefix) {
-			errorMessages = append(errorMessages, strings.TrimLeft(output, ErrorMessagePrefix))
+	output, err := runOptimizer(dirName)
+	if err == nil {
+		var errorMessages []string
+		outputs := strings.Split(output, "\n")
+		for _, output := range outputs {
+			if strings.HasPrefix(output, ErrorMessagePrefix) {
+				errorMessages = append(errorMessages, strings.TrimLeft(output, ErrorMessagePrefix))
+			}
 		}
-	}
 
-	if len(errorMessages) > 0 {
-		fmt.Printf("error messages: %+v\n", errorMessages)
-		if err := db.Model(deployment.Deployment{}).Where("id = ?", depl.ID).Update("error_message", strings.Join(errorMessages, "\n")).Error; err != nil {
+		if len(errorMessages) > 0 {
+			nextState = deployment.StateBuildFailed
+			errorMessage := strings.Join(errorMessages, "\n")
+			depl.ErrorMessage = &errorMessage
+		}
+
+		if err := pack(optimizedBundleTarball, absPaths, relPaths); err != nil {
 			return err
 		}
-	}
 
-	if err := pack(optimizedBundleTarball, absPaths, relPaths); err != nil {
+		if err := S3.Upload(s3client.BucketRegion, s3client.BucketName, "deployments/"+prefixID+"/optimized-bundle.tar.gz", optimizedBundleTarball, "", "private"); err != nil {
+			return err
+		}
+
+	} else if err == ErrOptimizerTimeout {
+		if err := depl.UpdateState(db, deployment.StateBuildFailed); err != nil {
+			return err
+		}
+
+		nextState = deployment.StateBuildFailed
+		errorMessage := ErrOptimizerTimeout.Error()
+		depl.ErrorMessage = &errorMessage
+		deployJobMsg.UseRawBundle = true
+	} else {
 		return err
 	}
 
-	if err := S3.Upload(s3client.BucketRegion, s3client.BucketName, "deployments/"+prefixID+"/optimized-bundle.tar.gz", optimizedBundleTarball, "", "private"); err != nil {
+	if err := depl.UpdateState(db, nextState); err != nil {
 		return err
 	}
 
-	if err := depl.UpdateState(db, deployment.StateBuilt); err != nil {
-		return err
-	}
-
-	j, err := job.NewWithJSON(queues.Deploy, &messages.DeployJobData{
-		DeploymentID: depl.ID,
-	})
-
+	j, err := job.NewWithJSON(queues.Deploy, &deployJobMsg)
 	if err != nil {
 		return err
 	}
@@ -249,4 +264,34 @@ func pack(writer io.Writer, absPaths, relPaths []string) error {
 		}
 	}
 	return nil
+}
+
+func runOptimizer(srcDir string) (output string, err error) {
+	outCh := make(chan string)
+	errCh := make(chan error)
+	cmd := OptimizerCmd(srcDir)
+
+	go func() {
+		out, err := cmd.CombinedOutput()
+		if err != nil {
+			combinedErr := err
+			if output != "" {
+				combinedErr = errors.New(err.Error() + ":" + output)
+			}
+			errCh <- combinedErr
+		}
+		outCh <- string(out)
+	}()
+
+	select {
+	case output := <-outCh:
+		return output, nil
+	case err := <-errCh:
+		return "", err
+	case <-time.After(OptimizerTimeout):
+		if cmd.Process != nil {
+			cmd.Process.Kill()
+		}
+		return "", ErrOptimizerTimeout
+	}
 }

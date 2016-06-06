@@ -532,19 +532,15 @@ var _ = Describe("Deployer", func() {
 		})
 	})
 
-	Context("when `skip_build` is true for the project", func() {
-		BeforeEach(func() {
-			proj.SkipBuild = true
-			Expect(db.Save(proj).Error).To(BeNil())
-		})
-
+	Context("when `use_raw_bundle` is true", func() {
 		It("downloads raw bundle to deploy", func() {
 			// mock download
 			fakeS3.DownloadContent, err = ioutil.ReadFile("../../testhelper/fixtures/website.tar.gz")
 			Expect(err).To(BeNil())
 
 			err = deployer.Work([]byte(fmt.Sprintf(`{
-				"deployment_id": %d
+				"deployment_id": %d,
+				"use_raw_bundle": true
 			}`, depl.ID)))
 			Expect(err).To(BeNil())
 

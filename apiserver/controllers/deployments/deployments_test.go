@@ -686,7 +686,8 @@ var _ = Describe("Deployments", func() {
 					{
 						"deployment_id": %d,
 						"skip_webroot_upload": true,
-						"skip_invalidation": false
+						"skip_invalidation": false,
+						"use_raw_bundle": false
 					}
 				`, depl1.ID)))
 			})
@@ -770,7 +771,8 @@ var _ = Describe("Deployments", func() {
 					{
 						"deployment_id": %d,
 						"skip_webroot_upload": true,
-						"skip_invalidation": false
+						"skip_invalidation": false,
+						"use_raw_bundle": false
 					}
 				`, depl4.ID)))
 			})

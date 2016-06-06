@@ -620,7 +620,8 @@ var _ = Describe("Projects", func() {
 					Expect(d.Body).To(MatchJSON(fmt.Sprintf(`{
 						"deployment_id": %d,
 						"skip_webroot_upload": true,
-						"skip_invalidation": true
+						"skip_invalidation": true,
+						"use_raw_bundle": false
 					}`, *proj.ActiveDeploymentID)))
 				})
 			})
@@ -683,7 +684,8 @@ var _ = Describe("Projects", func() {
 					Expect(d.Body).To(MatchJSON(fmt.Sprintf(`{
 						"deployment_id": %d,
 						"skip_webroot_upload": true,
-						"skip_invalidation": false
+						"skip_invalidation": false,
+						"use_raw_bundle": false
 					}`, *proj.ActiveDeploymentID)))
 				})
 			})
@@ -737,7 +739,8 @@ var _ = Describe("Projects", func() {
 					Expect(d.Body).To(MatchJSON(fmt.Sprintf(`{
 						"deployment_id": %d,
 						"skip_webroot_upload": true,
-						"skip_invalidation": false
+						"skip_invalidation": false,
+						"use_raw_bundle": false
 					}`, *proj.ActiveDeploymentID)))
 				})
 			})

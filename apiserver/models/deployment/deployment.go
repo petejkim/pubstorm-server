@@ -16,6 +16,7 @@ const (
 	StatePendingRollback = "pending_rollback"
 	StatePendingBuild    = "pending_build"
 	StateBuilt           = "built"
+	StateBuildFailed     = "build_failed"
 )
 
 var ErrInvalidState = errors.New("state is not valid")
@@ -102,6 +103,10 @@ func (d *Deployment) UpdateState(db *gorm.DB, state string) error {
 		q = q.Update("deployed_at", gorm.Expr("now()"))
 	}
 
+	if state == StateBuildFailed {
+		q = q.Update("error_message", d.ErrorMessage)
+	}
+
 	if err := q.Scan(d).Error; err != nil {
 		return err
 	}
@@ -116,5 +121,6 @@ func isValidState(state string) bool {
 		StateDeployed == state ||
 		StatePendingRollback == state ||
 		StatePendingBuild == state ||
-		StateBuilt == state
+		StateBuilt == state ||
+		StateBuildFailed == state
 }

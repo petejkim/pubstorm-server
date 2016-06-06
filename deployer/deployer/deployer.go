@@ -91,7 +91,7 @@ func Work(data []byte) error {
 		}
 
 		bundlePath := "deployments/" + prefixID + "/optimized-bundle.tar.gz"
-		if proj.SkipBuild {
+		if d.UseRawBundle {
 			bundlePath = "deployments/" + prefixID + "/raw-bundle.tar.gz"
 		}
 
