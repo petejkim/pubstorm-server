@@ -49,6 +49,29 @@ sudo apt-get update
 sudo apt-get install redis-server
 ```
 
+### Docker
+
+```shell
+# Install Docker 1.10.0 in Nitrous Ubuntu box
+sudo apt-get install apt-transport-https ca-certificates
+sudo apt-key adv --keyserver hkp://p80.pool.sks-keyservers.net:80 --recv-keys 58118E89F3A912897C070ADBF76221572C52609D
+echo 'deb https://apt.dockerproject.org/repo ubuntu-trusty main' | sudo tee -a /etc/apt/sources.list.d/docker.list
+sudo apt-get update
+sudo apt-get purge lxc-docker
+apt-cache policy docker-engine
+sudo apt-get update
+sudo apt-get install linux-image-extra-$(uname -r)
+sudo apt-get install apparmor
+sudo apt-get install docker-engine=1.10.0-0~trusty
+sudo usermod -aG docker nitrous
+```
+Log out from your box after complete the steps above.
+
+1. Go to https://www.nitrous.io/legacy/#/containers/{CONTAINER_SLUG}/config.
+2. Update Volume Mounts to Volume(...:/var/lib/docker) Mount Point(/var/lib/docker)
+3. Enable "Privileged Mode"
+4. Log in
+
 ## Vendoring
 
 ```shell
