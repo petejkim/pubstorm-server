@@ -9,6 +9,7 @@ import (
 	"github.com/nitrous-io/rise-server/apiserver/controllers/ping"
 	"github.com/nitrous-io/rise-server/apiserver/controllers/projects"
 	"github.com/nitrous-io/rise-server/apiserver/controllers/root"
+	"github.com/nitrous-io/rise-server/apiserver/controllers/stats"
 	"github.com/nitrous-io/rise-server/apiserver/controllers/users"
 	"github.com/nitrous-io/rise-server/apiserver/middleware"
 )
@@ -29,6 +30,7 @@ func Draw(r *gin.Engine) {
 	r.POST("/user/password/forgot", users.ForgotPassword)
 	r.POST("/user/password/reset", users.ResetPassword)
 	r.POST("/oauth/token", oauth.CreateToken)
+	r.GET("/admin/stats", stats.Index)
 
 	{ // Routes that require a OAuth Token
 		authorized := r.Group("", middleware.RequireToken)
