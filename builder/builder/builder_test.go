@@ -78,6 +78,13 @@ var _ = Describe("Builder", func() {
 		Expect(uploadCall.ReturnValues[0]).To(BeNil())
 	}
 
+	assertCleanTempFile := func(prefixID string) {
+		files, _ := ioutil.ReadDir("/tmp")
+		for _, f := range files {
+			Expect(f.Name()).ToNot(ContainSubstring(prefixID))
+		}
+	}
+
 	It("fetches the raw bundle from S3, optimize assets, compress and upload to S3 and publish a message to 'deploy' queue", func() {
 		// mock download
 		fakeS3.DownloadContent, err = ioutil.ReadFile("../../testhelper/fixtures/website.tar.gz")
@@ -125,6 +132,8 @@ var _ = Describe("Builder", func() {
 
 		Expect(depl.ErrorMessage).To(BeNil())
 		Expect(depl.State).To(Equal(deployment.StatePendingDeploy))
+
+		assertCleanTempFile(depl.PrefixID())
 	})
 
 	Context("the deployment is not in expected state", func() {
@@ -140,6 +149,8 @@ var _ = Describe("Builder", func() {
 
 			d := testhelper.ConsumeQueue(mq, queues.Deploy)
 			Expect(d).To(BeNil())
+
+			assertCleanTempFile(depl.PrefixID())
 		})
 	})
 
@@ -160,6 +171,8 @@ var _ = Describe("Builder", func() {
 			Expect(*depl.ErrorMessage).To(ContainSubstring(`js/app.js:11:Unexpected token`))
 			Expect(*depl.ErrorMessage).To(ContainSubstring(`css/app.css:Missing '}' after '  __ESCAPED_FREE_TEXT_CLEAN_CSS0____ESCAPED_SOURCE_END_CLEAN_CSS__'. Ignoring.`))
 			Expect(*depl.ErrorMessage).To(ContainSubstring(`images/astley.jpg:Failed to optimize`))
+
+			assertCleanTempFile(depl.PrefixID())
 		})
 	})
 
@@ -200,6 +213,8 @@ var _ = Describe("Builder", func() {
 			case <-time.After(150 * time.Millisecond):
 				Fail("timed out on optimizer")
 			}
+
+			assertCleanTempFile(depl.PrefixID())
 		})
 
 		It("sets `UseRawBundle` to true in a deploy message", func() {
@@ -223,6 +238,8 @@ var _ = Describe("Builder", func() {
 			Expect(err).To(BeNil())
 
 			Expect(depl.State).To(Equal(deployment.StatePendingDeploy))
+
+			assertCleanTempFile(depl.PrefixID())
 		})
 
 		It("updates `error_message` in deployments table", func() {
@@ -234,6 +251,8 @@ var _ = Describe("Builder", func() {
 			Expect(db.First(depl, depl.ID).Error).To(BeNil())
 			Expect(depl.ErrorMessage).NotTo(BeNil())
 			Expect(*depl.ErrorMessage).To(Equal(builder.ErrOptimizerTimeout.Error()))
+
+			assertCleanTempFile(depl.PrefixID())
 		})
 	})
 })

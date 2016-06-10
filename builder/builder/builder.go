@@ -52,7 +52,7 @@ var (
 	ErrOptimizerTimeout = errors.New("Timed out on optimizing assets. This might happen due to too large asset files. We will continue without optimizing your assets.")
 
 	OptimizerCmd = func(srcDir string) *exec.Cmd {
-		return exec.Command("docker", "run", "-v", srcDir+":"+OptimizePath, OptimizerDockerImage)
+		return exec.Command("docker", "run", "-v", srcDir+":"+OptimizePath, "--rm", OptimizerDockerImage)
 	}
 	OptimizerTimeout = 5 * 60 * time.Second // 5 mins
 )
@@ -93,12 +93,12 @@ func Work(data []byte) error {
 		os.Remove(f.Name())
 	}()
 
-	dirName, err := ioutil.TempDir("", "")
+	dirName, err := ioutil.TempDir("", prefixID)
 	if err != nil {
 		return err
 	}
 
-	defer os.Remove(dirName)
+	defer os.RemoveAll(dirName)
 
 	if err := S3.Download(s3client.BucketRegion, s3client.BucketName, rawBundle, f); err != nil {
 		return err
@@ -156,7 +156,7 @@ func Work(data []byte) error {
 	if err != nil {
 		return err
 	}
-	defer optimizedBundleTarball.Close()
+	defer os.Remove(optimizedBundleTarball.Name())
 
 	deployJobMsg := messages.DeployJobData{
 		DeploymentID: depl.ID,
