@@ -387,6 +387,42 @@
 			"path": "gopkg.in/go-playground/validator.v8",
 			"revision": "4c79e698231042063ef780f52bd0295392de42d7",
 			"revisionTime": "2016-02-02T20:01:43-05:00"
+		},
+		{
+			"checksumSHA1": "d7vv/hVb4camLyDRrXz5dyntbeI=",
+			"path": "gopkg.in/olivere/elastic.v2",
+			"revision": "7ca93ba4173415890f2748cfd921cca8b3ebd3aa",
+			"revisionTime": "2016-06-02T11:40:03Z"
+		},
+		{
+			"checksumSHA1": "TYefriikhzyFZ9ynNHgYUjeoHgw=",
+			"path": "gopkg.in/olivere/elastic.v2/backoff",
+			"revision": "7ca93ba4173415890f2748cfd921cca8b3ebd3aa",
+			"revisionTime": "2016-06-02T11:40:03Z"
+		},
+		{
+			"checksumSHA1": "O5dZe+m70S7vbkgePsMLrUc86DA=",
+			"path": "gopkg.in/olivere/elastic.v2/uritemplates",
+			"revision": "7ca93ba4173415890f2748cfd921cca8b3ebd3aa",
+			"revisionTime": "2016-06-02T11:40:03Z"
+		},
+		{
+			"checksumSHA1": "XYLeju+cD+k26u3XGNWU8KMXuOw=",
+			"path": "gopkg.in/olivere/elastic.v3",
+			"revision": "7a92d18eaf7a9f95d603e70970fb5adcd4dc62f1",
+			"revisionTime": "2016-06-02T11:18:17Z"
+		},
+		{
+			"checksumSHA1": "lLdKOn9RPtFoTtPUNq5+sIInAiE=",
+			"path": "gopkg.in/olivere/elastic.v3/backoff",
+			"revision": "7a92d18eaf7a9f95d603e70970fb5adcd4dc62f1",
+			"revisionTime": "2016-06-02T11:18:17Z"
+		},
+		{
+			"checksumSHA1": "XQg6xG6l15Ke43KolthYYnVDCYo=",
+			"path": "gopkg.in/olivere/elastic.v3/uritemplates",
+			"revision": "7a92d18eaf7a9f95d603e70970fb5adcd4dc62f1",
+			"revisionTime": "2016-06-02T11:18:17Z"
 		}
 	],
 	"rootPath": "github.com/nitrous-io/rise-server"
