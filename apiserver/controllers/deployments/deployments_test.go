@@ -103,6 +103,8 @@ var _ = Describe("Deployments", func() {
 			fakeS3 = &fake.S3{}
 			s3client.S3 = fakeS3
 
+			testhelper.DeleteQueue(mq, queues.All...)
+
 			u, oc, t = factories.AuthTrio(db)
 
 			proj = &project.Project{
@@ -269,20 +271,18 @@ var _ = Describe("Deployments", func() {
 			Context("when the request is valid", func() {
 				var depl *deployment.Deployment
 
-				BeforeEach(func() {
+				It("returns 202 accepted", func() {
 					doRequest()
 					depl = &deployment.Deployment{}
 					db.Last(depl)
-				})
 
-				It("returns 202 accepted", func() {
 					b := &bytes.Buffer{}
 					_, err = b.ReadFrom(res.Body)
 
 					j := map[string]interface{}{
 						"deployment": map[string]interface{}{
 							"id":      depl.ID,
-							"state":   deployment.StatePendingDeploy,
+							"state":   deployment.StatePendingBuild,
 							"version": 1,
 						},
 					}
@@ -292,15 +292,23 @@ var _ = Describe("Deployments", func() {
 				})
 
 				It("creates a deployment record", func() {
+					doRequest()
+					depl = &deployment.Deployment{}
+					db.Last(depl)
+
 					Expect(depl).NotTo(BeNil())
 					Expect(depl.ProjectID).To(Equal(proj.ID))
 					Expect(depl.UserID).To(Equal(u.ID))
-					Expect(depl.State).To(Equal(deployment.StatePendingDeploy))
+					Expect(depl.State).To(Equal(deployment.StatePendingBuild))
 					Expect(depl.Prefix).NotTo(HaveLen(0))
 					Expect(depl.Version).To(Equal(int64(1)))
 				})
 
 				It("uploads bundle to s3", func() {
+					doRequest()
+					depl = &deployment.Deployment{}
+					db.Last(depl)
+
 					Expect(fakeS3.UploadCalls.Count()).To(Equal(1))
 					call := fakeS3.UploadCalls.NthCall(1)
 					Expect(call).NotTo(BeNil())
@@ -312,19 +320,25 @@ var _ = Describe("Deployments", func() {
 					Expect(call.SideEffects["uploaded_content"]).To(Equal([]byte("hello\nworld!")))
 				})
 
-				It("enqueues a deploy job", func() {
-					d := testhelper.ConsumeQueue(mq, queues.Deploy)
+				It("enqueues a build job", func() {
+					doRequest()
+					depl = &deployment.Deployment{}
+					db.Last(depl)
+
+					d := testhelper.ConsumeQueue(mq, queues.Build)
 					Expect(d).NotTo(BeNil())
 					Expect(d.Body).To(MatchJSON(fmt.Sprintf(`
 						{
-							"deployment_id": %d,
-							"skip_webroot_upload": false,
-							"skip_invalidation": false
+							"deployment_id": %d
 						}
 					`, depl.ID)))
 				})
 
 				It("tracks an 'Initiated Project Deployment' event", func() {
+					doRequest()
+					depl = &deployment.Deployment{}
+					db.Last(depl)
+
 					trackCall := fakeTracker.TrackCalls.NthCall(1)
 					Expect(trackCall).NotTo(BeNil())
 					Expect(trackCall.Arguments[0]).To(Equal(fmt.Sprintf("%d", u.ID)))
@@ -343,6 +357,12 @@ var _ = Describe("Deployments", func() {
 				})
 
 				Describe("when deploying again", func() {
+					BeforeEach(func() {
+						doRequest()
+						depl = &deployment.Deployment{}
+						db.Last(depl)
+					})
+
 					It("increments version", func() {
 						doRequest()
 
@@ -354,7 +374,7 @@ var _ = Describe("Deployments", func() {
 						j := map[string]interface{}{
 							"deployment": map[string]interface{}{
 								"id":      depl.ID,
-								"state":   deployment.StatePendingDeploy,
+								"state":   deployment.StatePendingBuild,
 								"version": 2,
 							},
 						}
@@ -364,6 +384,52 @@ var _ = Describe("Deployments", func() {
 
 						Expect(depl).NotTo(BeNil())
 						Expect(depl.Version).To(Equal(int64(2)))
+					})
+				})
+
+				It("enqueues a build job", func() {
+					doRequest()
+					depl = &deployment.Deployment{}
+					db.Last(depl)
+
+					d := testhelper.ConsumeQueue(mq, queues.Build)
+					Expect(d).NotTo(BeNil())
+					Expect(d.Body).To(MatchJSON(fmt.Sprintf(`
+						{
+							"deployment_id": %d
+						}
+					`, depl.ID)))
+				})
+
+				Context("when skip_build is true", func() {
+					BeforeEach(func() {
+						proj.SkipBuild = true
+						Expect(db.Save(proj).Error).To(BeNil())
+					})
+
+					It("enqueues a deploy job", func() {
+						doRequest()
+						depl = &deployment.Deployment{}
+						db.Last(depl)
+
+						d := testhelper.ConsumeQueue(mq, queues.Deploy)
+						Expect(d).NotTo(BeNil())
+						Expect(d.Body).To(MatchJSON(fmt.Sprintf(`
+							{
+								"deployment_id": %d,
+								"skip_webroot_upload": false,
+								"skip_invalidation": false,
+								"use_raw_bundle": true
+							}
+						`, depl.ID)))
+					})
+
+					It("update deployment to be `pending_deploy`", func() {
+						doRequest()
+						depl = &deployment.Deployment{}
+						db.Last(depl)
+
+						Expect(depl.State).To(Equal(deployment.StatePendingDeploy))
 					})
 				})
 			})
@@ -396,10 +462,12 @@ var _ = Describe("Deployments", func() {
 				"Authorization": {"Bearer " + t.Token},
 			}
 
+			errorMessage := "index.js:Missing Parent"
 			depl = factories.DeploymentWithAttrs(db, proj, u, deployment.Deployment{
-				Prefix:     "a1b2c3",
-				State:      deployment.StatePendingDeploy,
-				DeployedAt: timeAgo(-1 * time.Hour),
+				Prefix:       "a1b2c3",
+				State:        deployment.StatePendingDeploy,
+				DeployedAt:   timeAgo(-1 * time.Hour),
+				ErrorMessage: &errorMessage,
 			})
 		})
 
@@ -436,10 +504,11 @@ var _ = Describe("Deployments", func() {
 				Expect(db.First(&d, depl.ID).Error).To(BeNil())
 				j := map[string]interface{}{
 					"deployment": map[string]interface{}{
-						"id":          d.ID,
-						"state":       deployment.StatePendingDeploy,
-						"deployed_at": d.DeployedAt,
-						"version":     d.Version,
+						"id":            d.ID,
+						"state":         deployment.StatePendingDeploy,
+						"deployed_at":   d.DeployedAt,
+						"version":       d.Version,
+						"error_message": d.ErrorMessage,
 					},
 				}
 				expectedJSON, err := json.Marshal(j)
@@ -494,8 +563,6 @@ var _ = Describe("Deployments", func() {
 			fakeS3 *fake.S3
 			origS3 filetransfer.FileTransfer
 
-			mq *amqp.Connection
-
 			u  *user.User
 			oc *oauthclient.OauthClient
 			t  *oauthtoken.OauthToken
@@ -516,11 +583,6 @@ var _ = Describe("Deployments", func() {
 			origS3 = s3client.S3
 			fakeS3 = &fake.S3{}
 			s3client.S3 = fakeS3
-
-			mq, err = mqconn.MQ()
-			Expect(err).To(BeNil())
-
-			testhelper.DeleteQueue(mq, queues.All...)
 
 			u, oc, t = factories.AuthTrio(db)
 
@@ -615,7 +677,7 @@ var _ = Describe("Deployments", func() {
 				Expect(b.String()).To(MatchJSON(expectedJSON))
 			})
 
-			It("enqueues a deploy job", func() {
+			It("enqueues a build job", func() {
 				doRequest()
 
 				d := testhelper.ConsumeQueue(mq, queues.Deploy)
@@ -624,7 +686,8 @@ var _ = Describe("Deployments", func() {
 					{
 						"deployment_id": %d,
 						"skip_webroot_upload": true,
-						"skip_invalidation": false
+						"skip_invalidation": false,
+						"use_raw_bundle": false
 					}
 				`, depl1.ID)))
 			})
@@ -708,7 +771,8 @@ var _ = Describe("Deployments", func() {
 					{
 						"deployment_id": %d,
 						"skip_webroot_upload": true,
-						"skip_invalidation": false
+						"skip_invalidation": false,
+						"use_raw_bundle": false
 					}
 				`, depl4.ID)))
 			})

@@ -1,7 +1,10 @@
 #!/bin/bash
+
 DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
 
 export GIN_MODE=test
 export RISE_ENV=test
+
+docker pull quay.io/nitrous/pubstorm-optimizer
 
 $DIR/env ginkgo -r "$@"

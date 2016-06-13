@@ -1,0 +1,19 @@
+{
+  "name": "asset-optimizer",
+  "version": "0.0.0",
+  "description": "PubStorm Asset optimizer",
+  "main": "index.js",
+  "scripts": {},
+  "author": "yc@nitrous.io",
+  "license": "MIT",
+  "dependencies": {
+    "gulp": "^3.9.1",
+    "gulp-htmlmin": "^2.0.0",
+    "gulp-uglify": "^1.5.3",
+    "gulp-clean-css": "^2.0.6",
+    "gulp-util": "^3.0.7",
+    "gulp-plumber": "^1.1.0",
+    "gulp-imagemin": "^3.0.1",
+    "run-sequence": "^1.2.1"
+  }
+}

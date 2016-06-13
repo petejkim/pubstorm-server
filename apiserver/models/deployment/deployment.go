@@ -14,6 +14,9 @@ const (
 	StatePendingDeploy   = "pending_deploy"
 	StateDeployed        = "deployed"
 	StatePendingRollback = "pending_rollback"
+	StatePendingBuild    = "pending_build"
+	StateBuilt           = "built"
+	StateBuildFailed     = "build_failed"
 )
 
 var ErrInvalidState = errors.New("state is not valid")
@@ -31,23 +34,27 @@ type Deployment struct {
 	UserID    uint
 
 	DeployedAt *time.Time
+
+	ErrorMessage *string
 }
 
 type DeploymentJSON struct {
-	ID         uint       `json:"id"`
-	State      string     `json:"state"`
-	Version    int64      `json:"version"`
-	Active     bool       `json:"active,omitempty"`
-	DeployedAt *time.Time `json:"deployed_at,omitempty"`
+	ID           uint       `json:"id"`
+	State        string     `json:"state"`
+	Version      int64      `json:"version"`
+	Active       bool       `json:"active,omitempty"`
+	DeployedAt   *time.Time `json:"deployed_at,omitempty"`
+	ErrorMessage *string    `json:"error_message,omitempty"`
 }
 
 // Returns a struct that can be converted to JSON
 func (d *Deployment) AsJSON() *DeploymentJSON {
 	return &DeploymentJSON{
-		ID:         d.ID,
-		State:      d.State,
-		Version:    d.Version,
-		DeployedAt: d.DeployedAt,
+		ID:           d.ID,
+		State:        d.State,
+		Version:      d.Version,
+		DeployedAt:   d.DeployedAt,
+		ErrorMessage: d.ErrorMessage,
 	}
 }
 
@@ -96,6 +103,10 @@ func (d *Deployment) UpdateState(db *gorm.DB, state string) error {
 		q = q.Update("deployed_at", gorm.Expr("now()"))
 	}
 
+	if state == StateBuildFailed {
+		q = q.Update("error_message", d.ErrorMessage)
+	}
+
 	if err := q.Scan(d).Error; err != nil {
 		return err
 	}
@@ -108,5 +119,8 @@ func isValidState(state string) bool {
 		StateUploaded == state ||
 		StatePendingDeploy == state ||
 		StateDeployed == state ||
-		StatePendingRollback == state
+		StatePendingRollback == state ||
+		StatePendingBuild == state ||
+		StateBuilt == state ||
+		StateBuildFailed == state
 }

@@ -244,6 +244,14 @@ func Update(c *gin.Context) {
 		}
 	}
 
+	if c.PostForm("skip_build") != "" {
+		skipBuild, _ := strconv.ParseBool(c.PostForm("skip_build"))
+		updatedProj.SkipBuild = skipBuild
+		if proj.SkipBuild != updatedProj.SkipBuild {
+			projChanged = true
+		}
+	}
+
 	if projChanged {
 		db, err := dbconn.DB()
 		if err != nil {
