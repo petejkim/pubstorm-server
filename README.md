@@ -17,12 +17,12 @@ sudo su postgres -c 'createuser --superuser nitrous && createdb rise_development
 ### RabbitMQ
 
 ```shell
-# Install RabbitMQ 3.6.1
+# Install RabbitMQ 3.6.2
 echo 'deb http://www.rabbitmq.com/debian/ testing main' | sudo tee -a /etc/apt/sources.list
 wget https://www.rabbitmq.com/rabbitmq-signing-key-public.asc
 sudo apt-key add rabbitmq-signing-key-public.asc
 sudo apt-get update
-sudo apt-get install rabbitmq-server=3.6.1-1
+sudo apt-get install rabbitmq-server=3.6.2-1
 
 # Add admin user
 sudo rabbitmqctl add_user admin password
