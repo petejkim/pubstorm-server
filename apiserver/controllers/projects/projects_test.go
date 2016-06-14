@@ -220,7 +220,8 @@ var _ = Describe("Projects", func() {
 					"project": {
 						"name": "foo-bar-express",
 						"default_domain_enabled": true,
-						"force_https": false
+						"force_https": false,
+						"skip_build": false
 					}
 				}`))
 			})
@@ -246,7 +247,8 @@ var _ = Describe("Projects", func() {
 					"project": {
 						"name": "foo-bar-express",
 						"default_domain_enabled": true,
-						"force_https": false
+						"force_https": false,
+						"skip_build": false
 					}
 				}`))
 			})
@@ -311,7 +313,8 @@ var _ = Describe("Projects", func() {
 				"project": {
 					"name": "%s",
 					"default_domain_enabled": true,
-					"force_https": false
+					"force_https": false,
+					"skip_build": false
 				}
 			}`, proj.Name)))
 		})
@@ -372,12 +375,14 @@ var _ = Describe("Projects", func() {
 					{
 						"name": "%s",
 						"default_domain_enabled": true,
-						"force_https": false
+						"force_https": false,
+						"skip_build": false
 					},
 					{
 						"name": "%s",
 						"default_domain_enabled": true,
-						"force_https": false
+						"force_https": false,
+						"skip_build": false
 					}
 				],
 				"shared_projects": []
@@ -418,24 +423,28 @@ var _ = Describe("Projects", func() {
 						{
 							"name": "%s",
 							"default_domain_enabled": true,
-							"force_https": false
+							"force_https": false,
+							"skip_build": false
 						},
 						{
 							"name": "%s",
 							"default_domain_enabled": true,
-							"force_https": false
+							"force_https": false,
+							"skip_build": false
 						}
 					],
 					"shared_projects": [
 						{
 							"name": "%s",
 							"default_domain_enabled": true,
-							"force_https": false
+							"force_https": false,
+							"skip_build": false
 						},
 						{
 							"name": "%s",
 							"default_domain_enabled": true,
-							"force_https": false
+							"force_https": false,
+							"skip_build": false
 						}
 					]
 				}`, proj.Name, proj3.Name, proj4.Name, proj5.Name)))
@@ -518,7 +527,8 @@ var _ = Describe("Projects", func() {
 					"project":{
 						"name": "%s",
 						"default_domain_enabled": false,
-						"force_https": false
+						"force_https": false,
+						"skip_build": false
 					}
 				}`, proj.Name)))
 			})
@@ -598,7 +608,8 @@ var _ = Describe("Projects", func() {
 					"project":{
 						"name": "%s",
 						"default_domain_enabled": true,
-						"force_https": false
+						"force_https": false,
+						"skip_build": false
 					}
 				}`, proj.Name)))
 			})
@@ -620,7 +631,8 @@ var _ = Describe("Projects", func() {
 					Expect(d.Body).To(MatchJSON(fmt.Sprintf(`{
 						"deployment_id": %d,
 						"skip_webroot_upload": true,
-						"skip_invalidation": true
+						"skip_invalidation": true,
+						"use_raw_bundle": false
 					}`, *proj.ActiveDeploymentID)))
 				})
 			})
@@ -661,7 +673,8 @@ var _ = Describe("Projects", func() {
 					"project":{
 						"name": "%s",
 						"default_domain_enabled": true,
-						"force_https": true
+						"force_https": true,
+						"skip_build": false
 					}
 				}`, proj.Name)))
 			})
@@ -683,7 +696,8 @@ var _ = Describe("Projects", func() {
 					Expect(d.Body).To(MatchJSON(fmt.Sprintf(`{
 						"deployment_id": %d,
 						"skip_webroot_upload": true,
-						"skip_invalidation": false
+						"skip_invalidation": false,
+						"use_raw_bundle": false
 					}`, *proj.ActiveDeploymentID)))
 				})
 			})
@@ -715,7 +729,8 @@ var _ = Describe("Projects", func() {
 					"project":{
 						"name": "%s",
 						"default_domain_enabled": true,
-						"force_https": false
+						"force_https": false,
+						"skip_build": false
 					}
 				}`, proj.Name)))
 			})
@@ -737,10 +752,45 @@ var _ = Describe("Projects", func() {
 					Expect(d.Body).To(MatchJSON(fmt.Sprintf(`{
 						"deployment_id": %d,
 						"skip_webroot_upload": true,
-						"skip_invalidation": false
+						"skip_invalidation": false,
+						"use_raw_bundle": false
 					}`, *proj.ActiveDeploymentID)))
 				})
 			})
+		})
+
+		Context("when skip_build set to true", func() {
+			BeforeEach(func() {
+				proj.SkipBuild = false
+				Expect(db.Save(proj).Error).To(BeNil())
+				params = url.Values{
+					"skip_build": {"true"},
+				}
+			})
+
+			It("returns 200 OK", func() {
+				doRequest()
+
+				b := &bytes.Buffer{}
+				_, err := b.ReadFrom(res.Body)
+				Expect(err).To(BeNil())
+
+				Expect(res.StatusCode).To(Equal(http.StatusOK))
+
+				err = db.First(proj, proj.ID).Error
+				Expect(err).To(BeNil())
+				Expect(proj.DefaultDomainEnabled).To(Equal(true))
+
+				Expect(b.String()).To(MatchJSON(fmt.Sprintf(`{
+					"project":{
+						"name": "%s",
+						"default_domain_enabled": true,
+						"force_https": false,
+						"skip_build": true
+					}
+				}`, proj.Name)))
+			})
+
 		})
 
 		sharedexamples.ItRequiresAuthentication(func() (*gorm.DB, *user.User, *http.Header) {

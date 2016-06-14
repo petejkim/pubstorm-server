@@ -18,6 +18,7 @@ import (
 	"github.com/nitrous-io/rise-server/pkg/tracker"
 	"github.com/nitrous-io/rise-server/shared"
 	"github.com/nitrous-io/rise-server/shared/exchanges"
+	"github.com/nitrous-io/rise-server/shared/queues"
 	"github.com/nitrous-io/rise-server/shared/s3client"
 	"github.com/nitrous-io/rise-server/testhelper"
 	"github.com/nitrous-io/rise-server/testhelper/factories"
@@ -66,6 +67,7 @@ var _ = Describe("Deployer", func() {
 		Expect(err).To(BeNil())
 
 		testhelper.TruncateTables(db.DB())
+		testhelper.DeleteQueue(mq, queues.All...)
 		testhelper.DeleteExchange(mq, exchanges.All...)
 		qName = testhelper.StartQueueWithExchange(mq, exchanges.Edges, exchanges.RouteV1Invalidation)
 
@@ -122,7 +124,7 @@ var _ = Describe("Deployer", func() {
 		}
 	}
 
-	It("fetches the raw bundle from S3, uploads assets and meta data to S3, and publishes invalidation message to edges", func() {
+	It("fetches the optimized bundle from S3, uploads assets and meta data to S3, and publishes invalidation message to edges", func() {
 		// mock download
 		fakeS3.DownloadContent, err = ioutil.ReadFile("../../testhelper/fixtures/website.tar.gz")
 		Expect(err).To(BeNil())
@@ -138,17 +140,18 @@ var _ = Describe("Deployer", func() {
 		Expect(downloadCall).NotTo(BeNil())
 		Expect(downloadCall.Arguments[0]).To(Equal(s3client.BucketRegion))
 		Expect(downloadCall.Arguments[1]).To(Equal(s3client.BucketName))
-		Expect(downloadCall.Arguments[2]).To(Equal(fmt.Sprintf("deployments/%s/raw-bundle.tar.gz", depl.PrefixID())))
+		Expect(downloadCall.Arguments[2]).To(Equal(fmt.Sprintf("deployments/%s/optimized-bundle.tar.gz", depl.PrefixID())))
 		Expect(downloadCall.ReturnValues[0]).To(BeNil())
 
 		// it should upload assets
-		Expect(fakeS3.UploadCalls.Count()).To(Equal(6)) // 4 asset files + 2 metadata files (2 domains)
+		Expect(fakeS3.UploadCalls.Count()).To(Equal(7)) // 5 asset files + 2 metadata files (2 domains)
 
 		uploads := []struct {
 			filename    string
 			contentType string
 		}{
 			{"images/rick-astley.jpg", "image/jpeg"},
+			{"images/astley.jpg", "image/jpeg"},
 			{"index.html", "text/html"},
 			{"js/app.js", "application/javascript"},
 			{"css/app.css", "text/css"},
@@ -172,7 +175,7 @@ var _ = Describe("Deployer", func() {
 			"www.foo-bar-express.com",
 		} {
 			assertUpload(
-				5+i,
+				6+i,
 				"domains/"+domain+"/meta.json",
 				"application/json",
 				[]byte(fmt.Sprintf(`{
@@ -259,7 +262,7 @@ var _ = Describe("Deployer", func() {
 				"www.foo-bar-express.com",
 			} {
 				assertUpload(
-					5+i,
+					6+i,
 					"domains/"+domain+"/meta.json",
 					"application/json",
 					[]byte(fmt.Sprintf(`{
@@ -300,7 +303,7 @@ var _ = Describe("Deployer", func() {
 				"www.foo-bar-express.com",
 			} {
 				assertUpload(
-					5+i,
+					6+i,
 					"domains/"+domain+"/meta.json",
 					"application/json",
 					[]byte(fmt.Sprintf(`{
@@ -526,6 +529,29 @@ var _ = Describe("Deployer", func() {
 				// it should set project's active deployment to current deployment id
 				assertActiveDeploymentIDUpdate()
 			})
+		})
+	})
+
+	Context("when `use_raw_bundle` is true", func() {
+		It("downloads raw bundle to deploy", func() {
+			// mock download
+			fakeS3.DownloadContent, err = ioutil.ReadFile("../../testhelper/fixtures/website.tar.gz")
+			Expect(err).To(BeNil())
+
+			err = deployer.Work([]byte(fmt.Sprintf(`{
+				"deployment_id": %d,
+				"use_raw_bundle": true
+			}`, depl.ID)))
+			Expect(err).To(BeNil())
+
+			// it should download raw bundle from s3
+			Expect(fakeS3.DownloadCalls.Count()).To(Equal(1))
+			downloadCall := fakeS3.DownloadCalls.NthCall(1)
+			Expect(downloadCall).NotTo(BeNil())
+			Expect(downloadCall.Arguments[0]).To(Equal(s3client.BucketRegion))
+			Expect(downloadCall.Arguments[1]).To(Equal(s3client.BucketName))
+			Expect(downloadCall.Arguments[2]).To(Equal(fmt.Sprintf("deployments/%s/raw-bundle.tar.gz", depl.PrefixID())))
+			Expect(downloadCall.ReturnValues[0]).To(BeNil())
 		})
 	})
 })

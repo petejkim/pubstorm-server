@@ -95,14 +95,22 @@ func Create(c *gin.Context) {
 		}
 	}
 
-	if err := depl.UpdateState(db, deployment.StateUploaded); err != nil {
+	if err = depl.UpdateState(db, deployment.StateUploaded); err != nil {
 		controllers.InternalServerError(c, err)
 		return
 	}
 
-	j, err := job.NewWithJSON(queues.Deploy, &messages.DeployJobData{
-		DeploymentID: depl.ID,
-	})
+	var j *job.Job
+	if proj.SkipBuild {
+		j, err = job.NewWithJSON(queues.Deploy, &messages.DeployJobData{
+			DeploymentID: depl.ID,
+			UseRawBundle: true,
+		})
+	} else {
+		j, err = job.NewWithJSON(queues.Build, &messages.BuildJobData{
+			DeploymentID: depl.ID,
+		})
+	}
 
 	if err != nil {
 		controllers.InternalServerError(c, err)
@@ -114,9 +122,14 @@ func Create(c *gin.Context) {
 		return
 	}
 
+	nextState := deployment.StatePendingBuild
+	if proj.SkipBuild {
+		nextState = deployment.StatePendingDeploy
+	}
+
 	// Gorm does not refetch the row from DB after update.
 	// So we call `Find` again to fetch actual values particularly for time fields because of precision.
-	if err := db.Model(depl).Update("state", deployment.StatePendingDeploy).Find(depl).Error; err != nil {
+	if err := db.Model(depl).Update("state", nextState).Find(depl).Error; err != nil {
 		controllers.InternalServerError(c, err)
 		return
 	}

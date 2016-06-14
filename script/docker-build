@@ -75,15 +75,9 @@ bundle_binary() {
 }
 
 run_tests() {
-
-  echo "Installing dependencies"
-  go get -u github.com/kardianos/govendor
-  go get -u github.com/onsi/ginkgo/ginkgo
-  go get -u github.com/onsi/gomega
-  go get -u github.com/mattes/migrate
-
   service postgresql start
   service rabbitmq-server start
+  service docker start
 
   rabbitmqctl add_user admin password
   rabbitmqctl set_user_tags admin administrator
@@ -103,12 +97,6 @@ run_tests() {
   chmod 666 /opt/bin/migrations/*
 }
 
-# Remove old builds
-rm -rf /opt/bin/*
-
-# TODO: Add tests
-
-
 echo "Running tests"
 run_tests
 # Create binaries
@@ -116,8 +104,10 @@ echo "Creating binaries"
 build apiserver
 build edged
 build deployer
+build builder
 
 # TODO: Perform release to s3
 bundle_binary apiserver migrate migrations/*
 bundle_binary edged
 bundle_binary deployer
+bundle_binary builder

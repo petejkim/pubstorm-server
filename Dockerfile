@@ -42,10 +42,19 @@ RUN \
 
 # Install rabbitmq
 RUN echo 'deb http://www.rabbitmq.com/debian/ testing main' | tee /etc/apt/sources.list.d/rabbitmq.list && \
-  wget https://www.rabbitmq.com/rabbitmq-signing-key-public.asc && \
-  apt-key add rabbitmq-signing-key-public.asc && \
+  wget https://www.rabbitmq.com/rabbitmq-release-signing-key.asc && \
+  apt-key add rabbitmq-release-signing-key.asc && \
   apt-get update && \
-  apt-get install -y rabbitmq-server=3.6.1-1
+  apt-get install -y rabbitmq-server=3.6.2-1
+
+# Install docker
+RUN apt-get install -y apt-transport-https ca-certificates && \
+    apt-key adv --keyserver hkp://p80.pool.sks-keyservers.net:80 --recv-keys 58118E89F3A912897C070ADBF76221572C52609D && \
+    echo 'deb https://apt.dockerproject.org/repo ubuntu-trusty main' | sudo tee -a /etc/apt/sources.list.d/docker.list && \
+    apt-cache policy docker-engine && \
+    apt-get update  && \
+    DEBIAN_FRONTEND=noninteractive apt-get install -y linux-image-extra-$(uname -r) && \
+    apt-get install -y apparmor docker-engine=1.11.0-0~trusty
 
 # Create the proper rabbitmq configuration
 # TODO: Investigate how to persist rabbitmq changes on docker-build
@@ -58,12 +67,12 @@ RUN echo 'deb http://www.rabbitmq.com/debian/ testing main' | tee /etc/apt/sourc
 #   rabbitmqctl set_permissions -p rise_test admin ".*" ".*" ".*" && \
 #   /etc/init.d/rabbitmq-server stop
 
-ENV GOPATH /opt/
+ENV GOPATH /opt
 ENV GOBIN /opt/bin
 ENV PATH /usr/local/go/bin:/opt/bin:$PATH
 ENV GOROOT /usr/local/go
 
-# RUN go get -u github.com/kardianos/govendor
-# RUN go get -u github.com/onsi/ginkgo/ginkgo
-# RUN go get -u github.com/onsi/gomega
-# RUN go get -u github.com/mattes/migrate
+RUN go get -u github.com/kardianos/govendor
+RUN go get -u github.com/onsi/ginkgo/ginkgo
+RUN go get -u github.com/onsi/gomega
+RUN go get -u github.com/mattes/migrate

@@ -113,6 +113,7 @@ var _ = Describe("Deployment", func() {
 
 			Expect(d.State).To(Equal(deployment.StateUploaded))
 			Expect(d.DeployedAt).To(BeNil())
+			Expect(d.ErrorMessage).To(BeNil())
 		})
 
 		It("updates state and deployed_at if updates to deployed state", func() {
@@ -122,6 +123,19 @@ var _ = Describe("Deployment", func() {
 			Expect(d.State).To(Equal(deployment.StateDeployed))
 			Expect(d.DeployedAt).NotTo(BeNil())
 			Expect(d.DeployedAt.Unix()).To(BeNumerically("~", time.Now().Unix(), 1))
+			Expect(d.ErrorMessage).To(BeNil())
+		})
+
+		It("updates state and error_message if updates to build_failed state", func() {
+			msg := "You did something wrong"
+			d.ErrorMessage = &msg
+			err := d.UpdateState(db, deployment.StateBuildFailed)
+			Expect(err).To(BeNil())
+
+			Expect(d.State).To(Equal(deployment.StateBuildFailed))
+			Expect(d.DeployedAt).To(BeNil())
+			Expect(d.ErrorMessage).NotTo(BeNil())
+			Expect(*d.ErrorMessage).To(Equal(msg))
 		})
 	})
 })
