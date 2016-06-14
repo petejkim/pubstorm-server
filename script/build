@@ -1,0 +1,47 @@
+#!/usr/bin/env bash
+#
+# Builds binaries locally.
+# Run this from the root directory of the repository.
+set -e
+
+BUILD_DIR=$(pwd)/build
+mkdir -p "$BUILD_DIR"
+
+get_version() {
+  app=$1
+  version=$(cat $app/VERSION) # get version from version file
+  sha=$(git rev-list --max-count=1 --abbrev-commit HEAD)
+
+  echo "${version}-${sha}" # E.g. 1.0.1-deadbeef
+}
+
+build() {
+  app=$1
+  version=$(get_version $app)
+  LDFLAGS="-X main.version=$version"
+  echo "Building $app $version"
+  GOBIN=$BUILD_DIR go install \
+    -ldflags "$LDFLAGS" \
+    github.com/nitrous-io/rise-server/$app
+  echo $version > $BUILD_DIR/$app-VERSION
+}
+
+build_jobs() {
+  # Build all top-level subfolders in jobs/ folder.
+  version=$(get_version jobs)
+  LDFLAGS="-s -w -X main.version=$version"
+
+  for d in jobs/*/; do
+    pkg="github.com/nitrous-io/rise-server/$d"
+    echo "Building job: $pkg (version: $version)"
+    GOBIN=$BUILD_DIR go install \
+      -ldflags "$LDFLAGS" \
+      $pkg
+  done
+}
+
+build apiserver
+build edged
+build deployer
+
+build_jobs

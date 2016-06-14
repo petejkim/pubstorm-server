@@ -6,13 +6,15 @@ import (
 )
 
 type S3 struct {
-	UploadCalls   Calls
-	DownloadCalls Calls
-	DeleteCalls   Calls
+	UploadCalls    Calls
+	DownloadCalls  Calls
+	DeleteCalls    Calls
+	DeleteAllCalls Calls
 
-	UploadError   error
-	DownloadError error
-	DeleteError   error
+	UploadError    error
+	DownloadError  error
+	DeleteError    error
+	DeleteAllError error
 
 	DownloadContent []byte
 }
@@ -53,5 +55,13 @@ func (s *S3) Delete(region, bucket string, keys ...string) (err error) {
 	}
 
 	s.DeleteCalls.Add(arglist, List{err}, nil)
+	return err
+}
+
+func (s *S3) DeleteAll(region, bucket, prefix string) error {
+	err := s.DeleteAllError
+	argList := List{region, bucket, prefix}
+
+	s.DeleteAllCalls.Add(argList, List{err}, nil)
 	return err
 }

@@ -17,7 +17,6 @@ import (
 	"github.com/nitrous-io/rise-server/apiserver/dbconn"
 	"github.com/nitrous-io/rise-server/apiserver/models/deployment"
 	"github.com/nitrous-io/rise-server/apiserver/models/domain"
-	"github.com/nitrous-io/rise-server/apiserver/models/oauthclient"
 	"github.com/nitrous-io/rise-server/apiserver/models/oauthtoken"
 	"github.com/nitrous-io/rise-server/apiserver/models/project"
 	"github.com/nitrous-io/rise-server/apiserver/models/user"
@@ -90,9 +89,8 @@ var _ = Describe("Deployments", func() {
 			origS3 filetransfer.FileTransfer
 			err    error
 
-			u  *user.User
-			oc *oauthclient.OauthClient
-			t  *oauthtoken.OauthToken
+			u *user.User
+			t *oauthtoken.OauthToken
 
 			headers http.Header
 			proj    *project.Project
@@ -105,7 +103,7 @@ var _ = Describe("Deployments", func() {
 
 			testhelper.DeleteQueue(mq, queues.All...)
 
-			u, oc, t = factories.AuthTrio(db)
+			u, _, t = factories.AuthTrio(db)
 
 			proj = &project.Project{
 				Name:   "foo-bar-express",
@@ -440,9 +438,8 @@ var _ = Describe("Deployments", func() {
 		var (
 			err error
 
-			u  *user.User
-			oc *oauthclient.OauthClient
-			t  *oauthtoken.OauthToken
+			u *user.User
+			t *oauthtoken.OauthToken
 
 			headers http.Header
 			proj    *project.Project
@@ -450,7 +447,7 @@ var _ = Describe("Deployments", func() {
 		)
 
 		BeforeEach(func() {
-			u, oc, t = factories.AuthTrio(db)
+			u, _, t = factories.AuthTrio(db)
 
 			proj = &project.Project{
 				Name:   "foo-bar-express",
@@ -563,9 +560,10 @@ var _ = Describe("Deployments", func() {
 			fakeS3 *fake.S3
 			origS3 filetransfer.FileTransfer
 
-			u  *user.User
-			oc *oauthclient.OauthClient
-			t  *oauthtoken.OauthToken
+			mq *amqp.Connection
+
+			u *user.User
+			t *oauthtoken.OauthToken
 
 			params  url.Values
 			headers http.Header
@@ -584,7 +582,12 @@ var _ = Describe("Deployments", func() {
 			fakeS3 = &fake.S3{}
 			s3client.S3 = fakeS3
 
-			u, oc, t = factories.AuthTrio(db)
+			mq, err = mqconn.MQ()
+			Expect(err).To(BeNil())
+
+			testhelper.DeleteQueue(mq, queues.All...)
+
+			u, _, t = factories.AuthTrio(db)
 
 			proj = &project.Project{
 				Name:   "foo-bar-express",
@@ -946,9 +949,8 @@ var _ = Describe("Deployments", func() {
 		var (
 			err error
 
-			u  *user.User
-			oc *oauthclient.OauthClient
-			t  *oauthtoken.OauthToken
+			u *user.User
+			t *oauthtoken.OauthToken
 
 			headers http.Header
 			proj    *project.Project
@@ -959,7 +961,7 @@ var _ = Describe("Deployments", func() {
 		)
 
 		BeforeEach(func() {
-			u, oc, t = factories.AuthTrio(db)
+			u, _, t = factories.AuthTrio(db)
 
 			proj = &project.Project{
 				Name:   "foo-bar-express",
@@ -1031,7 +1033,7 @@ var _ = Describe("Deployments", func() {
 			return res
 		}, nil)
 
-		It("returns all active deployments", func() {
+		It("returns all completed deployments", func() {
 			doRequest()
 
 			b := &bytes.Buffer{}
@@ -1069,6 +1071,37 @@ var _ = Describe("Deployments", func() {
 				depl1.ID, depl1.State, formattedTimeForJSON(depl1.DeployedAt), depl1.Version,
 				depl4.ID, depl4.State, formattedTimeForJSON(depl4.DeployedAt), depl4.Version,
 			)))
+		})
+
+		Context("when project has a limit on max deployments kept", func() {
+			BeforeEach(func() {
+				proj.MaxDeploysKept = 1
+				Expect(db.Save(proj).Error).To(BeNil())
+			})
+
+			It("returns only those deployments", func() {
+				doRequest()
+
+				b := &bytes.Buffer{}
+				_, err = b.ReadFrom(res.Body)
+				Expect(err).To(BeNil())
+				Expect(res.StatusCode).To(Equal(http.StatusOK))
+
+				depl2 = reloadDeployment(depl2)
+
+				Expect(b.String()).To(MatchJSON(fmt.Sprintf(`{
+					"deployments": [
+						{
+							"id": %d,
+							"state": "%s",
+							"active": true,
+							"deployed_at": %s,
+							"version": %d
+						}
+					]
+				}`, depl2.ID, depl2.State, formattedTimeForJSON(depl2.DeployedAt), depl2.Version,
+				)))
+			})
 		})
 	})
 })

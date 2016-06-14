@@ -32,6 +32,7 @@ type Project struct {
 	DefaultDomainEnabled bool `sql:"default:true"`
 	ForceHTTPS           bool `sql:"column:force_https"`
 	SkipBuild            bool
+	MaxDeploysKept       uint
 	LastDigestSentAt     *time.Time `sql:"last_digest_sent_at"`
 
 	ActiveDeploymentID *uint // pointer to be nullable. remember to dereference by using *ActiveDeploymentID to get actual value

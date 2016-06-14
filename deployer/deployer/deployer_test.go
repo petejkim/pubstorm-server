@@ -241,6 +241,37 @@ var _ = Describe("Deployer", func() {
 		Expect(trackCall.ReturnValues[0]).To(BeNil())
 	})
 
+	Context("when project has > MaxDeploysKept deployments", func() {
+		BeforeEach(func() {
+			proj.MaxDeploysKept = 1
+			Expect(db.Save(proj).Error).To(BeNil())
+
+			// Create a previous deployment - it should be deleted after the
+			// current deployment succeeds.
+			depl2 := factories.Deployment(db, proj, u, deployment.StateDeployed)
+			completedDepls, err := deployment.CompletedDeployments(db, proj.ID, 0)
+			Expect(err).To(BeNil())
+			Expect(completedDepls).To(HaveLen(1))
+			Expect(completedDepls[0].ID).To(Equal(depl2.ID))
+		})
+
+		It("deletes completed deployments older than the last MaxDeploysKept deployments", func() {
+			// mock download
+			fakeS3.DownloadContent, err = ioutil.ReadFile("../../testhelper/fixtures/website.tar.gz")
+			Expect(err).To(BeNil())
+
+			err = deployer.Work([]byte(fmt.Sprintf(`{
+				"deployment_id": %d
+			}`, depl.ID)))
+			Expect(err).To(BeNil())
+
+			completedDepls, err := deployment.CompletedDeployments(db, proj.ID, 0)
+			Expect(err).To(BeNil())
+			Expect(completedDepls).To(HaveLen(1))
+			Expect(completedDepls[0].ID).To(Equal(depl.ID))
+		})
+	})
+
 	Context("when default domain is disabled", func() {
 		BeforeEach(func() {
 			proj.DefaultDomainEnabled = false
@@ -505,12 +536,10 @@ var _ = Describe("Deployer", func() {
 			})
 
 			It("only uploads metadata to s3, and does not publish invalidation message if skip_webroot_upload is true", func() {
-				err = deployer.Work([]byte(fmt.Sprintf(`
-					{
-						"deployment_id": %d,
-						"skip_webroot_upload": true
-					}
-				`, depl.ID)))
+				err = deployer.Work([]byte(fmt.Sprintf(`{
+					"deployment_id": %d,
+					"skip_webroot_upload": true
+				}`, depl.ID)))
 				Expect(err).To(BeNil())
 
 				// it should upload meta.json for each domain
@@ -520,11 +549,11 @@ var _ = Describe("Deployer", func() {
 				d := testhelper.ConsumeQueue(mq, qName)
 				Expect(d).NotTo(BeNil())
 				Expect(d.Body).To(MatchJSON(fmt.Sprintf(`{
-				"domains": [
-					"%s",
-					"www.foo-bar-express.com"
-				]
-			}`, proj.DefaultDomainName())))
+					"domains": [
+						"%s",
+						"www.foo-bar-express.com"
+					]
+				}`, proj.DefaultDomainName())))
 
 				// it should set project's active deployment to current deployment id
 				assertActiveDeploymentIDUpdate()

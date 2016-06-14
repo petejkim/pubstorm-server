@@ -1,4 +1,6 @@
 #!/bin/bash -e
+#
+# Runs script/docker-build in a Docker container to build and release binaries.
 
 IMAGE_NAME=rise-server-build
 

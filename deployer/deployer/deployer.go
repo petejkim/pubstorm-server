@@ -206,6 +206,14 @@ func Work(data []byte) error {
 		return err
 	}
 
+	// If project has exceeded its max number of deployments (N), we soft delete
+	// deployments older than the last N deployments.
+	if proj.MaxDeploysKept > 0 {
+		if err := deployment.DeleteExceptLastN(tx, proj.ID, proj.MaxDeploysKept); err != nil {
+			return err
+		}
+	}
+
 	if err := tx.Commit().Error; err != nil {
 		return err
 	}

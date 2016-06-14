@@ -19,6 +19,7 @@ import (
 	"github.com/nitrous-io/rise-server/shared/s3client"
 )
 
+// Create deploys a project.
 func Create(c *gin.Context) {
 	u := controllers.CurrentUser(c)
 	proj := controllers.CurrentProject(c)
@@ -156,6 +157,7 @@ func Create(c *gin.Context) {
 	})
 }
 
+// Show displays information of a single deployment.
 func Show(c *gin.Context) {
 	deploymentID, err := strconv.ParseInt(c.Param("id"), 10, 64)
 	if err != nil {
@@ -191,6 +193,8 @@ func Show(c *gin.Context) {
 	})
 }
 
+// Rollback either rolls back a project to the previous deployment, or to a
+// given version.
 func Rollback(c *gin.Context) {
 	proj := controllers.CurrentProject(c)
 
@@ -305,6 +309,7 @@ func Rollback(c *gin.Context) {
 	})
 }
 
+// Index lists all deployments of a project.
 func Index(c *gin.Context) {
 	proj := controllers.CurrentProject(c)
 
@@ -314,7 +319,7 @@ func Index(c *gin.Context) {
 		return
 	}
 
-	depls, err := deployment.AllCompletedDeployments(db, proj.ID)
+	depls, err := deployment.CompletedDeployments(db, proj.ID, proj.MaxDeploysKept)
 	if err != nil {
 		controllers.InternalServerError(c, err)
 		return
