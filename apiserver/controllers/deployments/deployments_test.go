@@ -250,22 +250,15 @@ var _ = Describe("Deployments", func() {
 				})
 			})
 
-			Context("when the request is valid only payload is provided", func() {
-				var (
-					depl *deployment.Deployment
-					bun  *rawbundle.RawBundle
-				)
+			Context("when the request is valid", func() {
+				var depl *deployment.Deployment
 
-				BeforeEach(func() {
+				It("returns 202 accepted", func() {
 					doRequest()
+
 					depl = &deployment.Deployment{}
 					db.Last(depl)
 
-					bun = &rawbundle.RawBundle{}
-					db.Last(bun)
-				})
-
-				It("returns 202 accepted", func() {
 					b := &bytes.Buffer{}
 					_, err = b.ReadFrom(res.Body)
 
@@ -283,8 +276,11 @@ var _ = Describe("Deployments", func() {
 
 				It("creates a deployment record", func() {
 					doRequest()
+
 					depl = &deployment.Deployment{}
 					db.Last(depl)
+					bun := &rawbundle.RawBundle{}
+					db.Last(bun)
 
 					Expect(depl).NotTo(BeNil())
 					Expect(depl.ProjectID).To(Equal(proj.ID))
@@ -298,6 +294,13 @@ var _ = Describe("Deployments", func() {
 				})
 
 				It("creates a bundle record", func() {
+					doRequest()
+
+					depl = &deployment.Deployment{}
+					db.Last(depl)
+					bun := &rawbundle.RawBundle{}
+					db.Last(bun)
+
 					Expect(bun).NotTo(BeNil())
 					Expect(bun.ProjectID).To(Equal(proj.ID))
 					Expect(bun.UploadedPath).To(Equal(fmt.Sprintf("deployments/%s-%d/raw-bundle.tar.gz", depl.Prefix, depl.ID)))
@@ -305,6 +308,11 @@ var _ = Describe("Deployments", func() {
 				})
 
 				It("does not bundle to s3", func() {
+					doRequest()
+
+					depl = &deployment.Deployment{}
+					db.Last(depl)
+
 					Expect(fakeS3.UploadCalls.Count()).To(Equal(1))
 					call := fakeS3.UploadCalls.NthCall(1)
 					Expect(call).NotTo(BeNil())
@@ -318,6 +326,7 @@ var _ = Describe("Deployments", func() {
 
 				It("enqueues a build job", func() {
 					doRequest()
+
 					depl = &deployment.Deployment{}
 					db.Last(depl)
 
@@ -332,6 +341,7 @@ var _ = Describe("Deployments", func() {
 
 				It("tracks an 'Initiated Project Deployment' event", func() {
 					doRequest()
+
 					depl = &deployment.Deployment{}
 					db.Last(depl)
 
@@ -480,7 +490,7 @@ var _ = Describe("Deployments", func() {
 						j := map[string]interface{}{
 							"deployment": map[string]interface{}{
 								"id":      depl.ID,
-								"state":   deployment.StatePendingDeploy,
+								"state":   deployment.StatePendingBuild,
 								"version": 1,
 							},
 						}
@@ -497,7 +507,7 @@ var _ = Describe("Deployments", func() {
 						Expect(depl).NotTo(BeNil())
 						Expect(depl.ProjectID).To(Equal(proj.ID))
 						Expect(depl.UserID).To(Equal(u.ID))
-						Expect(depl.State).To(Equal(deployment.StatePendingDeploy))
+						Expect(depl.State).To(Equal(deployment.StatePendingBuild))
 						Expect(depl.Prefix).NotTo(HaveLen(0))
 						Expect(depl.Version).To(Equal(int64(1)))
 
@@ -505,7 +515,7 @@ var _ = Describe("Deployments", func() {
 						Expect(*depl.RawBundleID).To(Equal(existingRawBundle.ID))
 					})
 
-					It("uploads bundle to s3", func() {
+					It("does not upload bundle to s3", func() {
 						doRequestWithBundleChecksum(checksum)
 						depl = &deployment.Deployment{}
 						db.Last(depl)
@@ -513,20 +523,18 @@ var _ = Describe("Deployments", func() {
 						Expect(fakeS3.UploadCalls.Count()).To(Equal(0))
 					})
 
-					It("enqueues a deploy job", func() {
+					It("enqueues a build job", func() {
 						doRequestWithBundleChecksum(checksum)
 						depl = &deployment.Deployment{}
 						db.Last(depl)
 
-						m := testhelper.ConsumeQueue(mq, queues.Deploy)
+						m := testhelper.ConsumeQueue(mq, queues.Build)
 						Expect(m).NotTo(BeNil())
 						Expect(m.Body).To(MatchJSON(fmt.Sprintf(`
-						{
-							"deployment_id": %d,
-							"skip_webroot_upload": false,
-							"skip_invalidation": false
-						}
-					`, depl.ID)))
+							{
+								"deployment_id": %d
+							}
+						`, depl.ID)))
 					})
 
 					Context("when the raw bundle is not associated with the project", func() {
