@@ -33,6 +33,7 @@ type Project struct {
 	ForceHTTPS           bool `sql:"column:force_https"`
 	SkipBuild            bool
 	MaxDeploysKept       uint
+	LastDigestSentAt     *time.Time
 
 	ActiveDeploymentID *uint // pointer to be nullable. remember to dereference by using *ActiveDeploymentID to get actual value
 
