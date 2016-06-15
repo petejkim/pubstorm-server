@@ -17,6 +17,7 @@ import (
 
 	"github.com/nitrous-io/rise-server/apiserver/dbconn"
 	"github.com/nitrous-io/rise-server/apiserver/models/deployment"
+	"github.com/nitrous-io/rise-server/apiserver/models/rawbundle"
 	"github.com/nitrous-io/rise-server/pkg/filetransfer"
 	"github.com/nitrous-io/rise-server/pkg/job"
 	"github.com/nitrous-io/rise-server/shared/messages"
@@ -59,8 +60,7 @@ var (
 
 func Work(data []byte) error {
 	d := &messages.BuildJobData{}
-	err := json.Unmarshal(data, d)
-	if err != nil {
+	if err := json.Unmarshal(data, d); err != nil {
 		return err
 	}
 
@@ -73,21 +73,31 @@ func Work(data []byte) error {
 	if err := db.First(depl, d.DeploymentID).Error; err != nil {
 		return err
 	}
-
 	if depl.State != deployment.StatePendingBuild {
 		return errUnexpectedState
 	}
 
+	var rawBundlePath string
+
+	// If this deployment uses a raw bundle from a previous deploy, use that.
+	if depl.RawBundleID != nil {
+		bun := &rawbundle.RawBundle{}
+		if err := db.First(bun, *depl.RawBundleID).Error; err == nil {
+			rawBundlePath = bun.UploadedPath
+		}
+	}
+
+	// At this point, if we still don't know the raw bundle's path, it must have
+	// been uploaded to the deployment's prefix directory.
 	prefixID := depl.PrefixID()
+	if rawBundlePath == "" {
+		rawBundlePath = "deployments/" + prefixID + "/raw-bundle.tar.gz"
+	}
 
-	rawBundle := "deployments/" + prefixID + "/raw-bundle.tar.gz"
-	tmpFileName := prefixID + "-raw-bundle.tar.gz"
-
-	f, err := ioutil.TempFile("", tmpFileName)
+	f, err := ioutil.TempFile("", prefixID+"-raw-bundle.tar.gz")
 	if err != nil {
 		return err
 	}
-
 	defer func() {
 		f.Close()
 		os.Remove(f.Name())
@@ -97,10 +107,9 @@ func Work(data []byte) error {
 	if err != nil {
 		return err
 	}
-
 	defer os.RemoveAll(dirName)
 
-	if err := S3.Download(s3client.BucketRegion, s3client.BucketName, rawBundle, f); err != nil {
+	if err := S3.Download(s3client.BucketRegion, s3client.BucketName, rawBundlePath, f); err != nil {
 		return err
 	}
 
@@ -111,13 +120,12 @@ func Work(data []byte) error {
 	}
 	defer gr.Close()
 
-	tr := tar.NewReader(gr)
-
 	var (
 		absPaths []string
 		relPaths []string
 	)
 
+	tr := tar.NewReader(gr)
 	for {
 		hdr, err := tr.Next()
 		if err != nil {

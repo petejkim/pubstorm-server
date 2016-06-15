@@ -149,7 +149,7 @@ func Create(c *gin.Context) {
 		depl.RawBundleID = &bun.ID
 	}
 
-	if err = depl.UpdateState(db, deployment.StateUploaded); err != nil {
+	if err := depl.UpdateState(db, deployment.StateUploaded); err != nil {
 		controllers.InternalServerError(c, err)
 		return
 	}
@@ -176,12 +176,12 @@ func Create(c *gin.Context) {
 		return
 	}
 
-	nextState := deployment.StatePendingBuild
+	newState := deployment.StatePendingBuild
 	if proj.SkipBuild {
-		nextState = deployment.StatePendingDeploy
+		newState = deployment.StatePendingDeploy
 	}
 
-	if err := depl.UpdateState(db, nextState); err != nil {
+	if err := depl.UpdateState(db, newState); err != nil {
 		controllers.InternalServerError(c, err)
 		return
 	}

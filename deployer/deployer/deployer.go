@@ -6,7 +6,6 @@ import (
 	"compress/gzip"
 	"encoding/json"
 	"errors"
-	"fmt"
 	"io"
 	"io/ioutil"
 	"log"
@@ -57,8 +56,7 @@ var (
 
 func Work(data []byte) error {
 	d := &messages.DeployJobData{}
-	err := json.Unmarshal(data, d)
-	if err != nil {
+	if err := json.Unmarshal(data, d); err != nil {
 		return err
 	}
 
@@ -85,7 +83,7 @@ func Work(data []byte) error {
 	}
 
 	if !d.SkipWebrootUpload {
-		// We should not allow to re-upload for deployed project
+		// Disallow re-deploying a deployed project.
 		if depl.State == deployment.StateDeployed {
 			return errUnexpectedState
 		}
@@ -95,9 +93,7 @@ func Work(data []byte) error {
 			bundlePath = "deployments/" + prefixID + "/raw-bundle.tar.gz"
 		}
 
-		tmpFileName := prefixID + "-optimized-bundle.tar.gz"
-
-		f, err := ioutil.TempFile("", tmpFileName)
+		f, err := ioutil.TempFile("", prefixID+"-optimized-bundle.tar.gz")
 		if err != nil {
 			return err
 		}
@@ -112,16 +108,14 @@ func Work(data []byte) error {
 
 		gr, err := gzip.NewReader(f)
 		if err != nil {
-			fmt.Println("could not unzip", err)
 			return err
 		}
 		defer gr.Close()
 
-		tr := tar.NewReader(gr)
-
+		// webroot is a publicly readable directory on S3.
 		webroot := "deployments/" + prefixID + "/webroot"
 
-		// webroot is publicly readable
+		tr := tar.NewReader(gr)
 		for {
 			hdr, err := tr.Next()
 			if err != nil {
@@ -169,13 +163,14 @@ func Work(data []byte) error {
 	if err != nil {
 		return err
 	}
-	reader := bytes.NewReader(metaJson)
 
 	domainNames, err := proj.DomainNames(db)
 	if err != nil {
 		return err
 	}
 
+	// Upload metadata file for each domain.
+	reader := bytes.NewReader(metaJson)
 	for _, domain := range domainNames {
 		reader.Seek(0, 0)
 		if err := S3.Upload(s3client.BucketRegion, s3client.BucketName, "domains/"+domain+"/meta.json", reader, "application/json", "public-read"); err != nil {

@@ -21,7 +21,7 @@ func RawBundle(db *gorm.DB, p *project.Project) (bun *rawbundle.RawBundle) {
 	bun = &rawbundle.RawBundle{
 		ProjectID:    p.ID,
 		Checksum:     fmt.Sprintf("checksum-%d", RawBundleN),
-		UploadedPath: "/foo/bar",
+		UploadedPath: fmt.Sprintf("/path/to/bundle-%d", RawBundleN),
 	}
 
 	err := db.Create(bun).Error
