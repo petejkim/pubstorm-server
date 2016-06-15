@@ -10,6 +10,7 @@ import (
 	"github.com/jinzhu/gorm"
 	"github.com/nitrous-io/rise-server/apiserver/dbconn"
 	"github.com/nitrous-io/rise-server/apiserver/models/deployment"
+	"github.com/nitrous-io/rise-server/apiserver/models/rawbundle"
 	"github.com/nitrous-io/rise-server/pkg/filetransfer"
 	"github.com/nitrous-io/rise-server/shared/s3client"
 )
@@ -99,19 +100,36 @@ func purger(db *gorm.DB, wg *sync.WaitGroup, jobs chan *deployment.Deployment) {
 	for depl := range jobs {
 		log.WithFields(fields).Infof("Purging deployment %v", depl)
 
-		if err := purgeFromS3(db, depl); err != nil {
+		if err := purge(db, depl); err != nil {
 			log.WithFields(fields).Errorf("failed to purge deployment %s, err: %v", depl, err)
 		}
+
 		wg.Done()
 	}
 }
 
-func purgeFromS3(db *gorm.DB, depl *deployment.Deployment) error {
+func purge(db *gorm.DB, depl *deployment.Deployment) error {
 	prefix := "deployments/" + depl.PrefixID()
-	err := S3.DeleteAll(s3client.BucketRegion, s3client.BucketName, prefix)
-	if err != nil {
+	if err := S3.DeleteAll(s3client.BucketRegion, s3client.BucketName, prefix); err != nil {
 		return err
 	}
 
-	return db.Model(depl).Unscoped().UpdateColumn("purged_at", time.Now()).Error
+	if err := db.Model(depl).Unscoped().UpdateColumn("purged_at", time.Now()).Error; err != nil {
+		return err
+	}
+
+	if depl.RawBundleID == nil {
+		return nil
+	}
+
+	// Soft-delete deployment's raw bundle. Since the bundle has been
+	// removed from S3, delete it from the db so that it doesn't get used.
+	bun := &rawbundle.RawBundle{}
+	if err := db.First(bun, *depl.RawBundleID).Error; err == nil {
+		if err := db.Delete(bun).Error; err != nil {
+			return err
+		}
+	}
+
+	return nil
 }

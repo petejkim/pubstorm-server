@@ -98,9 +98,9 @@ var _ = Describe("purgedeploys", func() {
 		})
 	})
 
-	Describe("purgeFromS3()", func() {
+	Describe("purge()", func() {
 		It("deletes the deployment's files from S3", func() {
-			err := purgeFromS3(db, depl2)
+			err := purge(db, depl2)
 			Expect(err).To(BeNil())
 
 			Expect(fakeS3.DeleteAllCalls.Count()).To(Equal(1))
@@ -115,13 +115,38 @@ var _ = Describe("purgedeploys", func() {
 		It("sets purged_at", func() {
 			Expect(depl2.PurgedAt).To(BeNil())
 
-			err := purgeFromS3(db, depl2)
+			err := purge(db, depl2)
 			Expect(err).To(BeNil())
 			Expect(depl2.PurgedAt).NotTo(BeNil())
 
 			err = db.Unscoped().First(depl2, depl2.ID).Error
 			Expect(err).To(BeNil())
 			Expect(depl2.PurgedAt).NotTo(BeNil())
+		})
+
+		It("deletes the deployment's raw bundle", func() {
+			bun := factories.RawBundle(db, proj1)
+
+			depl5 := factories.DeploymentWithAttrs(db, proj1, u, deployment.Deployment{
+				Prefix:      "p1-d",
+				State:       deployment.StateDeployed,
+				RawBundleID: &bun.ID,
+			})
+			err := db.Delete(depl5).Error
+			Expect(err).To(BeNil())
+
+			err = purge(db, depl5)
+			Expect(err).To(BeNil())
+
+			err = db.Unscoped().First(depl5, depl5.ID).Error
+			Expect(err).To(BeNil())
+
+			err = db.First(bun, *depl5.RawBundleID).Error
+			Expect(err).To(Equal(gorm.RecordNotFound))
+
+			err = db.Unscoped().First(bun, *depl5.RawBundleID).Error
+			Expect(err).To(BeNil())
+			Expect(bun.ProjectID).To(Equal(proj1.ID))
 		})
 	})
 })

@@ -583,6 +583,36 @@ var _ = Describe("Deployments", func() {
 						}`))
 					})
 				})
+
+				Context("when bundle checksum is specified but the bundle has been deleted", func() {
+					var existingRawBundle *rawbundle.RawBundle
+
+					BeforeEach(func() {
+						existingRawBundle = &rawbundle.RawBundle{
+							ProjectID:    proj.ID,
+							Checksum:     "d4e5f6",
+							UploadedPath: "deployments/pr3f1x-1234/raw-bundle.tar.gz",
+						}
+						Expect(db.Create(existingRawBundle).Error).To(BeNil())
+						Expect(db.Delete(existingRawBundle).Error).To(BeNil())
+
+						doRequestWithBundleChecksum(existingRawBundle.Checksum)
+					})
+
+					It("returns 422 with invalid request", func() {
+						b := &bytes.Buffer{}
+						_, err = b.ReadFrom(res.Body)
+						Expect(err).To(BeNil())
+
+						Expect(res.StatusCode).To(Equal(422))
+						Expect(b.String()).To(MatchJSON(`{
+							"error": "invalid_params",
+							"errors": {
+								"bundle_checksum": "the bundle could not be found"
+							}
+						}`))
+					})
+				})
 			})
 		})
 	})
