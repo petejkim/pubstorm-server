@@ -90,7 +90,7 @@ func getDomainStat(index string, domain string, from time.Time, to time.Time) (*
 	}
 
 	rangeFilter := elastic.NewRangeQuery("request_timestamp").From(from).To(to)
-	query := elastic.NewBoolQuery().Must(rangeFilter, elastic.NewTermQuery("domain", domain))
+	query := elastic.NewBoolQuery().Must(rangeFilter, elastic.NewTermQuery("domain.raw", domain))
 	result, err := client.Search().
 		Index(index).
 		Query(query).
@@ -129,7 +129,7 @@ func getDomainStat(index string, domain string, from time.Time, to time.Time) (*
 	}
 	domainStat.UniqueVisitors = uniqueVisitors.Value
 
-	query = elastic.NewBoolQuery().Must(rangeFilter, elastic.NewRegexpQuery("request.raw", ".*/([^/]+html?)?"), elastic.NewTermQuery("domain", domain))
+	query = elastic.NewBoolQuery().Must(rangeFilter, elastic.NewRegexpQuery("request.raw", ".*/([^/]+html?)?"), elastic.NewTermQuery("domain.raw", domain))
 	result, err = client.Search().
 		Index(index).
 		Query(query).
