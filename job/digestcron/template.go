@@ -3,22 +3,23 @@ package main
 import (
 	//"github.com/nitrous-io/rise-server/apiserver/stat"
 	"bytes"
+	"fmt"
 	"html/template"
 )
 
 var bodyHtmlTemplate = `
-   Those are the stats for your project ({{ .ProjectName }}):
+   Those are the stats for your project ({{ .ProjectName }}):<br/>
 {{range $stat := .Stats }}
-	Stats for {{ $stat.DomainName}} ({{ $stat.From }} - {{ $stat.To }}):
+	Stats for {{ $stat.DomainName}} ({{ $stat.From.Format "2 January 2006" }} - {{ $stat.To.Format "2 January 2006" }}):
 	<ul>
-	<li>Total bandwidth in bytes: {{ $stat.TotalBandwidth }}
+	<li>Total bandwidth in bytes: {{ megabytes $stat.TotalBandwidth }}
 	<li>Total requests: {{ $stat.TotalRequests }}
 	<li>Unique visitors: {{ $stat.UniqueVisitors }}
 	<li>Total Page Views: {{ $stat.TotalPageViews }}
 	<li>Top Pages
 		<ul>
 		{{ range $pageview := $stat.TopPageViews -}}
-		<li> {{ $pageview.Path }} - {{ $pageview.Count }} </li>
+		<li>{{ $pageview.Count | printf "%5d" }} - {{ $pageview.Path }}</li>
 		{{ end}}
 		</ul>
 	</ul>
@@ -28,22 +29,25 @@ var bodyHtmlTemplate = `
 var bodyTextTemplate = `
 Those are the stats for your project ({{ .ProjectName }}):
 {{range $stat := .Stats }}
-	Stats for {{ $stat.DomainName}} ({{ $stat.From }} - {{ $stat.To }}):
-	- Total bandwidth in bytes: {{ $stat.TotalBandwidth }}
+	Stats for {{ $stat.DomainName}} ({{ $stat.From.Format "2 January 2000" }} - {{ $stat.To.Format "2 January 2000" }}):
+	- Total bandwidth in bytes: {{ megabytes $stat.TotalBandwidth }}
 	- Total requests: {{ $stat.TotalRequests }}
 	- Unique visitors: {{ $stat.UniqueVisitors }}
 	- Total Page Views: {{ $stat.TotalPageViews }}
 	- Top Pages
 		{{ range $pageview := $stat.TopPageViews -}}
-		- {{ $pageview.Path }} - {{ $pageview.Count }}
+		- {{ $pageview.Count | printf "%5d" }} - {{ $pageview.Path }}
 		{{ end}}
 {{ end }}
 
 `
 
 func generateEmailBody(stats *Stats) (body string, bodyHtml string, err error) {
+	fm := template.FuncMap{"megabytes": func(a float64) string {
+		return fmt.Sprintf("%.2f Mb", a/1024/1024)
+	}}
 	var bodyBuffer, bodyHtmlBuffer bytes.Buffer
-	tBody, err := template.New("body").Parse(bodyTextTemplate)
+	tBody, err := template.New("body").Funcs(fm).Parse(bodyTextTemplate)
 	if err != nil {
 		return "", "", err
 	}
@@ -53,7 +57,7 @@ func generateEmailBody(stats *Stats) (body string, bodyHtml string, err error) {
 		return "", "", err
 	}
 
-	tHtmlBody, err := template.New("body").Parse(bodyHtmlTemplate)
+	tHtmlBody, err := template.New("body").Funcs(fm).Parse(bodyHtmlTemplate)
 	if err != nil {
 		return "", "", err
 	}

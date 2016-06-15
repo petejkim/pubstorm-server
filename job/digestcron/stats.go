@@ -60,6 +60,7 @@ func doJob(p *project.Project, year int, month int) error {
 		if err != nil {
 			return err
 		}
+		log.Infof("Sent email: %s\n", subject)
 	}
 
 	// Update the project
@@ -77,6 +78,5 @@ func isEmpty(projectStats *Stats) bool {
 			return false
 		}
 	}
-
 	return true
 }
