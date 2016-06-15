@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"io/ioutil"
 	"net/http"
+	"net/url"
+	"strconv"
 	"time"
 
 	log "github.com/Sirupsen/logrus"
@@ -41,8 +43,20 @@ func getStats(url string) (*Stats, error) {
 
 func doJob(p *project.Project, year int, month int) error {
 	// We are requesting the content via HTTP instead of using directly ES because in the future this can be cached
-	url := fmt.Sprintf("%s/admin/stats?token=%s&project_id=%d&year=%d&month=%d", apiServer, statsToken, p.ID, year, month)
-	projectStats, err := getStats(url)
+	var Url *url.URL
+	Url, err := url.Parse(apiServer)
+	if err != nil {
+		return err
+	}
+	Url.Path += "/admin/stats"
+	parameters := url.Values{}
+	parameters.Add("token", statsToken)
+	parameters.Add("project_id", strconv.FormatUint(uint64(p.ID), 10))
+	parameters.Add("year", strconv.FormatInt(int64(year), 10))
+	parameters.Add("month", strconv.FormatInt(int64(month), 10))
+	Url.RawQuery = parameters.Encode()
+
+	projectStats, err := getStats(Url.String())
 	if err != nil {
 		return err
 	}
