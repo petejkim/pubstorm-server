@@ -51,8 +51,25 @@ build() {
   echo $version > $BUILD_DIR/$app-VERSION
 }
 
-# bundle binary (from dedicated/script/release)
+build_jobs() {
+  # Build all top-level subfolders in jobs/ folder.
+  cd /opt/src/github.com/nitrous-io/rise-server
+  version=$(get_version jobs)
+  LDFLAGS="-s -w -X main.version=$version"
+
+  cd /opt/src/github.com/nitrous-io/rise-server/jobs
+  for d in *; do
+    if [[ -d $d ]]; then
+      echo "Building job: $d (version: $version)"
+      go install github.com/nitrous-io/rise-server/jobs/$d
+      echo $version > $BUILD_DIR/$d-VERSION
+    fi
+  done
+}
+
 bundle_binary() {
+  cd /opt/src/github.com/nitrous-io/rise-server
+
   BINARY=$1
   shift
   VERSION=$(cat $BUILD_DIR/${BINARY}-VERSION)
@@ -77,6 +94,21 @@ bundle_binary() {
   )
 }
 
+bundle_jobs() {
+  cd /opt/src/github.com/nitrous-io/rise-server/jobs
+  for d in *; do
+    if [[ -d $d ]]; then
+      bundle_binary $d
+    fi
+  done
+}
+
+copy_migrations() {
+  cp -r /opt/src/github.com/nitrous-io/rise-server/apiserver/migrations /opt/bin
+  chmod 777 /opt/bin/migrations
+  chmod 666 /opt/bin/migrations/*
+}
+
 run_tests() {
   service postgresql start
   service rabbitmq-server start
@@ -94,20 +126,20 @@ run_tests() {
   ./script/migrate up
   ./script/prepare-test-db
   ./script/test
-
-  cp -r /opt/src/github.com/nitrous-io/rise-server/apiserver/migrations /opt/bin
-  chmod 777 /opt/bin/migrations
-  chmod 666 /opt/bin/migrations/*
 }
 
 echo "Running tests"
 run_tests
-# Create binaries
+
 echo "Creating binaries"
 build apiserver
 build edged
 build deployer
 build builder
+
+build_jobs
+
+copy_migrations
 
 # TODO: Perform release to s3
 bundle_binary apiserver migrate migrations/*
@@ -115,4 +147,4 @@ bundle_binary edged
 bundle_binary deployer
 bundle_binary builder
 
-bundle_binary purgedeploys
+bundle_jobs
