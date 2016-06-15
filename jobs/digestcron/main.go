@@ -67,7 +67,9 @@ func main() {
 	firstOfMonth := time.Date(digestYear, digestMonth, 1, 0, 0, 0, 0, currentLocation)
 
 	projects := []*project.Project{}
-	db.Where("last_digest_sent_at is null or last_digest_sent_at < ?", firstOfMonth).Find(&projects)
+	if r := db.Where("last_digest_sent_at is null or last_digest_sent_at < ?", firstOfMonth).Find(&projects); r.Error != nil {
+		log.Fatalln("Impossible to get project list")
+	}
 
 	var wg sync.WaitGroup
 	projectsCh := make(chan *project.Project)

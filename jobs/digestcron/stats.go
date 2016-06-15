@@ -25,7 +25,9 @@ func getStats(url string) (*Stats, error) {
 	}
 	defer resp.Body.Close()
 	body, err := ioutil.ReadAll(resp.Body)
-	log.Infoln(string(body))
+	if err != nil {
+		return nil, err
+	}
 
 	domainStat := &Stats{}
 
@@ -46,9 +48,12 @@ func doJob(p *project.Project, year int, month int) error {
 	}
 	projectStats.ProjectName = p.Name
 
+	// For now we don't send any digest if the user haven't received any request for that domain.
 	if !isEmpty(projectStats) {
 		var u user.User
-		db.Where("id = ?", p.UserID).First(&u)
+		if r := db.Where("id = ?", p.UserID).First(&u); r.Error != nil {
+			return r.Error
+		}
 
 		body, bodyHtml, err := generateEmailBody(projectStats)
 		if err != nil {
@@ -66,7 +71,9 @@ func doJob(p *project.Project, year int, month int) error {
 	// Update the project
 	now := time.Now()
 	p.LastDigestSentAt = &now
-	db.Save(p)
+	if r := db.Save(p); r.Error != nil {
+		return r.Error
+	}
 	return nil
 
 }

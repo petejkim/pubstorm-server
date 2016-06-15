@@ -8,11 +8,11 @@ import (
 )
 
 var bodyHtmlTemplate = `
-   Those are the stats for your project ({{ .ProjectName }}):<br/>
+   These are the stats for your project ({{ .ProjectName }}):<br/>
 {{range $stat := .Stats }}
 	Stats for {{ $stat.DomainName}} ({{ $stat.From.Format "2 January 2006" }} - {{ $stat.To.Format "2 January 2006" }}):
 	<ul>
-	<li>Total bandwidth in bytes: {{ megabytes $stat.TotalBandwidth }}
+	<li>Total bandwidth used: {{ megabytes $stat.TotalBandwidth }}
 	<li>Total requests: {{ $stat.TotalRequests }}
 	<li>Unique visitors: {{ $stat.UniqueVisitors }}
 	<li>Total Page Views: {{ $stat.TotalPageViews }}
@@ -27,10 +27,10 @@ var bodyHtmlTemplate = `
 `
 
 var bodyTextTemplate = `
-Those are the stats for your project ({{ .ProjectName }}):
+These are the stats for your project ({{ .ProjectName }}):
 {{range $stat := .Stats }}
 	Stats for {{ $stat.DomainName}} ({{ $stat.From.Format "2 January 2000" }} - {{ $stat.To.Format "2 January 2000" }}):
-	- Total bandwidth in bytes: {{ megabytes $stat.TotalBandwidth }}
+	- Total bandwidth used: {{ megabytes $stat.TotalBandwidth }}
 	- Total requests: {{ $stat.TotalRequests }}
 	- Unique visitors: {{ $stat.UniqueVisitors }}
 	- Total Page Views: {{ $stat.TotalPageViews }}
