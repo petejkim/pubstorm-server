@@ -5,6 +5,7 @@ import (
 	"compress/gzip"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"io/ioutil"
 	"log"
@@ -53,9 +54,10 @@ var (
 	ErrProjectLocked    = errors.New("project is locked")
 	ErrOptimizerTimeout = errors.New("Timed out on optimizing assets. This might happen due to too large asset files. We will continue without optimizing your assets.")
 
-	OptimizerCmd = func(srcDir string, domainNames []string) *exec.Cmd {
-		return exec.Command("docker", "run", "-v", srcDir+":"+OptimizePath, "-e", "DOMAIN_NAMES_WITH_PROTOCOL="+strings.Join(domainNames, ","), "--rm", OptimizerDockerImage)
+	OptimizerCmd = func(containerName string, srcDir string, domainNames []string) *exec.Cmd {
+		return exec.Command("docker", "run", "--name", containerName, "-v", srcDir+":"+OptimizePath, "-e", "DOMAIN_NAMES_WITH_PROTOCOL="+strings.Join(domainNames, ","), "--rm", OptimizerDockerImage)
 	}
+
 	OptimizerTimeout = 5 * 60 * time.Second // 5 mins
 )
 
@@ -175,7 +177,7 @@ func Work(data []byte) error {
 		return err
 	}
 
-	output, err := runOptimizer(dirName, domainNames)
+	output, err := runOptimizer(fmt.Sprintf("%s-%d", prefixID, time.Now().Unix()), dirName, domainNames)
 	if err == nil {
 		var errorMessages []string
 		outputs := strings.Split(output, "\n")
@@ -290,10 +292,10 @@ func pack(writer io.Writer, dirName string) error {
 	return nil
 }
 
-func runOptimizer(srcDir string, domainNames []string) (output string, err error) {
+func runOptimizer(containerName, srcDir string, domainNames []string) (output string, err error) {
 	outCh := make(chan string)
 	errCh := make(chan error)
-	cmd := OptimizerCmd(srcDir, domainNames)
+	cmd := OptimizerCmd(containerName, srcDir, domainNames)
 
 	go func() {
 		out, err := cmd.CombinedOutput()
@@ -313,9 +315,12 @@ func runOptimizer(srcDir string, domainNames []string) (output string, err error
 	case err := <-errCh:
 		return "", err
 	case <-time.After(OptimizerTimeout):
-		if cmd.Process != nil {
-			cmd.Process.Kill()
+		if _, err := exec.Command("docker", "rm", "-f", containerName).CombinedOutput(); err != nil {
+			if cmd.Process != nil {
+				cmd.Process.Kill()
+			}
 		}
+
 		return "", ErrOptimizerTimeout
 	}
 }

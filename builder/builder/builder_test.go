@@ -317,12 +317,16 @@ var _ = Describe("Builder", func() {
 		})
 	})
 
-	Context("when the optimizer times out", func() {
-		var optimizerCmd *exec.Cmd
+	Context("when the optimizer timed out", func() {
+		var (
+			optimizerCmd  *exec.Cmd
+			containerName string
+		)
 
 		BeforeEach(func() {
-			builder.OptimizerCmd = func(srcDir string, domainNames []string) *exec.Cmd {
-				optimizerCmd = exec.Command("sleep", "60")
+			builder.OptimizerCmd = func(cn string, srcDir string, domainNames []string) *exec.Cmd {
+				containerName = cn
+				optimizerCmd = exec.Command("docker", "run", "--name", cn, "busybox", "sleep", "10")
 				return optimizerCmd
 			}
 			builder.OptimizerTimeout = 100 * time.Millisecond
@@ -331,7 +335,11 @@ var _ = Describe("Builder", func() {
 			Expect(err).To(BeNil())
 		})
 
-		It("kills the optimize process", func() {
+		AfterEach(func() {
+			exec.Command("docker", "rm", "-f", containerName).Run()
+		})
+
+		It("kills the optimizer process", func() {
 			done := make(chan struct{})
 			errCh := make(chan error)
 			go func() {
@@ -341,6 +349,7 @@ var _ = Describe("Builder", func() {
 
 				if err != nil {
 					errCh <- err
+					return
 				}
 				done <- struct{}{}
 			}()
@@ -348,10 +357,12 @@ var _ = Describe("Builder", func() {
 			select {
 			case <-done:
 				time.Sleep(50 * time.Millisecond)
-				Expect(optimizerCmd.ProcessState.String()).To(Equal("signal: killed"))
+				_, err := exec.Command("docker", "inspect", containerName).CombinedOutput()
+				// This should return error due to fetching deleted container
+				Expect(err).NotTo(BeNil())
 			case err := <-errCh:
 				Expect(err).To(BeNil())
-			case <-time.After(150 * time.Millisecond):
+			case <-time.After(1 * time.Second):
 				Fail("timed out on optimizer")
 			}
 
