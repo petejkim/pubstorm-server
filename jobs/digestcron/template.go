@@ -10,7 +10,7 @@ import (
 var bodyHtmlTemplate = `
    These are the stats for your project ({{ .ProjectName }}):<br/>
 {{range $stat := .Stats }}
-	Stats for {{ $stat.DomainName}} ({{ $stat.From.Format "2 January 2006" }} - {{ $stat.To.Format "2 January 2006" }}):
+	Stats for <a href="http://{{ $stat.DomainName}}">{{ $stat.DomainName }}</a> ({{ $stat.From.Format "2 January" }} - {{ $stat.To.Format "2 January 2006" }}):
 	<ul>
 	<li>Total bandwidth used: {{ megabytes $stat.TotalBandwidth }}
 	<li>Total requests: {{ $stat.TotalRequests }}
@@ -28,8 +28,9 @@ var bodyHtmlTemplate = `
 
 var bodyTextTemplate = `
 These are the stats for your project ({{ .ProjectName }}):
+
 {{range $stat := .Stats }}
-	Stats for {{ $stat.DomainName}} ({{ $stat.From.Format "2 January 2000" }} - {{ $stat.To.Format "2 January 2000" }}):
+	Stats for {{ $stat.DomainName}} ({{ $stat.From.Format "2 January" }} - {{ $stat.To.Format "2 January 2006" }}):
 	- Total bandwidth used: {{ megabytes $stat.TotalBandwidth }}
 	- Total requests: {{ $stat.TotalRequests }}
 	- Unique visitors: {{ $stat.UniqueVisitors }}
