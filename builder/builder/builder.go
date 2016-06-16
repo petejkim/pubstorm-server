@@ -54,7 +54,7 @@ var (
 	ErrOptimizerTimeout = errors.New("Timed out on optimizing assets. This might happen due to too large asset files. We will continue without optimizing your assets.")
 
 	OptimizerCmd = func(srcDir string, domainNames []string) *exec.Cmd {
-		return exec.Command("docker", "run", "-v", srcDir+":"+OptimizePath, "-e", "DOMAIN_NAMES="+strings.Join(domainNames, ","), OptimizerDockerImage)
+		return exec.Command("docker", "run", "-v", srcDir+":"+OptimizePath, "-e", "DOMAIN_NAMES_WITH_PROTOCOL="+strings.Join(domainNames, ","), "--rm", OptimizerDockerImage)
 	}
 	OptimizerTimeout = 5 * 60 * time.Second // 5 mins
 )
@@ -170,7 +170,7 @@ func Work(data []byte) error {
 		return err
 	}
 
-	domainNames, err := proj.DomainNames(db)
+	domainNames, err := proj.DomainNamesWithProtocol(db)
 	if err != nil {
 		return err
 	}

@@ -94,14 +94,15 @@ gulp.task('image', function() {
 });
 
 gulp.task('sitemap', function() {
-  if (process.env.DOMAIN_NAMES) {
+  var domainNames = process.env.DOMAIN_NAMES_WITH_PROTOCOL
+  if (domainNames) {
     var xmlBody = ['<?xml version="1.0" encoding="UTF-8"?>', '<sitemapindex xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">'];
-    var domainNames = process.env.DOMAIN_NAMES.split(",");
+    var domainNames = domainNames.split(",");
 
     var tasks = domainNames.map(function(domainName) {
-      var fileName = "sitemap-" + domainName.replace(/\./g, '-') + ".xml";
+      var fileName = "sitemap-" + domainName.replace(/https?:\/\//, '').replace(/\./g, '-') + ".xml";
       var entry = ['<sitemap>',
-        '<loc>http://' + domainName + '/sitemap/' + fileName + '</loc>',
+        '<loc>'+ domainName + '/sitemap/' + fileName + '</loc>',
         '<lastmod>' + new Date().toISOString() + '</lastmod>',
         '</sitemap>'
       ];
@@ -117,11 +118,12 @@ gulp.task('sitemap', function() {
 });
 
 gulp.task('fix-sitemap-permission', function() {
-  if (process.env.DOMAIN_NAMES) {
-    var domainNames = process.env.DOMAIN_NAMES.split(",");
+  var domainNames = process.env.DOMAIN_NAMES_WITH_PROTOCOL
+  if (domainNames) {
+    var domainNames = domainNames.split(",");
 
     domainNames.forEach(function(domainName) {
-      var fileName = "sitemap-" + domainName.replace(/\./g, '-') + ".xml";
+      var fileName = "sitemap-" + domainName.replace(/https?:\/\//, '').replace(/\./g, '-') + ".xml";
 
       fs.chmod('build/sitemap/' + fileName, 0777, sitemapErrorHandler);
     });

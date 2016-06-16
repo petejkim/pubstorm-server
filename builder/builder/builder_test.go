@@ -17,7 +17,6 @@ import (
 	"github.com/jinzhu/gorm"
 	"github.com/nitrous-io/rise-server/apiserver/dbconn"
 	"github.com/nitrous-io/rise-server/apiserver/models/deployment"
-	"github.com/nitrous-io/rise-server/apiserver/models/domain"
 	"github.com/nitrous-io/rise-server/apiserver/models/project"
 	"github.com/nitrous-io/rise-server/apiserver/models/rawbundle"
 	"github.com/nitrous-io/rise-server/apiserver/models/user"
@@ -51,7 +50,6 @@ var _ = Describe("Builder", func() {
 		u    *user.User
 		proj *project.Project
 		depl *deployment.Deployment
-		dm   *domain.Domain
 	)
 
 	BeforeEach(func() {
@@ -71,7 +69,10 @@ var _ = Describe("Builder", func() {
 		u = factories.User(db)
 		proj = factories.Project(db, u, "foo-bar")
 		depl = factories.Deployment(db, proj, u, deployment.StatePendingBuild)
-		dm = factories.Domain(db, proj, "www.foo-bar.com")
+		dm := factories.Domain(db, proj, "www.foo-bar.com")
+		factories.Cert(db, dm)
+
+		factories.Domain(db, proj, "www.baz-qux.com")
 	})
 
 	AfterEach(func() {
@@ -151,15 +152,21 @@ var _ = Describe("Builder", func() {
 			Expect(err).To(BeNil())
 			if strings.HasPrefix(hdr.Name, "sitemap") {
 				if hdr.Name == "sitemap.xml" {
-					domainNames, err := proj.DomainNames(db)
-					Expect(err).To(BeNil())
-					for _, domainName := range domainNames {
-						Expect(sourceContent).To(ContainSubstring(fmt.Sprintf("<loc>http://%s", domainName)))
-					}
+					Expect(sourceContent).To(ContainSubstring(fmt.Sprintf("<loc>https://foo-bar.risecloud.dev")))
+					Expect(sourceContent).To(ContainSubstring(fmt.Sprintf("<loc>https://www.foo-bar.com")))
+					Expect(sourceContent).To(ContainSubstring(fmt.Sprintf("<loc>http://www.baz-qux.com")))
 				}
 
 				if hdr.Name == "sitemap/sitemap-foo-bar-risecloud-dev.xml" {
-					Expect(sourceContent).To(ContainSubstring(fmt.Sprintf("<loc>foo-bar.risecloud.dev/</loc>")))
+					Expect(sourceContent).To(ContainSubstring(fmt.Sprintf("<loc>https://foo-bar.risecloud.dev/</loc>")))
+				}
+
+				if hdr.Name == "sitemap/sitemap-www-foo-bar-com.xml" {
+					Expect(sourceContent).To(ContainSubstring(fmt.Sprintf("<loc>https://www.foo-bar.com/</loc>")))
+				}
+
+				if hdr.Name == "sitemap/sitemap-www-baz-qux-com.xml" {
+					Expect(sourceContent).To(ContainSubstring(fmt.Sprintf("<loc>http://www.baz-qux.com/</loc>")))
 				}
 			} else {
 				targetContent, err := ioutil.ReadFile(filepath.Join(optimizedBundlePath, hdr.Name))
@@ -179,6 +186,7 @@ var _ = Describe("Builder", func() {
 			"sitemap.xml",
 			"sitemap/sitemap-foo-bar-risecloud-dev.xml",
 			"sitemap/sitemap-www-foo-bar-com.xml",
+			"sitemap/sitemap-www-baz-qux-com.xml",
 		}))
 
 		// it should publish deploy message
