@@ -23,6 +23,15 @@ func (s *S3) Upload(region, bucket, key string, body io.Reader, contentType, acl
 	var content []byte
 
 	if s.UploadError == nil {
+		// If io.Reader is from file, the position could be the middle of file content.
+		// To make sure it reads all content from the file, we need to change the position to the beginning of the file.
+		seeker, ok := body.(io.Seeker)
+		if ok {
+			if _, err := seeker.Seek(0, 0); err != nil {
+				return err
+			}
+		}
+
 		content, err = ioutil.ReadAll(body)
 	} else {
 		err = s.UploadError
