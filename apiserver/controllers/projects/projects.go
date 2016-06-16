@@ -382,3 +382,88 @@ func Destroy(c *gin.Context) {
 		"deleted": true,
 	})
 }
+
+func CreateAuth(c *gin.Context) {
+	proj := controllers.CurrentProject(c)
+
+	username := c.PostForm("basic_auth_username")
+	password := c.PostForm("basic_auth_password")
+
+	proj.BasicAuthUsername = &username
+	proj.BasicAuthPassword = password
+	if errs := proj.Validate(); errs != nil {
+		c.JSON(422, gin.H{
+			"error":  "invalid_params",
+			"errors": errs,
+		})
+		return
+	}
+
+	if err := proj.EncryptBasicAuthPassword(); err != nil {
+		controllers.InternalServerError(c, err)
+		return
+	}
+
+	if proj.ActiveDeploymentID != nil {
+		if err := publishInvalidationJob(proj); err != nil {
+			controllers.InternalServerError(c, err)
+			return
+		}
+	}
+
+	db, err := dbconn.DB()
+	if err != nil {
+		controllers.InternalServerError(c, err)
+		return
+	}
+
+	if err := db.Save(&proj).Error; err != nil {
+		controllers.InternalServerError(c, err)
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"protected": true,
+	})
+}
+
+func DeleteAuth(c *gin.Context) {
+	proj := controllers.CurrentProject(c)
+	if proj.ActiveDeploymentID != nil {
+		if err := publishInvalidationJob(proj); err != nil {
+			controllers.InternalServerError(c, err)
+			return
+		}
+	}
+
+	db, err := dbconn.DB()
+	if err != nil {
+		controllers.InternalServerError(c, err)
+		return
+	}
+
+	proj.BasicAuthUsername = nil
+	proj.EncryptedBasicAuthPassword = nil
+	if err := db.Save(&proj).Error; err != nil {
+		controllers.InternalServerError(c, err)
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"unprotected": true,
+	})
+}
+
+func publishInvalidationJob(proj *project.Project) error {
+	j, err := job.NewWithJSON(queues.Deploy, &messages.DeployJobData{
+		DeploymentID:      *proj.ActiveDeploymentID,
+		SkipWebrootUpload: true,
+		SkipInvalidation:  false,
+	})
+
+	if err != nil {
+		return err
+	}
+
+	return j.Enqueue()
+}

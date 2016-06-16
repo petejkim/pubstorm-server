@@ -155,11 +155,15 @@ func Work(data []byte) error {
 
 	// the metadata file is also publicly readable, do not put sensitive data
 	metaJson, err := json.Marshal(struct {
-		Prefix     string `json:"prefix"`
-		ForceHTTPS bool   `json:"force_https,omitempty"`
+		Prefix            string  `json:"prefix"`
+		ForceHTTPS        bool    `json:"force_https,omitempty"`
+		BasicAuthUsername *string `json:"basic_auth_username,omitempty"`
+		BasicAuthPassword *string `json:"basic_auth_password,omitempty"`
 	}{
 		prefixID,
 		proj.ForceHTTPS,
+		proj.BasicAuthUsername,
+		proj.EncryptedBasicAuthPassword,
 	})
 
 	if err != nil {

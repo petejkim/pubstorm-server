@@ -346,6 +346,45 @@ var _ = Describe("Deployer", func() {
 		})
 	})
 
+	Context("when project has basic auth credential", func() {
+		BeforeEach(func() {
+			username := "basic-user"
+			password := "basic-pass"
+			proj.BasicAuthUsername = &username
+			proj.BasicAuthPassword = password
+			Expect(proj.EncryptBasicAuthPassword()).To(BeNil())
+
+			Expect(db.Save(proj).Error).To(BeNil())
+		})
+
+		It("uploads meta.json with basic auth credential set", func() {
+			// mock download
+			fakeS3.DownloadContent, err = ioutil.ReadFile("../../testhelper/fixtures/website.tar.gz")
+			Expect(err).To(BeNil())
+
+			err = deployer.Work([]byte(fmt.Sprintf(`{
+				"deployment_id": %d
+			}`, depl.ID)))
+			Expect(err).To(BeNil())
+
+			for i, domain := range []string{
+				proj.DefaultDomainName(),
+				"www.foo-bar-express.com",
+			} {
+				assertUpload(
+					6+i,
+					"domains/"+domain+"/meta.json",
+					"application/json",
+					[]byte(fmt.Sprintf(`{
+						"prefix": "%s",
+						"basic_auth_username": "%s",
+						"basic_auth_password": "%s"
+					}`, depl.PrefixID(), *proj.BasicAuthUsername, *proj.EncryptedBasicAuthPassword)),
+				)
+			}
+		})
+	})
+
 	Context("when skip_webroot_upload is true", func() {
 		assertMetaDataUpload := func(doms []string) {
 			Expect(fakeS3.UploadCalls.Count()).To(Equal(len(doms)))
