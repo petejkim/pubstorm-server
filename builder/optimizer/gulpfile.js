@@ -1,4 +1,4 @@
-var gulp = require('gulp');                                                                                                                                                                                                                                                                                         [14/598]
+var gulp = require('gulp');
 var htmlmin = require('gulp-htmlmin');
 var uglify = require('gulp-uglify');
 var plumber = require('gulp-plumber');
@@ -77,7 +77,7 @@ gulp.task('css', function() {
 });
 
 gulp.task('html', function() {
-  return gulp.src(paths.html).pipe(htmlmin({collapseWhitespace: true}).on('error', htmlErrorHandler)).pipe(gulp.dest('build'));
+  return gulp.src(paths.html).pipe(htmlmin({collapseWhitespace: true, conservativeCollapse: true}).on('error', htmlErrorHandler)).pipe(gulp.dest('build'));
 });
 
 gulp.task('image', function() {
