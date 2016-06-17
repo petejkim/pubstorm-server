@@ -88,9 +88,11 @@ bundle_binary() {
   upload_s3 ${BINARY}.md5 ${BINARY}-${VERSION}.md5
   upload_s3 ${BINARY}.sha256 ${BINARY}-${VERSION}.sha256
 
+
+  cp $pkg $latestpkg
   hash_files $latestpkg ${BINARY}-latest
 
-  upload_s3 $pkg $latestpkg
+  upload_s3 $latestpkg $latestpkg
   upload_s3 ${BINARY}-latest.md5 ${BINARY}-latest.md5
   upload_s3 ${BINARY}.sha256 ${BINARY}-latest.sha256
   )
