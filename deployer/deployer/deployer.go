@@ -30,7 +30,10 @@ import (
 	"github.com/nitrous-io/rise-server/shared/s3client"
 )
 
-var ErrProjectLocked = errors.New("project is locked")
+var (
+	ErrProjectLocked = errors.New("project is locked")
+	UploadTimeout    = 3 * time.Minute
+)
 
 func init() {
 	riseEnv := os.Getenv("RISE_ENV")
@@ -106,40 +109,55 @@ func Work(data []byte) error {
 			return err
 		}
 
-		gr, err := gzip.NewReader(f)
-		if err != nil {
-			return err
-		}
-		defer gr.Close()
-
-		// webroot is a publicly readable directory on S3.
-		webroot := "deployments/" + prefixID + "/webroot"
-
-		tr := tar.NewReader(gr)
-		for {
-			hdr, err := tr.Next()
+		done := make(chan struct{})
+		errCh := make(chan error)
+		go func() {
+			gr, err := gzip.NewReader(f)
 			if err != nil {
-				if err == io.EOF {
-					break
+				errCh <- err
+			}
+			defer gr.Close()
+
+			// webroot is a publicly readable directory on S3.
+			webroot := "deployments/" + prefixID + "/webroot"
+
+			tr := tar.NewReader(gr)
+			for {
+				hdr, err := tr.Next()
+				if err != nil {
+					if err == io.EOF {
+						break
+					}
+					errCh <- err
 				}
-				return err
+
+				if hdr.FileInfo().IsDir() {
+					continue
+				}
+
+				fileName := path.Clean(hdr.Name)
+				remotePath := webroot + "/" + fileName
+
+				contentType := mime.TypeByExtension(filepath.Ext(fileName))
+				if i := strings.Index(contentType, ";"); i != -1 {
+					contentType = contentType[:i]
+				}
+
+				if err := S3.Upload(s3client.BucketRegion, s3client.BucketName, remotePath, tr, contentType, "public-read"); err != nil {
+					errCh <- err
+				}
 			}
 
-			if hdr.FileInfo().IsDir() {
-				continue
-			}
+			done <- struct{}{}
+		}()
 
-			fileName := path.Clean(hdr.Name)
-			remotePath := webroot + "/" + fileName
-
-			contentType := mime.TypeByExtension(filepath.Ext(fileName))
-			if i := strings.Index(contentType, ";"); i != -1 {
-				contentType = contentType[:i]
-			}
-
-			if err := S3.Upload(s3client.BucketRegion, s3client.BucketName, remotePath, tr, contentType, "public-read"); err != nil {
-				return err
-			}
+		select {
+		case <-done:
+		case err := <-errCh:
+			return err
+		case <-time.After(UploadTimeout):
+			log.Printf("failed to upload files due to timeout on uploading to s3")
+			return nil
 		}
 	}
 
