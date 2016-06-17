@@ -11,4 +11,3 @@ RUN npm install
 ADD gulpfile.js /tmp/optimizer/gulpfile.js
 
 CMD ["gulp"]
-
