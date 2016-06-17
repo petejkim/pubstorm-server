@@ -94,15 +94,6 @@ bundle_binary() {
   )
 }
 
-bundle_jobs() {
-  cd /opt/src/github.com/nitrous-io/rise-server/jobs
-  for d in *; do
-    if [[ -d $d ]]; then
-      bundle_binary $d
-    fi
-  done
-}
-
 copy_migrations() {
   cp -r /opt/src/github.com/nitrous-io/rise-server/apiserver/migrations /opt/bin
   chmod 777 /opt/bin/migrations
@@ -147,4 +138,5 @@ bundle_binary edged
 bundle_binary deployer
 bundle_binary builder
 
-bundle_jobs
+bundle_binary digestcron
+bundle_binary purgedeploys
