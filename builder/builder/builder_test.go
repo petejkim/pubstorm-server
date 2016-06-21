@@ -407,4 +407,19 @@ var _ = Describe("Builder", func() {
 			assertCleanTempFile(depl.PrefixID())
 		})
 	})
+
+	Context("when the project is locked", func() {
+		BeforeEach(func() {
+			lockedTime := time.Now().Add(-time.Minute)
+			proj.LockedAt = &lockedTime
+			Expect(db.Save(proj).Error).To(BeNil())
+		})
+
+		It("returns an error", func() {
+			err = builder.Work([]byte(fmt.Sprintf(`{
+				"deployment_id": %d
+			}`, depl.ID)))
+			Expect(err).To(Equal(builder.ErrProjectLocked))
+		})
+	})
 })

@@ -76,8 +76,18 @@ func Work(data []byte) error {
 	if err := db.First(depl, d.DeploymentID).Error; err != nil {
 		return err
 	}
+
 	if depl.State != deployment.StatePendingBuild {
 		return errUnexpectedState
+	}
+
+	proj := &project.Project{}
+	if err := db.Where("id = ?", depl.ProjectID).First(proj).Error; err != nil {
+		return err
+	}
+
+	if proj.LockedAt != nil {
+		return ErrProjectLocked
 	}
 
 	var rawBundlePath string
@@ -167,11 +177,6 @@ func Work(data []byte) error {
 	nextState := deployment.StateBuilt
 
 	// Optimize assets
-	proj := &project.Project{}
-	if err := db.First(proj, depl.ProjectID).Error; err != nil {
-		return err
-	}
-
 	domainNames, err := proj.DomainNamesWithProtocol(db)
 	if err != nil {
 		return err
