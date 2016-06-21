@@ -163,6 +163,12 @@ func Work(data []byte) error {
 		case err := <-errCh:
 			return err
 		case <-time.After(UploadTimeout):
+			errorMessage := "Timed out due to too many files"
+			depl.ErrorMessage = &errorMessage
+			if err := depl.UpdateState(db, deployment.StateDeployFailed); err != nil {
+				fmt.Printf("Failed to update deployment state for %s due to %v", prefixID, err)
+			}
+
 			return ErrTimeout
 		}
 	}

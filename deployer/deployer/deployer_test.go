@@ -668,10 +668,11 @@ var _ = Describe("Deployer", func() {
 			err = deployer.Work([]byte(fmt.Sprintf(`{
 				"deployment_id": %d
 			}`, depl.ID)))
-			Expect(err).To(Equal(deployer.ErrTimeout))
 
 			// Wait until uploading goroutine is finished
 			time.Sleep(50 * time.Millisecond)
+
+			Expect(err).To(Equal(deployer.ErrTimeout))
 		})
 
 		It("does not upload the rest of files", func() {
@@ -683,6 +684,18 @@ var _ = Describe("Deployer", func() {
 			// It times out on first uploading call and fails on the second call due to invalid fd
 			// Because it closes body of the tar file after timeout
 			Expect(fakeS3.UploadCalls.Count()).To(Equal(2))
+		})
+
+		It("updates the deployment to be `StateDeployFailed` and error message", func() {
+			deployer.Work([]byte(fmt.Sprintf(`{
+				"deployment_id": %d
+			}`, depl.ID)))
+
+			time.Sleep(50 * time.Millisecond)
+
+			Expect(db.First(depl, depl.ID).Error).To(BeNil())
+			Expect(depl.State).To(Equal(deployment.StateDeployFailed))
+			Expect(depl.ErrorMessage).NotTo(BeNil())
 		})
 	})
 })

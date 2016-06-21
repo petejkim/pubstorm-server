@@ -14,6 +14,7 @@ const (
 	StateUploaded        = "uploaded"
 	StatePendingDeploy   = "pending_deploy"
 	StateDeployed        = "deployed"
+	StateDeployFailed    = "deploy_failed"
 	StatePendingRollback = "pending_rollback"
 	StatePendingBuild    = "pending_build"
 	StateBuilt           = "built"
@@ -139,7 +140,7 @@ func (d *Deployment) UpdateState(db *gorm.DB, state string) error {
 		q = q.Update("deployed_at", gorm.Expr("now()"))
 	}
 
-	if state == StateBuildFailed {
+	if state == StateBuildFailed || state == StateDeployFailed {
 		q = q.Update("error_message", d.ErrorMessage)
 	}
 	if state == StateUploaded && d.RawBundleID != nil {
@@ -162,6 +163,7 @@ func isValidState(state string) bool {
 		StateUploaded == state ||
 		StatePendingDeploy == state ||
 		StateDeployed == state ||
+		StateDeployFailed == state ||
 		StatePendingRollback == state ||
 		StatePendingBuild == state ||
 		StateBuilt == state ||

@@ -181,9 +181,7 @@ var _ = Describe("Deployment", func() {
 	})
 
 	Describe("UpdateState()", func() {
-		var (
-			d *deployment.Deployment
-		)
+		var d *deployment.Deployment
 
 		BeforeEach(func() {
 			u := factories.User(db)
@@ -200,7 +198,7 @@ var _ = Describe("Deployment", func() {
 			Expect(d.ErrorMessage).To(BeNil())
 		})
 
-		It("updates state and deployed_at if updates to deployed state", func() {
+		It("updates state and deployed_at when new state is deployed", func() {
 			err := d.UpdateState(db, deployment.StateDeployed)
 			Expect(err).To(BeNil())
 
@@ -210,7 +208,7 @@ var _ = Describe("Deployment", func() {
 			Expect(d.ErrorMessage).To(BeNil())
 		})
 
-		It("updates state and error_message if updates to build_failed state", func() {
+		It("updates state and error_message when new state is build_failed", func() {
 			msg := "You did something wrong"
 			d.ErrorMessage = &msg
 			err := d.UpdateState(db, deployment.StateBuildFailed)
@@ -239,6 +237,18 @@ var _ = Describe("Deployment", func() {
 			Expect(d.State).To(Equal(deployment.StateUploaded))
 			Expect(*d.RawBundleID).To(Equal(rb.ID))
 			Expect(d.DeployedAt).To(BeNil())
+		})
+
+		It("updates state and error_message when new state is deploy_failed", func() {
+			msg := "You did something wrong"
+			d.ErrorMessage = &msg
+			err := d.UpdateState(db, deployment.StateDeployFailed)
+			Expect(err).To(BeNil())
+
+			Expect(d.State).To(Equal(deployment.StateDeployFailed))
+			Expect(d.DeployedAt).To(BeNil())
+			Expect(d.ErrorMessage).NotTo(BeNil())
+			Expect(*d.ErrorMessage).To(Equal(msg))
 		})
 	})
 })
