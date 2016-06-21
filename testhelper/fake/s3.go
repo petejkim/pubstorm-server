@@ -3,6 +3,7 @@ package fake
 import (
 	"io"
 	"io/ioutil"
+	"time"
 )
 
 type S3 struct {
@@ -15,6 +16,8 @@ type S3 struct {
 	DownloadError  error
 	DeleteError    error
 	DeleteAllError error
+
+	UploadTimeout time.Duration
 
 	DownloadContent []byte
 }
@@ -40,6 +43,9 @@ func (s *S3) Upload(region, bucket, key string, body io.Reader, contentType, acl
 	s.UploadCalls.Add(List{region, bucket, key, body, contentType, acl}, List{err}, Map{
 		"uploaded_content": content,
 	})
+
+	// This is to simulate slow uploading.
+	time.Sleep(s.UploadTimeout)
 
 	return err
 }

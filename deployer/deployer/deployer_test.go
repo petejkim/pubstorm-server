@@ -634,17 +634,55 @@ var _ = Describe("Deployer", func() {
 			lockedTime := time.Now().Add(-time.Minute)
 			proj.LockedAt = &lockedTime
 			Expect(db.Save(proj).Error).To(BeNil())
-		})
 
-		It("returns an error", func() {
 			// mock download
 			fakeS3.DownloadContent, err = ioutil.ReadFile("../../testhelper/fixtures/website.tar.gz")
 			Expect(err).To(BeNil())
+		})
 
+		It("returns an error", func() {
 			err = deployer.Work([]byte(fmt.Sprintf(`{
 				"deployment_id": %d
 			}`, depl.ID)))
 			Expect(err).To(Equal(deployer.ErrProjectLocked))
+		})
+	})
+
+	Context("when the upload times out", func() {
+		var uploadTimeoutOrig time.Duration
+
+		BeforeEach(func() {
+			fakeS3.UploadTimeout = 50 * time.Millisecond
+			uploadTimeoutOrig = deployer.UploadTimeout
+			deployer.UploadTimeout = 10 * time.Millisecond
+
+			fakeS3.DownloadContent, err = ioutil.ReadFile("../../testhelper/fixtures/website.tar.gz")
+			Expect(err).To(BeNil())
+		})
+
+		AfterEach(func() {
+			deployer.UploadTimeout = uploadTimeoutOrig
+		})
+
+		It("does not return any errors, so it can start next job", func() {
+			err = deployer.Work([]byte(fmt.Sprintf(`{
+				"deployment_id": %d
+			}`, depl.ID)))
+			Expect(err).To(Equal(deployer.ErrTimeout))
+
+			// Wait until uploading goroutine is finished
+			time.Sleep(50 * time.Millisecond)
+		})
+
+		It("does not upload the rest of files", func() {
+			deployer.Work([]byte(fmt.Sprintf(`{
+				"deployment_id": %d
+			}`, depl.ID)))
+
+			time.Sleep(50 * time.Millisecond)
+			// It times out on first uploading call and fails on the second call due to invalid fd
+			// Because it closes body of the tar file after timeout
+			Expect(fakeS3.UploadCalls.Count()).To(Equal(2))
 		})
 	})
 })
