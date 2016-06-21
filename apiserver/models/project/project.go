@@ -263,3 +263,34 @@ func (p *Project) EncryptBasicAuthPassword() error {
 	p.EncryptedBasicAuthPassword = &encryptedPassword
 	return nil
 }
+
+// Returns list of domain names with protocal for this project
+func (p *Project) DomainNamesWithProtocol(db *gorm.DB) ([]string, error) {
+	doms := []*struct {
+		Name   string
+		CertID *uint
+	}{}
+
+	if err := db.Table("domains").Select("domains.Name, certs.ID AS cert_id").Joins("LEFT JOIN certs ON domains.id = certs.domain_id AND certs.deleted_at is null").Where("project_id = ? AND domains.deleted_at is null", p.ID).Find(&doms).Error; err != nil {
+		return nil, err
+	}
+
+	domNames := make([]string, len(doms))
+	for i, dom := range doms {
+		if dom.CertID != nil {
+			domNames[i] = "https://" + dom.Name
+		} else {
+			domNames[i] = "http://" + dom.Name
+		}
+	}
+
+	sort.Sort(sort.StringSlice(domNames))
+
+	// We always use https for defaut domain
+	if p.DefaultDomainEnabled {
+		domainNameWithProtocol := "https://" + p.DefaultDomainName()
+		domNames = append([]string{domainNameWithProtocol}, domNames...)
+	}
+
+	return domNames, nil
+}

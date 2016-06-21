@@ -509,4 +509,107 @@ var _ = Describe("Project", func() {
 			Expect(proj.EncryptedBasicAuthPassword).To(BeNil())
 		})
 	})
+
+	Describe("DomainNamesWithProtocol()", func() {
+		Context("there are no domains for the project", func() {
+			It("only returns the default subdomain", func() {
+				domainNames, err := proj.DomainNamesWithProtocol(db)
+				Expect(err).To(BeNil())
+				Expect(domainNames).To(Equal([]string{"https://" + proj.DefaultDomainName()}))
+			})
+
+			Context("when default domain is disabled", func() {
+				BeforeEach(func() {
+					proj.DefaultDomainEnabled = false
+					Expect(db.Save(proj).Error).To(BeNil())
+				})
+
+				It("returns an empty slice", func() {
+					domainNames, err := proj.DomainNamesWithProtocol(db)
+					Expect(err).To(BeNil())
+					Expect(domainNames).To(BeEmpty())
+				})
+			})
+		})
+
+		Context("there are domains for the project", func() {
+			var dom1 *domain.Domain
+
+			BeforeEach(func() {
+				dom1 = &domain.Domain{
+					ProjectID: proj.ID,
+					Name:      "foo-bar-express.com",
+				}
+				err := db.Create(dom1).Error
+				Expect(err).To(BeNil())
+
+				dom2 := &domain.Domain{
+					ProjectID: proj.ID,
+					Name:      "foobarexpress.com",
+				}
+				err = db.Create(dom2).Error
+				Expect(err).To(BeNil())
+			})
+
+			It("returns custom domains with 'http://'", func() {
+				domainNames, err := proj.DomainNamesWithProtocol(db)
+				Expect(err).To(BeNil())
+				Expect(domainNames).To(Equal([]string{
+					"https://" + proj.DefaultDomainName(),
+					"http://foo-bar-express.com",
+					"http://foobarexpress.com",
+				}))
+			})
+
+			Context("when cert exists for some custom domains", func() {
+				var ct *cert.Cert
+
+				BeforeEach(func() {
+					ct = factories.Cert(db, dom1)
+				})
+
+				It("returns custom domain name that has cert with 'https://'", func() {
+					domainNames, err := proj.DomainNamesWithProtocol(db)
+					Expect(err).To(BeNil())
+					Expect(domainNames).To(Equal([]string{
+						"https://" + proj.DefaultDomainName(),
+						"http://foobarexpress.com",
+						"https://foo-bar-express.com",
+					}))
+				})
+
+				Context("when existing cert is soft-deleted", func() {
+					BeforeEach(func() {
+						Expect(db.Delete(ct).Error).To(BeNil())
+					})
+
+					It("returns custom domain name that has cert with 'https://'", func() {
+						domainNames, err := proj.DomainNamesWithProtocol(db)
+						Expect(err).To(BeNil())
+						Expect(domainNames).To(Equal([]string{
+							"https://" + proj.DefaultDomainName(),
+							"http://foo-bar-express.com",
+							"http://foobarexpress.com",
+						}))
+					})
+				})
+			})
+
+			Context("when default domain is disabled", func() {
+				BeforeEach(func() {
+					proj.DefaultDomainEnabled = false
+					Expect(db.Save(proj).Error).To(BeNil())
+				})
+
+				It("returns custom domains with 'http://', excluding the default domain", func() {
+					domainNames, err := proj.DomainNamesWithProtocol(db)
+					Expect(err).To(BeNil())
+					Expect(domainNames).To(Equal([]string{
+						"http://foo-bar-express.com",
+						"http://foobarexpress.com",
+					}))
+				})
+			})
+		})
+	})
 })

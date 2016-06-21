@@ -628,4 +628,23 @@ var _ = Describe("Deployer", func() {
 			Expect(downloadCall.ReturnValues[0]).To(BeNil())
 		})
 	})
+
+	Context("when the project is locked", func() {
+		BeforeEach(func() {
+			lockedTime := time.Now().Add(-time.Minute)
+			proj.LockedAt = &lockedTime
+			Expect(db.Save(proj).Error).To(BeNil())
+		})
+
+		It("returns an error", func() {
+			// mock download
+			fakeS3.DownloadContent, err = ioutil.ReadFile("../../testhelper/fixtures/website.tar.gz")
+			Expect(err).To(BeNil())
+
+			err = deployer.Work([]byte(fmt.Sprintf(`{
+				"deployment_id": %d
+			}`, depl.ID)))
+			Expect(err).To(Equal(deployer.ErrProjectLocked))
+		})
+	})
 })

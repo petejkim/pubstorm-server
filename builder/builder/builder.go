@@ -5,6 +5,7 @@ import (
 	"compress/gzip"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"io/ioutil"
 	"log"
@@ -17,6 +18,7 @@ import (
 
 	"github.com/nitrous-io/rise-server/apiserver/dbconn"
 	"github.com/nitrous-io/rise-server/apiserver/models/deployment"
+	"github.com/nitrous-io/rise-server/apiserver/models/project"
 	"github.com/nitrous-io/rise-server/apiserver/models/rawbundle"
 	"github.com/nitrous-io/rise-server/pkg/filetransfer"
 	"github.com/nitrous-io/rise-server/pkg/job"
@@ -52,9 +54,10 @@ var (
 	ErrProjectLocked    = errors.New("project is locked")
 	ErrOptimizerTimeout = errors.New("Timed out on optimizing assets. This might happen due to too large asset files. We will continue without optimizing your assets.")
 
-	OptimizerCmd = func(srcDir string) *exec.Cmd {
-		return exec.Command("docker", "run", "-v", srcDir+":"+OptimizePath, "--rm", OptimizerDockerImage)
+	OptimizerCmd = func(containerName string, srcDir string, domainNames []string) *exec.Cmd {
+		return exec.Command("docker", "run", "--name", containerName, "-v", srcDir+":"+OptimizePath, "-e", "DOMAIN_NAMES_WITH_PROTOCOL="+strings.Join(domainNames, ","), "--rm", OptimizerDockerImage)
 	}
+
 	OptimizerTimeout = 5 * 60 * time.Second // 5 mins
 )
 
@@ -73,8 +76,18 @@ func Work(data []byte) error {
 	if err := db.First(depl, d.DeploymentID).Error; err != nil {
 		return err
 	}
+
 	if depl.State != deployment.StatePendingBuild {
 		return errUnexpectedState
+	}
+
+	proj := &project.Project{}
+	if err := db.Where("id = ?", depl.ProjectID).First(proj).Error; err != nil {
+		return err
+	}
+
+	if proj.LockedAt != nil {
+		return ErrProjectLocked
 	}
 
 	var rawBundlePath string
@@ -115,15 +128,9 @@ func Work(data []byte) error {
 
 	gr, err := gzip.NewReader(f)
 	if err != nil {
-		log.Println("could not unzip", err)
 		return err
 	}
 	defer gr.Close()
-
-	var (
-		absPaths []string
-		relPaths []string
-	)
 
 	tr := tar.NewReader(gr)
 	for {
@@ -155,9 +162,6 @@ func Work(data []byte) error {
 		if _, err := io.Copy(entry, tr); err != nil {
 			return err
 		}
-
-		relPaths = append(relPaths, fileName)
-		absPaths = append(absPaths, targetFileName)
 	}
 
 	optimizedBundleTarball, err := ioutil.TempFile("", "optimized-bundle.tar.gz")
@@ -173,7 +177,12 @@ func Work(data []byte) error {
 	nextState := deployment.StateBuilt
 
 	// Optimize assets
-	output, err := runOptimizer(dirName)
+	domainNames, err := proj.DomainNamesWithProtocol(db)
+	if err != nil {
+		return err
+	}
+
+	output, err := runOptimizer(fmt.Sprintf("%s-%d", prefixID, time.Now().Unix()), dirName, domainNames)
 	if err == nil {
 		var errorMessages []string
 		outputs := strings.Split(output, "\n")
@@ -189,7 +198,7 @@ func Work(data []byte) error {
 			depl.ErrorMessage = &errorMessage
 		}
 
-		if err := pack(optimizedBundleTarball, absPaths, relPaths); err != nil {
+		if err := pack(optimizedBundleTarball, dirName); err != nil {
 			return err
 		}
 
@@ -230,7 +239,7 @@ func Work(data []byte) error {
 	return nil
 }
 
-func pack(writer io.Writer, absPaths, relPaths []string) error {
+func pack(writer io.Writer, dirName string) error {
 	gw := gzip.NewWriter(writer)
 	defer func() {
 		gw.Flush()
@@ -243,19 +252,25 @@ func pack(writer io.Writer, absPaths, relPaths []string) error {
 		tw.Close()
 	}()
 
-	for index, absPath := range absPaths {
-		fi, err := os.Stat(absPath)
+	walk := func(absPath string, fi os.FileInfo, err error) error {
 		if err != nil {
 			return err
 		}
 
-		relPath := relPaths[index]
+		if fi.IsDir() {
+			return nil
+		}
+
+		relPath, err := filepath.Rel(dirName, absPath)
+		if err != nil {
+			return err
+		}
 
 		hdr, err := tar.FileInfoHeader(fi, relPath)
-		hdr.Name = relPath
 		if err != nil {
 			return err
 		}
+		hdr.Name = relPath
 
 		if err := tw.WriteHeader(hdr); err != nil {
 			return err
@@ -270,14 +285,22 @@ func pack(writer io.Writer, absPaths, relPaths []string) error {
 		if _, err = io.Copy(tw, ff); err != nil {
 			return err
 		}
+
+		return nil
 	}
+
+	err := filepath.Walk(dirName, walk)
+	if err != nil {
+		return err
+	}
+
 	return nil
 }
 
-func runOptimizer(srcDir string) (output string, err error) {
+func runOptimizer(containerName, srcDir string, domainNames []string) (output string, err error) {
 	outCh := make(chan string)
 	errCh := make(chan error)
-	cmd := OptimizerCmd(srcDir)
+	cmd := OptimizerCmd(containerName, srcDir, domainNames)
 
 	go func() {
 		out, err := cmd.CombinedOutput()
@@ -297,9 +320,12 @@ func runOptimizer(srcDir string) (output string, err error) {
 	case err := <-errCh:
 		return "", err
 	case <-time.After(OptimizerTimeout):
-		if cmd.Process != nil {
-			cmd.Process.Kill()
+		if _, err := exec.Command("docker", "rm", "-f", containerName).CombinedOutput(); err != nil {
+			if cmd.Process != nil {
+				cmd.Process.Kill()
+			}
 		}
+
 		return "", ErrOptimizerTimeout
 	}
 }

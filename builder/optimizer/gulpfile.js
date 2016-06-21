@@ -4,16 +4,19 @@ var uglify = require('gulp-uglify');
 var plumber = require('gulp-plumber');
 var cleanCSS = require('gulp-clean-css');
 var imagemin = require('gulp-imagemin');
+var sitemap = require('gulp-sitemap');
 var runSequence = require('run-sequence');
+var merge = require('merge-stream');
+var fs = require('fs');
 
 var paths = {
   js: ['build/**/*.js'],
   css: ['build/**/*.css'],
-  html: ['build/**/*.html'],
-  image: ['build/**/*.jpeg','build/**/*.jpg','build/**/*.png','build/**/*.gif','build/**/*.svg']
+  html: ['build/**/*.html', 'build/**/*.htm'],
+  image: ['build/**/*.jpeg', 'build/**/*.jpg', 'build/**/*.png', 'build/**/*.gif', 'build/**/*.svg']
 };
 
-jsErrorHandler = function(err) {
+var jsErrorHandler = function(err) {
   var errorMsg = [];
   if (err.fileName) {
     var filename = err.fileName.split("build/", 2)[1];
@@ -29,10 +32,10 @@ jsErrorHandler = function(err) {
     errorMsg.push(error);
   }
 
-  console.log("[Error] "+ errorMsg.join(':'));
-}
+  console.log("[Error] " + errorMsg.join(':'));
+};
 
-cssErrorHandler = function(err) {
+var cssErrorHandler = function(err) {
   var errorMsg = [];
   if (err.errors.length > 0 || err.warnings.length > 0) {
     if (err.path) {
@@ -41,11 +44,11 @@ cssErrorHandler = function(err) {
     }
     errorMsg = errorMsg.concat(err.errors);
     errorMsg = errorMsg.concat(err.warnings);
-    console.log("[Error] "+ errorMsg.join(':').replace(/[\r\n]/g, ''));
+    console.log("[Error] " + errorMsg.join(':').replace(/[\r\n]/g, ''));
   }
-}
+};
 
-htmlErrorHandler = function(err) {
+var htmlErrorHandler = function(err) {
   var errorMsg = [];
   if (err.fileName) {
     var filename = err.fileName.split("build/", 2)[1];
@@ -56,34 +59,80 @@ htmlErrorHandler = function(err) {
     errorMsg.push(err.message);
   }
 
-  console.log("[Error] "+ errorMsg.join(':').replace(/[\r\n]/g, ''));
-}
+  console.log("[Error] " + errorMsg.join(':').replace(/[\r\n]/g, ''));
+};
 
-imageErrorHandler = function(err) {
+var imageErrorHandler = function(err) {
   var filename;
   if (err.fileName) {
     filename = err.fileName.split("build/", 2)[1];
   }
 
   console.log("[Error] " + filename + ":Failed to optimize");
-}
+};
+
+var sitemapErrorHandler = function(err) {
+  if (err) {
+    console.log("[Error] " + err);
+  }
+};
 
 gulp.task('js', function() {
   return gulp.src(paths.js).pipe(plumber()).pipe(uglify().on('error', jsErrorHandler)).pipe(plumber.stop()).pipe(gulp.dest('build'));
 });
 
 gulp.task('css', function() {
-  return gulp.src(paths.css).pipe(cleanCSS({debug: true}, cssErrorHandler)).pipe(gulp.dest('build'));
+  return gulp.src(paths.css).pipe(cleanCSS({ debug: true }, cssErrorHandler)).pipe(gulp.dest('build'));
 });
 
 gulp.task('html', function() {
-  return gulp.src(paths.html).pipe(htmlmin({collapseWhitespace: true, conservativeCollapse: true}).on('error', htmlErrorHandler)).pipe(gulp.dest('build'));
+  return gulp.src(paths.html).pipe(htmlmin({ collapseWhitespace: true, conservativeCollapse: true }).on('error', htmlErrorHandler)).pipe(gulp.dest('build'));
 });
 
 gulp.task('image', function() {
   return gulp.src(paths.image).pipe(imagemin().on('error', imageErrorHandler)).pipe(gulp.dest('build'));
 });
 
+gulp.task('sitemap', function() {
+  var domainNames = process.env.DOMAIN_NAMES_WITH_PROTOCOL
+  if (domainNames) {
+    var xmlBody = ['<?xml version="1.0" encoding="UTF-8"?>', '<sitemapindex xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">'];
+    var domainNames = domainNames.split(",");
+
+    var tasks = domainNames.map(function(domainName) {
+      var fileName = "sitemap-" + domainName.replace(/https?:\/\//, '').replace(/\./g, '-') + ".xml";
+      var entry = ['<sitemap>',
+        '<loc>'+ domainName + '/sitemap/' + fileName + '</loc>',
+        '<lastmod>' + new Date().toISOString() + '</lastmod>',
+        '</sitemap>'
+      ];
+
+      xmlBody = xmlBody.concat(entry);
+      return gulp.src(paths.html, { read: false }).pipe(sitemap({ siteUrl: domainName, fileName: fileName }).on('error', sitemapErrorHandler)).pipe(gulp.dest('build/sitemap'));
+    });
+
+    xmlBody.push('</sitemapindex>');
+    fs.writeFile('build/sitemap.xml', xmlBody.join(''), sitemapErrorHandler);
+    return merge(tasks);
+  }
+});
+
+gulp.task('fix-sitemap-permission', function() {
+  var domainNames = process.env.DOMAIN_NAMES_WITH_PROTOCOL
+  if (domainNames) {
+    var domainNames = domainNames.split(",");
+
+    domainNames.forEach(function(domainName) {
+      var fileName = "sitemap-" + domainName.replace(/https?:\/\//, '').replace(/\./g, '-') + ".xml";
+
+      fs.chmod('build/sitemap/' + fileName, 0777, sitemapErrorHandler);
+    });
+    fs.chmod('build/sitemap', 0777, sitemapErrorHandler);
+    fs.chmod('build/sitemap.xml', 0777, sitemapErrorHandler);
+  }
+});
+
 gulp.task('default', function() {
-  runSequence('js', 'css', 'image', 'html')
-})
+  // 'html' task should be running after other tasks since it does not continue if there is any error
+  runSequence('js', 'css', 'image', 'sitemap', 'fix-sitemap-permission', 'html');
+});
