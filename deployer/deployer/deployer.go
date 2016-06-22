@@ -6,6 +6,7 @@ import (
 	"compress/gzip"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"io/ioutil"
 	"log"
@@ -32,7 +33,9 @@ import (
 
 var (
 	ErrProjectLocked = errors.New("project is locked")
-	UploadTimeout    = 3 * time.Minute
+	ErrTimeout       = errors.New("failed to upload files due to timeout on uploading to s3")
+
+	UploadTimeout = 3 * time.Minute
 )
 
 func init() {
@@ -111,17 +114,19 @@ func Work(data []byte) error {
 
 		done := make(chan struct{})
 		errCh := make(chan error)
-		go func() {
-			gr, err := gzip.NewReader(f)
-			if err != nil {
-				errCh <- err
-			}
-			defer gr.Close()
 
+		gr, err := gzip.NewReader(f)
+		if err != nil {
+			return err
+		}
+		tr := tar.NewReader(gr)
+
+		defer gr.Close()
+
+		go func() {
 			// webroot is a publicly readable directory on S3.
 			webroot := "deployments/" + prefixID + "/webroot"
 
-			tr := tar.NewReader(gr)
 			for {
 				hdr, err := tr.Next()
 				if err != nil {
@@ -129,6 +134,7 @@ func Work(data []byte) error {
 						break
 					}
 					errCh <- err
+					return
 				}
 
 				if hdr.FileInfo().IsDir() {
@@ -145,6 +151,7 @@ func Work(data []byte) error {
 
 				if err := S3.Upload(s3client.BucketRegion, s3client.BucketName, remotePath, tr, contentType, "public-read"); err != nil {
 					errCh <- err
+					return
 				}
 			}
 
@@ -156,8 +163,13 @@ func Work(data []byte) error {
 		case err := <-errCh:
 			return err
 		case <-time.After(UploadTimeout):
-			log.Printf("failed to upload files due to timeout on uploading to s3")
-			return nil
+			errorMessage := "Timed out due to too many files"
+			depl.ErrorMessage = &errorMessage
+			if err := depl.UpdateState(db, deployment.StateDeployFailed); err != nil {
+				fmt.Printf("Failed to update deployment state for %s due to %v", prefixID, err)
+			}
+
+			return ErrTimeout
 		}
 	}
 
