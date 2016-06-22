@@ -52,6 +52,7 @@ func Draw(r *gin.Engine) {
 			projCollab.GET("/collaborators", projects.ListCollaborators)
 			projCollab.GET("/domains/:name/cert", certs.Show)
 			projCollab.POST("/domains/:name/cert", certs.Create)
+			projCollab.POST("/domains/:name/cert/letsencrypt", certs.LetsEncrypt)
 			projCollab.DELETE("/domains/:name/cert", certs.Destroy)
 			projCollab.GET("/raw_bundles/:bundle_checksum", rawbundles.Get)
 			projCollab.GET("/jsenvvars", jsenvvars.Index)

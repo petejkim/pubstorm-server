@@ -4,6 +4,7 @@ export RISE_ENV=${RISE_ENV:-"development"}
 export POSTGRES_URL=${POSTGRES_URL:-"postgres:///rise_$RISE_ENV?host=/var/run/postgresql"}
 export AMQP_URL=${AMQP_URL:-"amqp://admin:password@localhost:5672/rise_$RISE_ENV"}
 export ELASTICSEARCH_URL=${ELASTICSEARCH_URL:-"http://localhost:9200"}
+export ACME_URL=${ACME_URL:-"https://acme-staging.api.letsencrypt.org/directory"}
 echo "RISE_ENV is \"$RISE_ENV\""
 
 $(eval echo "$@")

@@ -2,6 +2,8 @@ package certs_test
 
 import (
 	"bytes"
+	"crypto/x509"
+	"encoding/pem"
 	"fmt"
 	"mime/multipart"
 	"net/http"
@@ -13,6 +15,7 @@ import (
 	"github.com/nitrous-io/rise-server/apiserver/common"
 	"github.com/nitrous-io/rise-server/apiserver/controllers/certs"
 	"github.com/nitrous-io/rise-server/apiserver/dbconn"
+	"github.com/nitrous-io/rise-server/apiserver/models/acmecert"
 	"github.com/nitrous-io/rise-server/apiserver/models/cert"
 	"github.com/nitrous-io/rise-server/apiserver/models/deployment"
 	"github.com/nitrous-io/rise-server/apiserver/models/domain"
@@ -25,7 +28,6 @@ import (
 	"github.com/nitrous-io/rise-server/pkg/filetransfer"
 	"github.com/nitrous-io/rise-server/pkg/mqconn"
 	"github.com/nitrous-io/rise-server/pkg/tracker"
-	"github.com/nitrous-io/rise-server/shared"
 	"github.com/nitrous-io/rise-server/shared/exchanges"
 	"github.com/nitrous-io/rise-server/shared/queues"
 	"github.com/nitrous-io/rise-server/shared/s3client"
@@ -35,6 +37,7 @@ import (
 	"github.com/nitrous-io/rise-server/testhelper/sharedexamples"
 	. "github.com/onsi/ginkgo"
 	. "github.com/onsi/gomega"
+	"github.com/onsi/gomega/ghttp"
 	"github.com/streadway/amqp"
 )
 
@@ -231,7 +234,7 @@ A6ao9QSL1ryillYV9Y4001C3jApzmMtBWoMp3NPzwU8nacAOzClJYUcSLkbAIEWV
 
 		doRequestWithDefaultDomain := func() {
 			s = httptest.NewServer(server.New())
-			res, err = testhelper.MakeRequest("POST", s.URL+"/projects/foo-bar-express/domains/foo-bar-express."+shared.DefaultDomain+"/cert", nil, headers, nil)
+			res, err = testhelper.MakeRequest("POST", s.URL+"/projects/foo-bar-express/domains/"+proj.DefaultDomainName()+"/cert", nil, headers, nil)
 			Expect(err).To(BeNil())
 		}
 
@@ -315,7 +318,7 @@ A6ao9QSL1ryillYV9Y4001C3jApzmMtBWoMp3NPzwU8nacAOzClJYUcSLkbAIEWV
 			Expect(*ct.Subject).To(Equal("/C=SG/O=Nitrous.io/L=Singapore/ST=Singapore/CN=*.foo-bar-express.com"))
 		})
 
-		It("uploads certificate and private keys", func() {
+		It("uploads certificate and private key", func() {
 			doRequest()
 			Expect(fakeS3.UploadCalls.Count()).To(Equal(2))
 
@@ -647,6 +650,444 @@ A6ao9QSL1ryillYV9Y4001C3jApzmMtBWoMp3NPzwU8nacAOzClJYUcSLkbAIEWV
 		})
 	})
 
+	Describe("POST /projects/:project_name/domains/:name/cert/letsencrypt", func() {
+		var (
+			headers http.Header
+
+			u    *user.User
+			t    *oauthtoken.OauthToken
+			proj *project.Project
+			dm   *domain.Domain
+
+			fakeS3 *fake.S3
+			origS3 filetransfer.FileTransfer
+
+			mq                    *amqp.Connection
+			invalidationQueueName string
+
+			acmeServer *ghttp.Server
+
+			origAesKey  string
+			origAcmeURL string
+
+			letsencryptPEM *pem.Block
+
+			// These values can be changed in tests to test cases other than the
+			// "happy path".
+			newAuthzStatusCode  int
+			newAuthzBody        string
+			challengeStatusCode int
+			challengeBody       string
+		)
+
+		BeforeEach(func() {
+			u, _, t = factories.AuthTrio(db)
+
+			proj = &project.Project{
+				Name:   "foo-bar-express",
+				UserID: u.ID,
+			}
+			Expect(db.Create(proj).Error).To(BeNil())
+
+			dm = factories.Domain(db, proj, "www.foo-bar-express.com")
+
+			headers = http.Header{
+				"Authorization": {"Bearer " + t.Token},
+			}
+
+			origS3 = s3client.S3
+			fakeS3 = &fake.S3{}
+			s3client.S3 = fakeS3
+
+			mq, err = mqconn.MQ()
+			Expect(err).To(BeNil())
+
+			invalidationQueueName = testhelper.StartQueueWithExchange(mq, exchanges.Edges, exchanges.RouteV1Invalidation)
+
+			// Decode PEM encoded cert so that we can return it from the mock
+			// ACME server in ASN.1 DER format.
+			letsencryptPEM, _ = pem.Decode(letsencryptCert)
+
+			acmeServer = ghttp.NewServer()
+
+			newAuthzStatusCode = http.StatusCreated
+			newAuthzBody = `{
+				"identifier": {
+					"type": "dns",
+					"value": "www.foo-bar-express.com"
+				},
+				"status": "pending",
+				"expires": "2016-06-28T09:41:07.002634342Z",
+				"challenges": [
+					{
+						"type": "http-01",
+						"status": "pending",
+						"uri": "` + acmeServer.URL() + `/acme/challenge/abcde/124",
+						"token": "secret-token"
+					}
+				],
+				"combinations": [
+					[0],
+					[1],
+					[2]
+				]
+			}`
+			challengeStatusCode = http.StatusAccepted
+			challengeBody = `{ "status": "valid" }`
+
+			// See https://tools.ietf.org/html/draft-ietf-acme-acme-02 for how
+			// an ACME server is supposed to work.
+			acmeServer.AppendHandlers(
+				ghttp.CombineHandlers(
+					ghttp.VerifyRequest("GET", "/"),
+					ghttp.RespondWith(http.StatusOK, `{
+						"new-authz": "`+acmeServer.URL()+`/new-authz",
+						"new-cert": "`+acmeServer.URL()+`/new-cert",
+						"new-reg": "`+acmeServer.URL()+`/new-reg",
+						"revoke-cert": "`+acmeServer.URL()+`/revoke-cert"
+					}`, http.Header{"Replay-Nonce": {"nonce-1"}}),
+				),
+				ghttp.CombineHandlers(
+					ghttp.VerifyRequest("GET", "/terms"),
+					ghttp.RespondWith(http.StatusOK, "ToS PDF file"),
+				),
+				ghttp.CombineHandlers(
+					ghttp.VerifyRequest("POST", "/new-reg"),
+					ghttp.VerifyContentType("application/jose+jws"),
+					ghttp.RespondWith(http.StatusCreated, `{
+						"resource": "new-reg",
+						"contact": [
+							"mailto:cert-admin@example.com"
+						],
+						"agreement": "`+acmeServer.URL()+`/terms",
+						"authorizations": "",
+						"certificates": ""
+					}`, http.Header{"Replay-Nonce": {"nonce-2"}}),
+				),
+				ghttp.CombineHandlers(
+					ghttp.VerifyRequest("POST", "/new-authz"),
+					ghttp.VerifyContentType("application/jose+jws"),
+					ghttp.RespondWithPtr(&newAuthzStatusCode, &newAuthzBody, http.Header{"Replay-Nonce": {"nonce-3"}}),
+				),
+				ghttp.CombineHandlers(
+					ghttp.VerifyRequest("POST", "/acme/challenge/abcde/124"),
+					ghttp.VerifyContentType("application/jose+jws"),
+					ghttp.RespondWith(http.StatusAccepted, `{}`, http.Header{"Replay-Nonce": {"nonce-4"}}),
+				),
+				ghttp.CombineHandlers(
+					ghttp.VerifyRequest("GET", "/acme/challenge/abcde/124"),
+					ghttp.RespondWithPtr(&challengeStatusCode, &challengeBody, http.Header{"Replay-Nonce": {"nonce-5"}}),
+				),
+				ghttp.CombineHandlers(
+					ghttp.VerifyRequest("POST", "/new-cert"),
+					ghttp.VerifyContentType("application/jose+jws"),
+					ghttp.RespondWith(http.StatusCreated, string(letsencryptPEM.Bytes), http.Header{"Replay-Nonce": {"nonce-6"}}),
+				),
+			)
+
+			origAesKey = common.AesKey
+			common.AesKey = "something-something-something-32"
+
+			origAcmeURL = common.AcmeURL
+			common.AcmeURL = acmeServer.URL()
+		})
+
+		AfterEach(func() {
+			s3client.S3 = origS3
+			acmeServer.Close()
+			common.AesKey = origAesKey
+			common.AcmeURL = origAcmeURL
+		})
+
+		doRequest := func() {
+			s = httptest.NewServer(server.New())
+			res, err = testhelper.MakeRequest("POST", s.URL+"/projects/"+proj.Name+"/domains/"+dm.Name+"/cert/letsencrypt", nil, headers, nil)
+			Expect(err).To(BeNil())
+		}
+
+		doRequestWithDefaultDomain := func() {
+			s = httptest.NewServer(server.New())
+			res, err = testhelper.MakeRequest("POST", s.URL+"/projects/"+proj.Name+"/domains/"+proj.DefaultDomainName()+"/cert/letsencrypt", nil, headers, nil)
+			Expect(err).To(BeNil())
+		}
+
+		sharedexamples.ItRequiresAuthentication(func() (*gorm.DB, *user.User, *http.Header) {
+			return db, u, &headers
+		}, func() *http.Response {
+			doRequest()
+			return res
+		}, nil)
+
+		sharedexamples.ItRequiresProject(func() (*gorm.DB, *project.Project) {
+			return db, proj
+		}, func() *http.Response {
+			doRequest()
+			return res
+		}, nil)
+
+		It("returns 200 OK", func() {
+			doRequest()
+
+			Expect(res.StatusCode).To(Equal(http.StatusOK))
+
+			ct := &cert.Cert{}
+			Expect(db.Last(ct).Error).To(BeNil())
+
+			b := &bytes.Buffer{}
+			_, err = b.ReadFrom(res.Body)
+
+			Expect(b.String()).To(MatchJSON(fmt.Sprintf(`{
+				"cert": {
+					"id": %d,
+					"starts_at": %s,
+					"expires_at": %s,
+					"common_name": "%s",
+					"issuer": "%s"
+				}
+			}`, ct.ID, formattedTimeForJSON(ct.StartsAt), formattedTimeForJSON(ct.ExpiresAt), *ct.CommonName, *ct.Issuer)))
+		})
+
+		It("creates an ACME cert record for the domain", func() {
+			acmeCert := &acmecert.AcmeCert{}
+			err := db.Where("domain_id = ?", dm.ID).First(acmeCert).Error
+			Expect(err).To(Equal(gorm.RecordNotFound))
+
+			doRequest()
+
+			err = db.Where("domain_id = ?", dm.ID).First(acmeCert).Error
+			Expect(err).To(BeNil())
+
+			Expect(acmeCert.DomainID).To(Equal(dm.ID))
+			Expect(acmeCert.LetsencryptKey).NotTo(Equal(""))
+			Expect(acmeCert.PrivateKey).NotTo(Equal(""))
+			Expect(acmeCert.Cert).NotTo(Equal(""))
+		})
+
+		It("encrypts and saves the certificate returned from Let's Encrypted", func() {
+			doRequest()
+
+			acmeCert := &acmecert.AcmeCert{}
+			err := db.Where("domain_id = ?", dm.ID).First(acmeCert).Error
+			Expect(err).To(BeNil())
+
+			crt, err := acmeCert.DecryptedCert(common.AesKey)
+			Expect(err).To(BeNil())
+
+			letsencryptX509Cert, err := x509.ParseCertificate(letsencryptPEM.Bytes)
+			Expect(err).To(BeNil())
+
+			Expect(crt).To(Equal(letsencryptX509Cert))
+		})
+
+		It("uses an existing Let's Encrypt private key when there's one", func() {
+			acmeCert, err := acmecert.New(dm.ID, common.AesKey)
+			Expect(err).To(BeNil())
+			Expect(db.Create(acmeCert).Error).To(BeNil())
+
+			key := acmeCert.LetsencryptKey
+
+			doRequest()
+
+			err = db.Where("domain_id = ?", dm.ID).First(acmeCert).Error
+			Expect(err).To(BeNil())
+			Expect(acmeCert.LetsencryptKey).To(Equal(key))
+		})
+
+		It("uploads Let's Encrypt certificate and private key to S3", func() {
+			doRequest()
+			Expect(fakeS3.UploadCalls.Count()).To(Equal(2))
+
+			call := fakeS3.UploadCalls.NthCall(1)
+			Expect(call).NotTo(BeNil())
+			Expect(call.Arguments[0]).To(Equal(s3client.BucketRegion))
+			Expect(call.Arguments[1]).To(Equal(s3client.BucketName))
+			Expect(call.Arguments[2]).To(Equal("certs/www.foo-bar-express.com/ssl.crt"))
+			Expect(call.Arguments[4]).To(Equal(""))
+			Expect(call.Arguments[5]).To(Equal("private"))
+			encryptedCrt, ok := call.SideEffects["uploaded_content"].([]byte)
+			Expect(ok).To(BeTrue())
+			decryptedCrt, err := aesencrypter.Decrypt(encryptedCrt, []byte(common.AesKey))
+			Expect(err).To(BeNil())
+			Expect(decryptedCrt).To(Equal(letsencryptCert))
+
+			call = fakeS3.UploadCalls.NthCall(2)
+			Expect(call).NotTo(BeNil())
+			Expect(call.Arguments[0]).To(Equal(s3client.BucketRegion))
+			Expect(call.Arguments[1]).To(Equal(s3client.BucketName))
+			Expect(call.Arguments[2]).To(Equal("certs/www.foo-bar-express.com/ssl.key"))
+			Expect(call.Arguments[4]).To(Equal(""))
+			Expect(call.Arguments[5]).To(Equal("private"))
+			encryptedKey, ok := call.SideEffects["uploaded_content"].([]byte)
+			Expect(ok).To(BeTrue())
+			decryptedKey, err := aesencrypter.Decrypt(encryptedKey, []byte(common.AesKey))
+			Expect(err).To(BeNil())
+
+			acmeCert := &acmecert.AcmeCert{}
+			err = db.Where("domain_id = ?", dm.ID).First(acmeCert).Error
+			Expect(err).To(BeNil())
+
+			privKey, err := acmeCert.DecryptedPrivateKey(common.AesKey)
+			Expect(err).To(BeNil())
+			privKeyPEM := pem.EncodeToMemory(&pem.Block{
+				Type:  "RSA PRIVATE KEY",
+				Bytes: x509.MarshalPKCS1PrivateKey(privKey),
+			})
+
+			Expect(decryptedKey).To(Equal(privKeyPEM))
+		})
+
+		It("publishes invalidation message for the domain", func() {
+			doRequest()
+
+			d := testhelper.ConsumeQueue(mq, invalidationQueueName)
+			Expect(d).NotTo(BeNil())
+			Expect(d.Body).To(MatchJSON(`{"domains": ["www.foo-bar-express.com"]}`))
+		})
+
+		It("saves Let's Encrypt's HTTP challenge details", func() {
+			doRequest()
+
+			acmeCert := &acmecert.AcmeCert{}
+			err := db.Where("domain_id = ?", dm.ID).First(acmeCert).Error
+			Expect(err).To(BeNil())
+
+			Expect(acmeCert.HTTPChallengePath).To(Equal("/.well-known/acme-challenge/secret-token"))
+			Expect(acmeCert.HTTPChallengeResource).To((HavePrefix("secret-token.")))
+		})
+
+		It("tracks an Activated Let's Encrypt certificate event", func() {
+			doRequest()
+
+			trackCall := fakeTracker.TrackCalls.NthCall(1)
+			Expect(trackCall).NotTo(BeNil())
+			Expect(trackCall.Arguments[0]).To(Equal(fmt.Sprintf("%d", u.ID)))
+			Expect(trackCall.Arguments[1]).To(Equal("Activated Let's Encrypt certificate"))
+			Expect(trackCall.Arguments[2]).To(Equal(""))
+
+			t := trackCall.Arguments[3]
+			props, ok := t.(map[string]interface{})
+			Expect(ok).To(BeTrue())
+			Expect(props["projectName"]).To(Equal("foo-bar-express"))
+			Expect(props["domain"]).To(Equal("www.foo-bar-express.com"))
+
+			ct := &cert.Cert{}
+			Expect(db.Last(ct).Error).To(BeNil())
+			Expect(props["certId"]).To(Equal(ct.ID))
+			Expect(props["certIssuer"]).To(Equal(ct.Issuer))
+			Expect(props["certExpiresAt"]).To(Equal(ct.ExpiresAt))
+
+			Expect(trackCall.Arguments[4]).To(BeNil())
+			Expect(trackCall.ReturnValues[0]).To(BeNil())
+		})
+
+		Context("when Let's Encrypt fails to return a HTTP challenge", func() {
+			BeforeEach(func() {
+				newAuthzBody = `{
+					"identifier": {
+						"type": "dns",
+						"value": "www.foo-bar-express.com"
+					},
+					"status": "pending",
+					"expires": "2016-06-28T09:41:07.002634342Z",
+					"challenges": [
+						{
+							"type": "tls-sni-01",
+							"status": "pending",
+							"uri": "` + acmeServer.URL() + `/acme/challenge/abcde/124",
+							"token": "secret-token"
+						}
+					],
+					"combinations": [
+						[0],
+						[1],
+						[2]
+					]
+				}`
+			})
+
+			It("responds with HTTP 500", func() {
+				doRequest()
+
+				Expect(res.StatusCode).To(Equal(http.StatusInternalServerError))
+			})
+		})
+
+		Context("when Let's Encrypt is down", func() {
+			BeforeEach(func() {
+				crashedAcmeServer := ghttp.NewServer()
+				common.AcmeURL = crashedAcmeServer.URL()
+				crashedAcmeServer.Close()
+			})
+
+			It("responds with HTTP 503", func() {
+				doRequest()
+
+				Expect(res.StatusCode).To(Equal(http.StatusServiceUnavailable))
+
+				b := &bytes.Buffer{}
+				_, err = b.ReadFrom(res.Body)
+				Expect(b.String()).To(MatchJSON(`{
+					"error": "service_unavailable",
+					"error_description": "could not connect to Let's Encrypt"
+				}`))
+			})
+		})
+
+		Context("when Let's Encrypt fails to verify the challenge", func() {
+			BeforeEach(func() {
+				challengeBody = `{
+					"type": "http-01",
+					"status": "invalid",
+					"error": {
+						"type": "urn:acme:error:connection",
+						"detail": "DNS problem: NXDOMAIN looking up A for www.foo-bar-express.com",
+						"status": 400
+					},
+					"uri": "https://acme-staging.api.letsencrypt.org/acme/challenge/G4HRIqRDdp3ZaSqEfs6QDlT5mKYznW1UVhKxVJ4uYEc/8957093",
+					"token": "8tk3CajTQmTF7xca4IKKsHnEph0W5ojlbvnR07jeY2g",
+					"keyAuthorization": "8tk3CajTQmTF7xca4IKKsHnEph0W5ojlbvnR07jeY2g.Ox2Ol9LwrRKfChQfiK5-o73S0MdiEEO9MAYPsfbIq8I",
+					"validationRecord": [
+						{
+							"url": "http://www.foo-bar-express.com/.well-known/acme-challenge/8tk3CajTQmTF7xca4IKKsHnEph0W5ojlbvnR07jeY2g",
+							"hostname": "www.foo-bar-express.com",
+							"port": "80",
+							"addressesResolved": null,
+							"addressUsed": ""
+						}
+					]
+				}`
+			})
+
+			It("responds with HTTP 503", func() {
+				doRequest()
+
+				Expect(res.StatusCode).To(Equal(http.StatusServiceUnavailable))
+
+				b := &bytes.Buffer{}
+				_, err = b.ReadFrom(res.Body)
+				Expect(b.String()).To(MatchJSON(`{
+					"error": "service_unavailable",
+					"error_description": "domain could not be verified"
+				}`))
+			})
+		})
+
+		Context("when the default domain is given", func() {
+			It("responds with HTTP 403 forbidden", func() {
+				doRequestWithDefaultDomain()
+
+				Expect(res.StatusCode).To(Equal(http.StatusForbidden))
+
+				b := &bytes.Buffer{}
+				_, err = b.ReadFrom(res.Body)
+				Expect(b.String()).To(MatchJSON(`{
+					"error": "forbidden",
+					"error_description": "the default domain is already secure"
+				}`))
+			})
+		})
+	})
+
 	Describe("GET /projects/:project_name/domains/:domain_name/cert", func() {
 		var (
 			u  *user.User
@@ -972,3 +1413,29 @@ A6ao9QSL1ryillYV9Y4001C3jApzmMtBWoMp3NPzwU8nacAOzClJYUcSLkbAIEWV
 		}, nil)
 	})
 })
+
+var letsencryptCert = []byte(`-----BEGIN CERTIFICATE-----
+MIID/zCCAuegAwIBAgIJAKLhY+6EFezNMA0GCSqGSIb3DQEBCwUAMIGVMQswCQYD
+VQQGEwJTRzESMBAGA1UECAwJU2luZ2Fwb3JlMRIwEAYDVQQHDAlTaW5nYXBvcmUx
+EzARBgNVBAoMCk5pdHJvdXMuaW8xHjAcBgNVBAMMFSouZm9vLWJhci1leHByZXNz
+LmNvbTEpMCcGCSqGSIb3DQEJARYaZm9vLWJhci1leHByZXNzQG5pdHJvdXMuaW8w
+HhcNMTYwNDIwMDg1MDE1WhcNMTcwNDIwMDg1MDE1WjCBlTELMAkGA1UEBhMCU0cx
+EjAQBgNVBAgMCVNpbmdhcG9yZTESMBAGA1UEBwwJU2luZ2Fwb3JlMRMwEQYDVQQK
+DApOaXRyb3VzLmlvMR4wHAYDVQQDDBUqLmZvby1iYXItZXhwcmVzcy5jb20xKTAn
+BgkqhkiG9w0BCQEWGmZvby1iYXItZXhwcmVzc0BuaXRyb3VzLmlvMIIBIjANBgkq
+hkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEA2gVUQMCly1mWV8D9lsPdCSvVgN+PxlZk
+ZMsSduWO4jc9lhDBVIbyshoBe6Lf/baxe2kxzDLQvhhTHWyWveU4ZptSUjr2ozlj
+RrtNm0FJV1UROqwJR/Q00cmNY8TdB/TO1akvaXsQJ0DKbarqj9FJm8F1uQD566j2
++VdYLeqc+Z1juuj4QYAFwEe8OLUKFt7ayYHfmMFdqUH0PIrX4DLNat17cfbSW5qr
+hPmsIMT0ZYWhlud/b204l3escQmNXAmJc7jksuKFnr2c63/RKXw+bGWEN1RdXAS0
+7bbS6qp81dnfqxuTue6d7qxZ+cAozUXpJSWmvxvTp5HbJqKJjySUDQIDAQABo1Aw
+TjAdBgNVHQ4EFgQUgcRKbfUxwykKmL2RWy6j+6nck1IwHwYDVR0jBBgwFoAUgcRK
+bfUxwykKmL2RWy6j+6nck1IwDAYDVR0TBAUwAwEB/zANBgkqhkiG9w0BAQsFAAOC
+AQEAiFticlXkTs4lwFdGjdwFYO5bKYcJx5Dj8onktPw6FvpIvpmI3iDja9wlBDCo
+GCVTqJjZl9hcT2dne75cA80UcejUfmP42nZtN0+p5ntF2or8vhYs4/jmpWPfHikb
+X+QyngquLVUSKH3W/1NbblsL4PtYGpVX9vluAzZlZvz8s/WJagcYEXfekPU5y9oQ
+3GFJQhiuYgHrqqiUvY8VI4xq/jddDcn8tKaCTHSoTVzy7UHDAF4JA8EsGrllZPyN
+x6bN9vuFFH/ERkYYBJf38RFiOdiQhY/yvVbplHmtMcnywqDuRJAM6brzGIVr6yy4
+HFmuSS8xVtPt1xhOwzUAygEWhQ==
+-----END CERTIFICATE-----
+`)
