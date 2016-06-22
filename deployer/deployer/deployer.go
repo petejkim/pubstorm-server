@@ -250,7 +250,7 @@ func Work(data []byte) error {
 				}
 				context map[string]interface{}
 			)
-			if err := common.Track(strconv.Itoa(int(u.ID)), event, props, context); err != nil {
+			if err := common.Track(strconv.Itoa(int(u.ID)), event, "", props, context); err != nil {
 				log.Printf("failed to track %q event for user ID %d, err: %v",
 					event, u.ID, err)
 			}

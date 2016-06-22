@@ -195,13 +195,14 @@ var _ = Describe("Projects", func() {
 				Expect(trackCall).NotTo(BeNil())
 				Expect(trackCall.Arguments[0]).To(Equal(fmt.Sprintf("%d", u.ID)))
 				Expect(trackCall.Arguments[1]).To(Equal("Used Blacklisted Project Name"))
+				Expect(trackCall.Arguments[2]).To(Equal(""))
 
-				t := trackCall.Arguments[2]
+				t := trackCall.Arguments[3]
 				props, ok := t.(map[string]interface{})
 				Expect(ok).To(BeTrue())
 				Expect(props["projectName"]).To(Equal("foo-bar-express"))
 
-				Expect(trackCall.Arguments[3]).To(BeNil())
+				Expect(trackCall.Arguments[4]).To(BeNil())
 				Expect(trackCall.ReturnValues[0]).To(BeNil())
 			})
 		})
@@ -264,13 +265,14 @@ var _ = Describe("Projects", func() {
 				Expect(trackCall).NotTo(BeNil())
 				Expect(trackCall.Arguments[0]).To(Equal(fmt.Sprintf("%d", u.ID)))
 				Expect(trackCall.Arguments[1]).To(Equal("Created Project"))
+				Expect(trackCall.Arguments[2]).To(Equal(""))
 
-				t := trackCall.Arguments[2]
+				t := trackCall.Arguments[3]
 				props, ok := t.(map[string]interface{})
 				Expect(ok).To(BeTrue())
 				Expect(props["projectName"]).To(Equal("foo-bar-express"))
 
-				Expect(trackCall.Arguments[3]).To(BeNil())
+				Expect(trackCall.Arguments[4]).To(BeNil())
 				Expect(trackCall.ReturnValues[0]).To(BeNil())
 			})
 		})
@@ -948,13 +950,14 @@ var _ = Describe("Projects", func() {
 			Expect(trackCall).NotTo(BeNil())
 			Expect(trackCall.Arguments[0]).To(Equal(fmt.Sprintf("%d", u.ID)))
 			Expect(trackCall.Arguments[1]).To(Equal("Deleted Project"))
+			Expect(trackCall.Arguments[2]).To(Equal(""))
 
-			t := trackCall.Arguments[2]
+			t := trackCall.Arguments[3]
 			props, ok := t.(map[string]interface{})
 			Expect(ok).To(BeTrue())
 			Expect(props["projectName"]).To(Equal(proj.Name))
 
-			Expect(trackCall.Arguments[3]).To(BeNil())
+			Expect(trackCall.Arguments[4]).To(BeNil())
 			Expect(trackCall.ReturnValues[0]).To(BeNil())
 		})
 

@@ -225,8 +225,9 @@ var _ = Describe("Deployer", func() {
 		Expect(trackCall).NotTo(BeNil())
 		Expect(trackCall.Arguments[0]).To(Equal(fmt.Sprintf("%d", u.ID)))
 		Expect(trackCall.Arguments[1]).To(Equal("Project Deployed"))
+		Expect(trackCall.Arguments[2]).To(Equal(""))
 
-		t := trackCall.Arguments[2]
+		t := trackCall.Arguments[3]
 		props, ok := t.(map[string]interface{})
 		Expect(ok).To(BeTrue())
 		Expect(props["projectName"]).To(Equal(proj.Name))
@@ -243,7 +244,7 @@ var _ = Describe("Deployer", func() {
 		dur := endTime.Sub(startTime)
 		Expect(props["timeTakenInSeconds"]).To(Equal(int64(dur / time.Second)))
 
-		Expect(trackCall.Arguments[3]).To(BeNil())
+		Expect(trackCall.Arguments[4]).To(BeNil())
 		Expect(trackCall.ReturnValues[0]).To(BeNil())
 	})
 

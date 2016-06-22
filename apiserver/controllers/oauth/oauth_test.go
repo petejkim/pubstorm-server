@@ -262,14 +262,15 @@ var _ = Describe("OAuth", func() {
 				Expect(trackCall).NotTo(BeNil())
 				Expect(trackCall.Arguments[0]).To(Equal(fmt.Sprintf("%d", u.ID)))
 				Expect(trackCall.Arguments[1]).To(Equal("User Logged In"))
+				Expect(trackCall.Arguments[2]).To(Equal(""))
 
-				t := trackCall.Arguments[2]
+				t := trackCall.Arguments[3]
 				props, ok := t.(map[string]interface{})
 				Expect(ok).To(BeTrue())
 				Expect(props["oauthClientId"]).To(Equal(oc.ID))
 				Expect(props["oauthClientName"]).To(Equal(oc.Name))
 
-				Expect(trackCall.Arguments[3]).To(BeNil())
+				Expect(trackCall.Arguments[4]).To(BeNil())
 				Expect(trackCall.ReturnValues[0]).To(BeNil())
 			})
 		})
@@ -326,8 +327,9 @@ var _ = Describe("OAuth", func() {
 				Expect(trackCall).NotTo(BeNil())
 				Expect(trackCall.Arguments[0]).To(Equal(fmt.Sprintf("%d", u.ID)))
 				Expect(trackCall.Arguments[1]).To(Equal("User Logged Out"))
-				Expect(trackCall.Arguments[2]).To(BeNil())
+				Expect(trackCall.Arguments[2]).To(Equal(""))
 				Expect(trackCall.Arguments[3]).To(BeNil())
+				Expect(trackCall.Arguments[4]).To(BeNil())
 				Expect(trackCall.ReturnValues[0]).To(BeNil())
 			})
 		})

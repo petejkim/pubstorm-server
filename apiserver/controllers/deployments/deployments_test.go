@@ -349,8 +349,9 @@ var _ = Describe("Deployments", func() {
 					Expect(trackCall).NotTo(BeNil())
 					Expect(trackCall.Arguments[0]).To(Equal(fmt.Sprintf("%d", u.ID)))
 					Expect(trackCall.Arguments[1]).To(Equal("Initiated Project Deployment"))
+					Expect(trackCall.Arguments[2]).To(Equal(""))
 
-					t := trackCall.Arguments[2]
+					t := trackCall.Arguments[3]
 					props, ok := t.(map[string]interface{})
 					Expect(ok).To(BeTrue())
 					Expect(props["projectName"]).To(Equal(proj.Name))
@@ -358,7 +359,7 @@ var _ = Describe("Deployments", func() {
 					Expect(props["deploymentPrefix"]).To(Equal(depl.Prefix))
 					Expect(props["deploymentVersion"]).To(Equal(depl.Version))
 
-					Expect(trackCall.Arguments[3]).To(BeNil())
+					Expect(trackCall.Arguments[4]).To(BeNil())
 					Expect(trackCall.ReturnValues[0]).To(BeNil())
 				})
 
@@ -893,15 +894,16 @@ var _ = Describe("Deployments", func() {
 				Expect(trackCall).NotTo(BeNil())
 				Expect(trackCall.Arguments[0]).To(Equal(fmt.Sprintf("%d", u.ID)))
 				Expect(trackCall.Arguments[1]).To(Equal("Initiated Project Rollback"))
+				Expect(trackCall.Arguments[2]).To(Equal(""))
 
-				t := trackCall.Arguments[2]
+				t := trackCall.Arguments[3]
 				props, ok := t.(map[string]interface{})
 				Expect(ok).To(BeTrue())
 				Expect(props["projectName"]).To(Equal(proj.Name))
 				Expect(props["deployedVersion"]).To(Equal(depl3.Version))
 				Expect(props["targetVersion"]).To(Equal(depl1.Version))
 
-				Expect(trackCall.Arguments[3]).To(BeNil())
+				Expect(trackCall.Arguments[4]).To(BeNil())
 				Expect(trackCall.ReturnValues[0]).To(BeNil())
 			})
 		})
@@ -978,15 +980,16 @@ var _ = Describe("Deployments", func() {
 				Expect(trackCall).NotTo(BeNil())
 				Expect(trackCall.Arguments[0]).To(Equal(fmt.Sprintf("%d", u.ID)))
 				Expect(trackCall.Arguments[1]).To(Equal("Initiated Project Rollback"))
+				Expect(trackCall.Arguments[2]).To(Equal(""))
 
-				t := trackCall.Arguments[2]
+				t := trackCall.Arguments[3]
 				props, ok := t.(map[string]interface{})
 				Expect(ok).To(BeTrue())
 				Expect(props["projectName"]).To(Equal(proj.Name))
 				Expect(props["deployedVersion"]).To(Equal(depl3.Version))
 				Expect(props["targetVersion"]).To(Equal(depl4.Version))
 
-				Expect(trackCall.Arguments[3]).To(BeNil())
+				Expect(trackCall.Arguments[4]).To(BeNil())
 				Expect(trackCall.ReturnValues[0]).To(BeNil())
 			})
 
