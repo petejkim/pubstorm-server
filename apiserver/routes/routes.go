@@ -2,6 +2,7 @@ package routes
 
 import (
 	"github.com/gin-gonic/gin"
+	"github.com/nitrous-io/rise-server/apiserver/controllers/acme"
 	"github.com/nitrous-io/rise-server/apiserver/controllers/certs"
 	"github.com/nitrous-io/rise-server/apiserver/controllers/deployments"
 	"github.com/nitrous-io/rise-server/apiserver/controllers/domains"
@@ -33,6 +34,8 @@ func Draw(r *gin.Engine) {
 	r.POST("/user/password/reset", users.ResetPassword)
 	r.POST("/oauth/token", oauth.CreateToken)
 	r.GET("/admin/stats", stats.Index)
+
+	r.GET("/.well-known/acme-challenge/:token", acme.ChallengeResponse)
 
 	{ // Routes that require a OAuth Token
 		authorized := r.Group("", middleware.RequireToken)
