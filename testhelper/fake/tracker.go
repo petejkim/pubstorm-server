@@ -8,14 +8,14 @@ type Tracker struct {
 	TrackError    error
 }
 
-func (t *Tracker) Identify(userID string, traits, context map[string]interface{}) error {
-	t.IdentifyCalls.Add(List{userID, traits, context}, List{t.IdentifyError}, nil)
+func (t *Tracker) Identify(userID, anonymousID string, traits, context map[string]interface{}) error {
+	t.IdentifyCalls.Add(List{userID, anonymousID, traits, context}, List{t.IdentifyError}, nil)
 
 	return t.IdentifyError
 }
 
-func (t *Tracker) Track(userID, event string, props, context map[string]interface{}) error {
-	t.TrackCalls.Add(List{userID, event, props, context}, List{t.TrackError}, nil)
+func (t *Tracker) Track(userID, event, anonymousID string, props, context map[string]interface{}) error {
+	t.TrackCalls.Add(List{userID, event, anonymousID, props, context}, List{t.TrackError}, nil)
 
 	return t.TrackError
 }

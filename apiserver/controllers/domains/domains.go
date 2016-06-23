@@ -124,7 +124,7 @@ func Create(c *gin.Context) {
 			}
 			context map[string]interface{}
 		)
-		if err := common.Track(strconv.Itoa(int(u.ID)), event, props, context); err != nil {
+		if err := common.Track(strconv.Itoa(int(u.ID)), event, "", props, context); err != nil {
 			log.Errorf("failed to track %q event for user ID %d, err: %v",
 				event, u.ID, err)
 		}
@@ -215,7 +215,7 @@ func Destroy(c *gin.Context) {
 			}
 			context map[string]interface{}
 		)
-		if err := common.Track(strconv.Itoa(int(u.ID)), event, props, context); err != nil {
+		if err := common.Track(strconv.Itoa(int(u.ID)), event, "", props, context); err != nil {
 			log.Errorf("failed to track %q event for user ID %d, err: %v",
 				event, u.ID, err)
 		}

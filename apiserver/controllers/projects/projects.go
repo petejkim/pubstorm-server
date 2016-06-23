@@ -59,7 +59,7 @@ func Create(c *gin.Context) {
 				props   = map[string]interface{}{"projectName": proj.Name}
 				context map[string]interface{}
 			)
-			if err := common.Track(strconv.Itoa(int(u.ID)), event, props, context); err != nil {
+			if err := common.Track(strconv.Itoa(int(u.ID)), event, "", props, context); err != nil {
 				log.Errorf("failed to track %q event for user ID %d, err: %v",
 					event, u.ID, err)
 			}
@@ -95,7 +95,7 @@ func Create(c *gin.Context) {
 			props   = map[string]interface{}{"projectName": proj.Name}
 			context map[string]interface{}
 		)
-		if err := common.Track(strconv.Itoa(int(u.ID)), event, props, context); err != nil {
+		if err := common.Track(strconv.Itoa(int(u.ID)), event, "", props, context); err != nil {
 			log.Errorf("failed to track %q event for user ID %d, err: %v",
 				event, u.ID, err)
 		}
@@ -277,7 +277,7 @@ func Update(c *gin.Context) {
 				if updatedProj.DefaultDomainEnabled {
 					event = "Enabled Default Domain"
 				}
-				if err := common.Track(strconv.Itoa(int(u.ID)), event, props, context); err != nil {
+				if err := common.Track(strconv.Itoa(int(u.ID)), event, "", props, context); err != nil {
 					log.Errorf("failed to track %q event for user ID %d, err: %v",
 						event, u.ID, err)
 				}
@@ -292,7 +292,7 @@ func Update(c *gin.Context) {
 				if updatedProj.ForceHTTPS {
 					event = "Enabled Force HTTPS"
 				}
-				if err := common.Track(strconv.Itoa(int(u.ID)), event, props, context); err != nil {
+				if err := common.Track(strconv.Itoa(int(u.ID)), event, "", props, context); err != nil {
 					log.Errorf("failed to track %q event for user ID %d, err: %v",
 						event, u.ID, err)
 				}
@@ -383,7 +383,7 @@ func Destroy(c *gin.Context) {
 			props   = map[string]interface{}{"projectName": proj.Name}
 			context map[string]interface{}
 		)
-		if err := common.Track(strconv.Itoa(int(u.ID)), event, props, context); err != nil {
+		if err := common.Track(strconv.Itoa(int(u.ID)), event, "", props, context); err != nil {
 			log.Errorf("failed to track %q event for user ID %d, err: %v",
 				event, u.ID, err)
 		}
