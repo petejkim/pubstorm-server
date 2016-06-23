@@ -5,6 +5,7 @@ import (
 	"io"
 	"net/http"
 	"strconv"
+	"strings"
 
 	log "github.com/Sirupsen/logrus"
 	"github.com/gin-gonic/gin"
@@ -13,25 +14,18 @@ import (
 	"github.com/nitrous-io/rise-server/apiserver/controllers"
 	"github.com/nitrous-io/rise-server/apiserver/dbconn"
 	"github.com/nitrous-io/rise-server/apiserver/models/deployment"
+	"github.com/nitrous-io/rise-server/apiserver/models/rawbundle"
+	"github.com/nitrous-io/rise-server/pkg/hasher"
 	"github.com/nitrous-io/rise-server/pkg/job"
 	"github.com/nitrous-io/rise-server/shared/messages"
 	"github.com/nitrous-io/rise-server/shared/queues"
 	"github.com/nitrous-io/rise-server/shared/s3client"
 )
 
+// Create deploys a project.
 func Create(c *gin.Context) {
 	u := controllers.CurrentUser(c)
 	proj := controllers.CurrentProject(c)
-
-	// get the multipart reader for the request.
-	reader, err := c.Request.MultipartReader()
-	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{
-			"error":             "invalid_request",
-			"error_description": "the request should be encoded in multipart/form-data format",
-		})
-		return
-	}
 
 	db, err := dbconn.DB()
 	if err != nil {
@@ -44,58 +38,118 @@ func Create(c *gin.Context) {
 		UserID:    u.ID,
 	}
 
-	if n, err := strconv.ParseInt(c.Request.Header.Get("Content-Length"), 10, 64); err != nil || n > s3client.MaxUploadSize {
+	if strings.HasPrefix(c.Request.Header.Get("Content-Type"), "multipart/form-data; boundary=") {
+		reader, err := c.Request.MultipartReader()
 		if err != nil {
 			c.JSON(http.StatusBadRequest, gin.H{
 				"error":             "invalid_request",
-				"error_description": "Content-Length header is required",
+				"error_description": "the request should be encoded in multipart/form-data format",
 			})
-		} else {
-			c.JSON(http.StatusBadRequest, gin.H{
-				"error":             "invalid_request",
-				"error_description": "request body is too large",
-			})
+			return
 		}
-		return
-	}
 
-	// upload "payload" part to s3
-	for {
-		part, err := reader.NextPart()
-		if err == io.EOF {
+		if n, err := strconv.ParseInt(c.Request.Header.Get("Content-Length"), 10, 64); err != nil || n > s3client.MaxUploadSize {
+			if err != nil {
+				c.JSON(http.StatusBadRequest, gin.H{
+					"error":             "invalid_request",
+					"error_description": "Content-Length header is required",
+				})
+			} else {
+				c.JSON(http.StatusBadRequest, gin.H{
+					"error":             "invalid_request",
+					"error_description": "request body is too large",
+				})
+			}
+			return
+		}
+
+		for {
+			part, err := reader.NextPart()
+			if err == io.EOF {
+				c.JSON(422, gin.H{
+					"error": "invalid_params",
+					"errors": map[string]interface{}{
+						"payload": "is required",
+					},
+				})
+				return
+			}
+
+			if part.FormName() == "payload" {
+				ver, err := proj.NextVersion(db)
+				if err != nil {
+					controllers.InternalServerError(c, err)
+					return
+				}
+
+				depl.Version = ver
+				if err := db.Create(depl).Error; err != nil {
+					controllers.InternalServerError(c, err)
+					return
+				}
+
+				hashReader := hasher.NewReader(part)
+				uploadKey := fmt.Sprintf("deployments/%s-%d/raw-bundle.tar.gz", depl.Prefix, depl.ID)
+				if err := s3client.Upload(uploadKey, hashReader, "", "private"); err != nil {
+					controllers.InternalServerError(c, err)
+					return
+				}
+
+				bun := &rawbundle.RawBundle{}
+				bun.ProjectID = proj.ID
+				bun.Checksum = hashReader.Checksum()
+				bun.UploadedPath = uploadKey
+				if err := db.Create(bun).Error; err != nil {
+					controllers.InternalServerError(c, err)
+					return
+				}
+
+				depl.RawBundleID = &bun.ID
+				break
+			}
+		}
+	} else {
+		ver, err := proj.NextVersion(db)
+		if err != nil {
+			controllers.InternalServerError(c, err)
+			return
+		}
+
+		depl.Version = ver
+		if err := db.Create(depl).Error; err != nil {
+			controllers.InternalServerError(c, err)
+			return
+		}
+
+		checksum := c.PostForm("bundle_checksum")
+		if checksum == "" {
 			c.JSON(422, gin.H{
 				"error": "invalid_params",
-				"errors": map[string]interface{}{
-					"payload": "is required",
+				"errors": map[string]string{
+					"bundle_checksum": "is required",
 				},
 			})
 			return
 		}
 
-		if part.FormName() == "payload" {
-			ver, err := proj.NextVersion(db)
-			if err != nil {
-				controllers.InternalServerError(c, err)
+		bun := &rawbundle.RawBundle{}
+		if err := db.Where("checksum = ? AND project_id = ?", checksum, proj.ID).First(bun).Error; err != nil {
+			if err == gorm.RecordNotFound {
+				c.JSON(422, gin.H{
+					"error": "invalid_params",
+					"errors": map[string]string{
+						"bundle_checksum": "the bundle could not be found",
+					},
+				})
 				return
 			}
-
-			depl.Version = ver
-			if err := db.Create(depl).Error; err != nil {
-				controllers.InternalServerError(c, err)
-				return
-			}
-
-			uploadKey := fmt.Sprintf("deployments/%s-%d/raw-bundle.tar.gz", depl.Prefix, depl.ID)
-
-			if err := s3client.Upload(uploadKey, part, "", "private"); err != nil {
-				controllers.InternalServerError(c, err)
-				return
-			}
-			break
+			controllers.InternalServerError(c, err)
+			return
 		}
+		depl.RawBundleID = &bun.ID
 	}
 
-	if err = depl.UpdateState(db, deployment.StateUploaded); err != nil {
+	if err := depl.UpdateState(db, deployment.StateUploaded); err != nil {
 		controllers.InternalServerError(c, err)
 		return
 	}
@@ -122,14 +176,12 @@ func Create(c *gin.Context) {
 		return
 	}
 
-	nextState := deployment.StatePendingBuild
+	newState := deployment.StatePendingBuild
 	if proj.SkipBuild {
-		nextState = deployment.StatePendingDeploy
+		newState = deployment.StatePendingDeploy
 	}
 
-	// Gorm does not refetch the row from DB after update.
-	// So we call `Find` again to fetch actual values particularly for time fields because of precision.
-	if err := db.Model(depl).Update("state", nextState).Find(depl).Error; err != nil {
+	if err := depl.UpdateState(db, newState); err != nil {
 		controllers.InternalServerError(c, err)
 		return
 	}
@@ -145,7 +197,7 @@ func Create(c *gin.Context) {
 			}
 			context map[string]interface{}
 		)
-		if err := common.Track(strconv.Itoa(int(u.ID)), event, props, context); err != nil {
+		if err := common.Track(strconv.Itoa(int(u.ID)), event, "", props, context); err != nil {
 			log.Errorf("failed to track %q event for user ID %d, err: %v",
 				event, u.ID, err)
 		}
@@ -156,6 +208,7 @@ func Create(c *gin.Context) {
 	})
 }
 
+// Show displays information of a single deployment.
 func Show(c *gin.Context) {
 	deploymentID, err := strconv.ParseInt(c.Param("id"), 10, 64)
 	if err != nil {
@@ -191,6 +244,8 @@ func Show(c *gin.Context) {
 	})
 }
 
+// Rollback either rolls back a project to the previous deployment, or to a
+// given version.
 func Rollback(c *gin.Context) {
 	proj := controllers.CurrentProject(c)
 
@@ -294,7 +349,7 @@ func Rollback(c *gin.Context) {
 			}
 			context map[string]interface{}
 		)
-		if err := common.Track(strconv.Itoa(int(u.ID)), event, props, context); err != nil {
+		if err := common.Track(strconv.Itoa(int(u.ID)), event, "", props, context); err != nil {
 			log.Errorf("failed to track %q event for user ID %d, err: %v",
 				event, u.ID, err)
 		}
@@ -305,6 +360,7 @@ func Rollback(c *gin.Context) {
 	})
 }
 
+// Index lists all deployments of a project.
 func Index(c *gin.Context) {
 	proj := controllers.CurrentProject(c)
 
@@ -314,7 +370,7 @@ func Index(c *gin.Context) {
 		return
 	}
 
-	depls, err := deployment.AllCompletedDeployments(db, proj.ID)
+	depls, err := deployment.CompletedDeployments(db, proj.ID, proj.MaxDeploysKept)
 	if err != nil {
 		controllers.InternalServerError(c, err)
 		return

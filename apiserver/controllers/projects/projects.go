@@ -13,6 +13,7 @@ import (
 	"github.com/nitrous-io/rise-server/apiserver/dbconn"
 	"github.com/nitrous-io/rise-server/apiserver/models/blacklistedname"
 	"github.com/nitrous-io/rise-server/apiserver/models/project"
+	"github.com/nitrous-io/rise-server/apiserver/models/rawbundle"
 	"github.com/nitrous-io/rise-server/pkg/job"
 	"github.com/nitrous-io/rise-server/pkg/pubsub"
 	"github.com/nitrous-io/rise-server/shared"
@@ -58,7 +59,7 @@ func Create(c *gin.Context) {
 				props   = map[string]interface{}{"projectName": proj.Name}
 				context map[string]interface{}
 			)
-			if err := common.Track(strconv.Itoa(int(u.ID)), event, props, context); err != nil {
+			if err := common.Track(strconv.Itoa(int(u.ID)), event, "", props, context); err != nil {
 				log.Errorf("failed to track %q event for user ID %d, err: %v",
 					event, u.ID, err)
 			}
@@ -94,7 +95,7 @@ func Create(c *gin.Context) {
 			props   = map[string]interface{}{"projectName": proj.Name}
 			context map[string]interface{}
 		)
-		if err := common.Track(strconv.Itoa(int(u.ID)), event, props, context); err != nil {
+		if err := common.Track(strconv.Itoa(int(u.ID)), event, "", props, context); err != nil {
 			log.Errorf("failed to track %q event for user ID %d, err: %v",
 				event, u.ID, err)
 		}
@@ -276,7 +277,7 @@ func Update(c *gin.Context) {
 				if updatedProj.DefaultDomainEnabled {
 					event = "Enabled Default Domain"
 				}
-				if err := common.Track(strconv.Itoa(int(u.ID)), event, props, context); err != nil {
+				if err := common.Track(strconv.Itoa(int(u.ID)), event, "", props, context); err != nil {
 					log.Errorf("failed to track %q event for user ID %d, err: %v",
 						event, u.ID, err)
 				}
@@ -291,7 +292,7 @@ func Update(c *gin.Context) {
 				if updatedProj.ForceHTTPS {
 					event = "Enabled Force HTTPS"
 				}
-				if err := common.Track(strconv.Itoa(int(u.ID)), event, props, context); err != nil {
+				if err := common.Track(strconv.Itoa(int(u.ID)), event, "", props, context); err != nil {
 					log.Errorf("failed to track %q event for user ID %d, err: %v",
 						event, u.ID, err)
 				}
@@ -326,6 +327,12 @@ func Destroy(c *gin.Context) {
 		return
 	}
 
+	var rawBundles []*rawbundle.RawBundle
+	if err := db.Where("project_id = ?", proj.ID).Find(&rawBundles).Error; err != nil {
+		controllers.InternalServerError(c, err)
+		return
+	}
+
 	// Delete ssl certs from S3
 	var filesToDelete []string
 	for _, domainName := range domainNames {
@@ -334,6 +341,10 @@ func Destroy(c *gin.Context) {
 			filesToDelete = append(filesToDelete, "certs/"+domainName+"/ssl.crt")
 			filesToDelete = append(filesToDelete, "certs/"+domainName+"/ssl.key")
 		}
+	}
+
+	for _, rawBundle := range rawBundles {
+		filesToDelete = append(filesToDelete, rawBundle.UploadedPath)
 	}
 
 	if err := s3client.Delete(filesToDelete...); err != nil {
@@ -372,7 +383,7 @@ func Destroy(c *gin.Context) {
 			props   = map[string]interface{}{"projectName": proj.Name}
 			context map[string]interface{}
 		)
-		if err := common.Track(strconv.Itoa(int(u.ID)), event, props, context); err != nil {
+		if err := common.Track(strconv.Itoa(int(u.ID)), event, "", props, context); err != nil {
 			log.Errorf("failed to track %q event for user ID %d, err: %v",
 				event, u.ID, err)
 		}
@@ -381,4 +392,89 @@ func Destroy(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{
 		"deleted": true,
 	})
+}
+
+func CreateAuth(c *gin.Context) {
+	proj := controllers.CurrentProject(c)
+
+	username := c.PostForm("basic_auth_username")
+	password := c.PostForm("basic_auth_password")
+
+	proj.BasicAuthUsername = &username
+	proj.BasicAuthPassword = password
+	if errs := proj.Validate(); errs != nil {
+		c.JSON(422, gin.H{
+			"error":  "invalid_params",
+			"errors": errs,
+		})
+		return
+	}
+
+	if err := proj.EncryptBasicAuthPassword(); err != nil {
+		controllers.InternalServerError(c, err)
+		return
+	}
+
+	if proj.ActiveDeploymentID != nil {
+		if err := publishInvalidationJob(proj); err != nil {
+			controllers.InternalServerError(c, err)
+			return
+		}
+	}
+
+	db, err := dbconn.DB()
+	if err != nil {
+		controllers.InternalServerError(c, err)
+		return
+	}
+
+	if err := db.Save(&proj).Error; err != nil {
+		controllers.InternalServerError(c, err)
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"protected": true,
+	})
+}
+
+func DeleteAuth(c *gin.Context) {
+	proj := controllers.CurrentProject(c)
+	if proj.ActiveDeploymentID != nil {
+		if err := publishInvalidationJob(proj); err != nil {
+			controllers.InternalServerError(c, err)
+			return
+		}
+	}
+
+	db, err := dbconn.DB()
+	if err != nil {
+		controllers.InternalServerError(c, err)
+		return
+	}
+
+	proj.BasicAuthUsername = nil
+	proj.EncryptedBasicAuthPassword = nil
+	if err := db.Save(&proj).Error; err != nil {
+		controllers.InternalServerError(c, err)
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"unprotected": true,
+	})
+}
+
+func publishInvalidationJob(proj *project.Project) error {
+	j, err := job.NewWithJSON(queues.Deploy, &messages.DeployJobData{
+		DeploymentID:      *proj.ActiveDeploymentID,
+		SkipWebrootUpload: true,
+		SkipInvalidation:  false,
+	})
+
+	if err != nil {
+		return err
+	}
+
+	return j.Enqueue()
 }

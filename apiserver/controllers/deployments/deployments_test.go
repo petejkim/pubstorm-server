@@ -17,9 +17,9 @@ import (
 	"github.com/nitrous-io/rise-server/apiserver/dbconn"
 	"github.com/nitrous-io/rise-server/apiserver/models/deployment"
 	"github.com/nitrous-io/rise-server/apiserver/models/domain"
-	"github.com/nitrous-io/rise-server/apiserver/models/oauthclient"
 	"github.com/nitrous-io/rise-server/apiserver/models/oauthtoken"
 	"github.com/nitrous-io/rise-server/apiserver/models/project"
+	"github.com/nitrous-io/rise-server/apiserver/models/rawbundle"
 	"github.com/nitrous-io/rise-server/apiserver/models/user"
 	"github.com/nitrous-io/rise-server/apiserver/server"
 	"github.com/nitrous-io/rise-server/pkg/filetransfer"
@@ -90,9 +90,8 @@ var _ = Describe("Deployments", func() {
 			origS3 filetransfer.FileTransfer
 			err    error
 
-			u  *user.User
-			oc *oauthclient.OauthClient
-			t  *oauthtoken.OauthToken
+			u *user.User
+			t *oauthtoken.OauthToken
 
 			headers http.Header
 			proj    *project.Project
@@ -105,7 +104,7 @@ var _ = Describe("Deployments", func() {
 
 			testhelper.DeleteQueue(mq, queues.All...)
 
-			u, oc, t = factories.AuthTrio(db)
+			u, _, t = factories.AuthTrio(db)
 
 			proj = &project.Project{
 				Name:   "foo-bar-express",
@@ -134,8 +133,7 @@ var _ = Describe("Deployments", func() {
 			_, err = part.Write([]byte("hello\nworld!"))
 			Expect(err).To(BeNil())
 
-			err = writer.Close()
-			Expect(err).To(BeNil())
+			Expect(writer.Close()).To(BeNil())
 
 			req, err := http.NewRequest("POST", s.URL+"/projects/foo-bar-express/deployments", body)
 			Expect(err).To(BeNil())
@@ -153,18 +151,21 @@ var _ = Describe("Deployments", func() {
 			Expect(err).To(BeNil())
 		}
 
+		doRequestWithBundleChecksum := func(checksum string) {
+			s = httptest.NewServer(server.New())
+			params := url.Values{
+				"bundle_checksum": {checksum},
+			}
+			res, err = testhelper.MakeRequest("POST", s.URL+"/projects/foo-bar-express/deployments", params, headers, nil)
+			Expect(err).To(BeNil())
+		}
+
 		doRequest := func() {
 			doRequestWithMultipart("payload")
 		}
 
 		doRequestWithWrongPart := func() {
 			doRequestWithMultipart("upload")
-		}
-
-		doRequestWithoutMultipart := func() {
-			s = httptest.NewServer(server.New())
-			res, err = testhelper.MakeRequest("POST", s.URL+"/projects/foo-bar-express/deployments", nil, headers, nil)
-			Expect(err).To(BeNil())
 		}
 
 		sharedexamples.ItRequiresAuthentication(func() (*gorm.DB, *user.User, *http.Header) {
@@ -199,25 +200,6 @@ var _ = Describe("Deployments", func() {
 		})
 
 		Context("when the project belongs to current user", func() {
-			Context("when the request is not multipart", func() {
-				It("returns 400 with invalid_request", func() {
-					doRequestWithoutMultipart()
-
-					b := &bytes.Buffer{}
-					_, err = b.ReadFrom(res.Body)
-
-					Expect(res.StatusCode).To(Equal(http.StatusBadRequest))
-					Expect(b.String()).To(MatchJSON(`{
-						"error": "invalid_request",
-						"error_description": "the request should be encoded in multipart/form-data format"
-					}`))
-					Expect(fakeS3.UploadCalls.Count()).To(Equal(0))
-
-					depl := &deployment.Deployment{}
-					Expect(db.Last(depl).Error).To(Equal(gorm.RecordNotFound))
-				})
-			})
-
 			Context("when the request does not contain payload part", func() {
 				It("returns 422 with invalid_params", func() {
 					doRequestWithWrongPart()
@@ -273,6 +255,7 @@ var _ = Describe("Deployments", func() {
 
 				It("returns 202 accepted", func() {
 					doRequest()
+
 					depl = &deployment.Deployment{}
 					db.Last(depl)
 
@@ -293,8 +276,11 @@ var _ = Describe("Deployments", func() {
 
 				It("creates a deployment record", func() {
 					doRequest()
+
 					depl = &deployment.Deployment{}
 					db.Last(depl)
+					bun := &rawbundle.RawBundle{}
+					db.Last(bun)
 
 					Expect(depl).NotTo(BeNil())
 					Expect(depl.ProjectID).To(Equal(proj.ID))
@@ -302,10 +288,28 @@ var _ = Describe("Deployments", func() {
 					Expect(depl.State).To(Equal(deployment.StatePendingBuild))
 					Expect(depl.Prefix).NotTo(HaveLen(0))
 					Expect(depl.Version).To(Equal(int64(1)))
+
+					Expect(bun).NotTo(BeNil())
+					Expect(*depl.RawBundleID).To(Equal(bun.ID))
 				})
 
-				It("uploads bundle to s3", func() {
+				It("creates a bundle record", func() {
 					doRequest()
+
+					depl = &deployment.Deployment{}
+					db.Last(depl)
+					bun := &rawbundle.RawBundle{}
+					db.Last(bun)
+
+					Expect(bun).NotTo(BeNil())
+					Expect(bun.ProjectID).To(Equal(proj.ID))
+					Expect(bun.UploadedPath).To(Equal(fmt.Sprintf("deployments/%s-%d/raw-bundle.tar.gz", depl.Prefix, depl.ID)))
+					Expect(bun.Checksum).To(Equal("db39e098913eee20e5371139022e4431ffe7b01baa524bd87e08f2763de3ea55"))
+				})
+
+				It("does not bundle to s3", func() {
+					doRequest()
+
 					depl = &deployment.Deployment{}
 					db.Last(depl)
 
@@ -322,6 +326,7 @@ var _ = Describe("Deployments", func() {
 
 				It("enqueues a build job", func() {
 					doRequest()
+
 					depl = &deployment.Deployment{}
 					db.Last(depl)
 
@@ -336,6 +341,7 @@ var _ = Describe("Deployments", func() {
 
 				It("tracks an 'Initiated Project Deployment' event", func() {
 					doRequest()
+
 					depl = &deployment.Deployment{}
 					db.Last(depl)
 
@@ -343,8 +349,9 @@ var _ = Describe("Deployments", func() {
 					Expect(trackCall).NotTo(BeNil())
 					Expect(trackCall.Arguments[0]).To(Equal(fmt.Sprintf("%d", u.ID)))
 					Expect(trackCall.Arguments[1]).To(Equal("Initiated Project Deployment"))
+					Expect(trackCall.Arguments[2]).To(Equal(""))
 
-					t := trackCall.Arguments[2]
+					t := trackCall.Arguments[3]
 					props, ok := t.(map[string]interface{})
 					Expect(ok).To(BeTrue())
 					Expect(props["projectName"]).To(Equal(proj.Name))
@@ -352,7 +359,7 @@ var _ = Describe("Deployments", func() {
 					Expect(props["deploymentPrefix"]).To(Equal(depl.Prefix))
 					Expect(props["deploymentVersion"]).To(Equal(depl.Version))
 
-					Expect(trackCall.Arguments[3]).To(BeNil())
+					Expect(trackCall.Arguments[4]).To(BeNil())
 					Expect(trackCall.ReturnValues[0]).To(BeNil())
 				})
 
@@ -368,6 +375,7 @@ var _ = Describe("Deployments", func() {
 
 						depl = &deployment.Deployment{}
 						db.Last(depl)
+
 						b := &bytes.Buffer{}
 						_, err = b.ReadFrom(res.Body)
 
@@ -433,6 +441,180 @@ var _ = Describe("Deployments", func() {
 					})
 				})
 			})
+
+			Context("when request is not multpart", func() {
+				Context("when raw_bundle is not specified", func() {
+					BeforeEach(func() {
+						doRequestWithBundleChecksum("")
+					})
+
+					It("returns 422 with invalid request", func() {
+						b := &bytes.Buffer{}
+						_, err = b.ReadFrom(res.Body)
+						Expect(err).To(BeNil())
+
+						Expect(res.StatusCode).To(Equal(422))
+						Expect(b.String()).To(MatchJSON(`{
+							"error": "invalid_params",
+							"errors": {
+								"bundle_checksum": "is required"
+							}
+						}`))
+					})
+				})
+
+				Context("when bundle_checksum is specified and the raw bundle exists", func() {
+					var (
+						depl              *deployment.Deployment
+						existingRawBundle *rawbundle.RawBundle
+						checksum          string
+					)
+
+					BeforeEach(func() {
+						checksum = "db39e098913eee20e5371139022e4431ffe7b01baa524bd87e08f2763de3ea55"
+						existingRawBundle = &rawbundle.RawBundle{
+							ProjectID:    proj.ID,
+							Checksum:     checksum,
+							UploadedPath: "deployments/pr3f1x-1234/raw-bundle.tar.gz",
+						}
+						Expect(db.Create(existingRawBundle).Error).To(BeNil())
+					})
+
+					It("returns 202 accepted", func() {
+						doRequestWithBundleChecksum(checksum)
+						depl = &deployment.Deployment{}
+						db.Last(depl)
+
+						b := &bytes.Buffer{}
+						_, err = b.ReadFrom(res.Body)
+
+						j := map[string]interface{}{
+							"deployment": map[string]interface{}{
+								"id":      depl.ID,
+								"state":   deployment.StatePendingBuild,
+								"version": 1,
+							},
+						}
+						expectedJSON, err := json.Marshal(j)
+						Expect(err).To(BeNil())
+						Expect(b.String()).To(MatchJSON(expectedJSON))
+					})
+
+					It("creates a deployment record", func() {
+						doRequestWithBundleChecksum(checksum)
+						depl = &deployment.Deployment{}
+						db.Last(depl)
+
+						Expect(depl).NotTo(BeNil())
+						Expect(depl.ProjectID).To(Equal(proj.ID))
+						Expect(depl.UserID).To(Equal(u.ID))
+						Expect(depl.State).To(Equal(deployment.StatePendingBuild))
+						Expect(depl.Prefix).NotTo(HaveLen(0))
+						Expect(depl.Version).To(Equal(int64(1)))
+
+						Expect(existingRawBundle).NotTo(BeNil())
+						Expect(*depl.RawBundleID).To(Equal(existingRawBundle.ID))
+					})
+
+					It("does not upload bundle to s3", func() {
+						doRequestWithBundleChecksum(checksum)
+						depl = &deployment.Deployment{}
+						db.Last(depl)
+
+						Expect(fakeS3.UploadCalls.Count()).To(Equal(0))
+					})
+
+					It("enqueues a build job", func() {
+						doRequestWithBundleChecksum(checksum)
+						depl = &deployment.Deployment{}
+						db.Last(depl)
+
+						m := testhelper.ConsumeQueue(mq, queues.Build)
+						Expect(m).NotTo(BeNil())
+						Expect(m.Body).To(MatchJSON(fmt.Sprintf(`
+							{
+								"deployment_id": %d
+							}
+						`, depl.ID)))
+					})
+
+					Context("when the raw bundle is not associated with the project", func() {
+						BeforeEach(func() {
+							proj2 := factories.Project(db, u)
+							existingRawBundle.ProjectID = proj2.ID
+							Expect(db.Save(existingRawBundle).Error).To(BeNil())
+						})
+
+						It("returns 422 with invalid request", func() {
+							doRequestWithBundleChecksum(checksum)
+							depl = &deployment.Deployment{}
+							db.Last(depl)
+
+							b := &bytes.Buffer{}
+							_, err = b.ReadFrom(res.Body)
+							Expect(err).To(BeNil())
+
+							Expect(res.StatusCode).To(Equal(422))
+							Expect(b.String()).To(MatchJSON(`{
+								"error": "invalid_params",
+								"errors": {
+									"bundle_checksum": "the bundle could not be found"
+								}
+							}`))
+						})
+					})
+				})
+
+				Context("when bundle checksum is specified and the bundle does not exist", func() {
+					BeforeEach(func() {
+						doRequestWithBundleChecksum("db39e098913eee20e5371139022e4431ffe7b01baa524bd87e08f2763de3ea55")
+					})
+
+					It("returns 422 with invalid request", func() {
+						b := &bytes.Buffer{}
+						_, err = b.ReadFrom(res.Body)
+						Expect(err).To(BeNil())
+
+						Expect(res.StatusCode).To(Equal(422))
+						Expect(b.String()).To(MatchJSON(`{
+							"error": "invalid_params",
+							"errors": {
+								"bundle_checksum": "the bundle could not be found"
+							}
+						}`))
+					})
+				})
+
+				Context("when bundle checksum is specified but the bundle has been deleted", func() {
+					var existingRawBundle *rawbundle.RawBundle
+
+					BeforeEach(func() {
+						existingRawBundle = &rawbundle.RawBundle{
+							ProjectID:    proj.ID,
+							Checksum:     "d4e5f6",
+							UploadedPath: "deployments/pr3f1x-1234/raw-bundle.tar.gz",
+						}
+						Expect(db.Create(existingRawBundle).Error).To(BeNil())
+						Expect(db.Delete(existingRawBundle).Error).To(BeNil())
+
+						doRequestWithBundleChecksum(existingRawBundle.Checksum)
+					})
+
+					It("returns 422 with invalid request", func() {
+						b := &bytes.Buffer{}
+						_, err = b.ReadFrom(res.Body)
+						Expect(err).To(BeNil())
+
+						Expect(res.StatusCode).To(Equal(422))
+						Expect(b.String()).To(MatchJSON(`{
+							"error": "invalid_params",
+							"errors": {
+								"bundle_checksum": "the bundle could not be found"
+							}
+						}`))
+					})
+				})
+			})
 		})
 	})
 
@@ -440,9 +622,8 @@ var _ = Describe("Deployments", func() {
 		var (
 			err error
 
-			u  *user.User
-			oc *oauthclient.OauthClient
-			t  *oauthtoken.OauthToken
+			u *user.User
+			t *oauthtoken.OauthToken
 
 			headers http.Header
 			proj    *project.Project
@@ -450,7 +631,7 @@ var _ = Describe("Deployments", func() {
 		)
 
 		BeforeEach(func() {
-			u, oc, t = factories.AuthTrio(db)
+			u, _, t = factories.AuthTrio(db)
 
 			proj = &project.Project{
 				Name:   "foo-bar-express",
@@ -563,9 +744,10 @@ var _ = Describe("Deployments", func() {
 			fakeS3 *fake.S3
 			origS3 filetransfer.FileTransfer
 
-			u  *user.User
-			oc *oauthclient.OauthClient
-			t  *oauthtoken.OauthToken
+			mq *amqp.Connection
+
+			u *user.User
+			t *oauthtoken.OauthToken
 
 			params  url.Values
 			headers http.Header
@@ -584,7 +766,12 @@ var _ = Describe("Deployments", func() {
 			fakeS3 = &fake.S3{}
 			s3client.S3 = fakeS3
 
-			u, oc, t = factories.AuthTrio(db)
+			mq, err = mqconn.MQ()
+			Expect(err).To(BeNil())
+
+			testhelper.DeleteQueue(mq, queues.All...)
+
+			u, _, t = factories.AuthTrio(db)
 
 			proj = &project.Project{
 				Name:   "foo-bar-express",
@@ -707,15 +894,16 @@ var _ = Describe("Deployments", func() {
 				Expect(trackCall).NotTo(BeNil())
 				Expect(trackCall.Arguments[0]).To(Equal(fmt.Sprintf("%d", u.ID)))
 				Expect(trackCall.Arguments[1]).To(Equal("Initiated Project Rollback"))
+				Expect(trackCall.Arguments[2]).To(Equal(""))
 
-				t := trackCall.Arguments[2]
+				t := trackCall.Arguments[3]
 				props, ok := t.(map[string]interface{})
 				Expect(ok).To(BeTrue())
 				Expect(props["projectName"]).To(Equal(proj.Name))
 				Expect(props["deployedVersion"]).To(Equal(depl3.Version))
 				Expect(props["targetVersion"]).To(Equal(depl1.Version))
 
-				Expect(trackCall.Arguments[3]).To(BeNil())
+				Expect(trackCall.Arguments[4]).To(BeNil())
 				Expect(trackCall.ReturnValues[0]).To(BeNil())
 			})
 		})
@@ -792,15 +980,16 @@ var _ = Describe("Deployments", func() {
 				Expect(trackCall).NotTo(BeNil())
 				Expect(trackCall.Arguments[0]).To(Equal(fmt.Sprintf("%d", u.ID)))
 				Expect(trackCall.Arguments[1]).To(Equal("Initiated Project Rollback"))
+				Expect(trackCall.Arguments[2]).To(Equal(""))
 
-				t := trackCall.Arguments[2]
+				t := trackCall.Arguments[3]
 				props, ok := t.(map[string]interface{})
 				Expect(ok).To(BeTrue())
 				Expect(props["projectName"]).To(Equal(proj.Name))
 				Expect(props["deployedVersion"]).To(Equal(depl3.Version))
 				Expect(props["targetVersion"]).To(Equal(depl4.Version))
 
-				Expect(trackCall.Arguments[3]).To(BeNil())
+				Expect(trackCall.Arguments[4]).To(BeNil())
 				Expect(trackCall.ReturnValues[0]).To(BeNil())
 			})
 
@@ -946,9 +1135,8 @@ var _ = Describe("Deployments", func() {
 		var (
 			err error
 
-			u  *user.User
-			oc *oauthclient.OauthClient
-			t  *oauthtoken.OauthToken
+			u *user.User
+			t *oauthtoken.OauthToken
 
 			headers http.Header
 			proj    *project.Project
@@ -959,7 +1147,7 @@ var _ = Describe("Deployments", func() {
 		)
 
 		BeforeEach(func() {
-			u, oc, t = factories.AuthTrio(db)
+			u, _, t = factories.AuthTrio(db)
 
 			proj = &project.Project{
 				Name:   "foo-bar-express",
@@ -1031,7 +1219,7 @@ var _ = Describe("Deployments", func() {
 			return res
 		}, nil)
 
-		It("returns all active deployments", func() {
+		It("returns all completed deployments", func() {
 			doRequest()
 
 			b := &bytes.Buffer{}
@@ -1069,6 +1257,37 @@ var _ = Describe("Deployments", func() {
 				depl1.ID, depl1.State, formattedTimeForJSON(depl1.DeployedAt), depl1.Version,
 				depl4.ID, depl4.State, formattedTimeForJSON(depl4.DeployedAt), depl4.Version,
 			)))
+		})
+
+		Context("when project has a limit on max deployments kept", func() {
+			BeforeEach(func() {
+				proj.MaxDeploysKept = 1
+				Expect(db.Save(proj).Error).To(BeNil())
+			})
+
+			It("returns only those deployments", func() {
+				doRequest()
+
+				b := &bytes.Buffer{}
+				_, err = b.ReadFrom(res.Body)
+				Expect(err).To(BeNil())
+				Expect(res.StatusCode).To(Equal(http.StatusOK))
+
+				depl2 = reloadDeployment(depl2)
+
+				Expect(b.String()).To(MatchJSON(fmt.Sprintf(`{
+					"deployments": [
+						{
+							"id": %d,
+							"state": "%s",
+							"active": true,
+							"deployed_at": %s,
+							"version": %d
+						}
+					]
+				}`, depl2.ID, depl2.State, formattedTimeForJSON(depl2.DeployedAt), depl2.Version,
+				)))
+			})
 		})
 	})
 })

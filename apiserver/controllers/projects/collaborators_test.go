@@ -11,7 +11,6 @@ import (
 	"github.com/nitrous-io/rise-server/apiserver/common"
 	"github.com/nitrous-io/rise-server/apiserver/dbconn"
 	"github.com/nitrous-io/rise-server/apiserver/models/collab"
-	"github.com/nitrous-io/rise-server/apiserver/models/oauthclient"
 	"github.com/nitrous-io/rise-server/apiserver/models/oauthtoken"
 	"github.com/nitrous-io/rise-server/apiserver/models/project"
 	"github.com/nitrous-io/rise-server/apiserver/models/user"
@@ -35,7 +34,6 @@ var _ = Describe("Project collaborators", func() {
 		err     error
 
 		u    *user.User
-		oc   *oauthclient.OauthClient
 		t    *oauthtoken.OauthToken
 		proj *project.Project
 
@@ -48,7 +46,7 @@ var _ = Describe("Project collaborators", func() {
 		Expect(err).To(BeNil())
 		testhelper.TruncateTables(db.DB())
 
-		u, oc, t = factories.AuthTrio(db)
+		u, _, t = factories.AuthTrio(db)
 
 		headers = http.Header{
 			"Authorization": {"Bearer " + t.Token},
@@ -242,14 +240,15 @@ var _ = Describe("Project collaborators", func() {
 				Expect(trackCall).NotTo(BeNil())
 				Expect(trackCall.Arguments[0]).To(Equal(fmt.Sprintf("%d", u.ID)))
 				Expect(trackCall.Arguments[1]).To(Equal("Added Collaborator"))
+				Expect(trackCall.Arguments[2]).To(Equal(""))
 
-				t := trackCall.Arguments[2]
+				t := trackCall.Arguments[3]
 				props, ok := t.(map[string]interface{})
 				Expect(ok).To(BeTrue())
 				Expect(props["projectName"]).To(Equal("panda-express"))
 				Expect(props["collabEmail"]).To(Equal(anotherU.Email))
 
-				Expect(trackCall.Arguments[3]).To(BeNil())
+				Expect(trackCall.Arguments[4]).To(BeNil())
 				Expect(trackCall.ReturnValues[0]).To(BeNil())
 			})
 		})
@@ -350,14 +349,15 @@ var _ = Describe("Project collaborators", func() {
 				Expect(trackCall).NotTo(BeNil())
 				Expect(trackCall.Arguments[0]).To(Equal(fmt.Sprintf("%d", u.ID)))
 				Expect(trackCall.Arguments[1]).To(Equal("Removed Collaborator"))
+				Expect(trackCall.Arguments[2]).To(Equal(""))
 
-				t := trackCall.Arguments[2]
+				t := trackCall.Arguments[3]
 				props, ok := t.(map[string]interface{})
 				Expect(ok).To(BeTrue())
 				Expect(props["projectName"]).To(Equal("panda-express"))
 				Expect(props["collabEmail"]).To(Equal(u2.Email))
 
-				Expect(trackCall.Arguments[3]).To(BeNil())
+				Expect(trackCall.Arguments[4]).To(BeNil())
 				Expect(trackCall.ReturnValues[0]).To(BeNil())
 			})
 		})

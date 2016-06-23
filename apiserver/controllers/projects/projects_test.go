@@ -2,6 +2,8 @@ package projects_test
 
 import (
 	"bytes"
+	"crypto/sha256"
+	"encoding/hex"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
@@ -14,9 +16,9 @@ import (
 	"github.com/nitrous-io/rise-server/apiserver/models/cert"
 	"github.com/nitrous-io/rise-server/apiserver/models/deployment"
 	"github.com/nitrous-io/rise-server/apiserver/models/domain"
-	"github.com/nitrous-io/rise-server/apiserver/models/oauthclient"
 	"github.com/nitrous-io/rise-server/apiserver/models/oauthtoken"
 	"github.com/nitrous-io/rise-server/apiserver/models/project"
+	"github.com/nitrous-io/rise-server/apiserver/models/rawbundle"
 	"github.com/nitrous-io/rise-server/apiserver/models/user"
 	"github.com/nitrous-io/rise-server/apiserver/server"
 	"github.com/nitrous-io/rise-server/pkg/filetransfer"
@@ -33,6 +35,7 @@ import (
 	"github.com/streadway/amqp"
 
 	. "github.com/onsi/ginkgo"
+	. "github.com/onsi/ginkgo/extensions/table"
 	. "github.com/onsi/gomega"
 )
 
@@ -48,9 +51,8 @@ var _ = Describe("Projects", func() {
 		res *http.Response
 		err error
 
-		u  *user.User
-		oc *oauthclient.OauthClient
-		t  *oauthtoken.OauthToken
+		u *user.User
+		t *oauthtoken.OauthToken
 
 		fakeTracker *fake.Tracker
 		origTracker tracker.Trackable
@@ -61,7 +63,7 @@ var _ = Describe("Projects", func() {
 		Expect(err).To(BeNil())
 		testhelper.TruncateTables(db.DB())
 
-		u, oc, t = factories.AuthTrio(db)
+		u, _, t = factories.AuthTrio(db)
 
 		origTracker = common.Tracker
 		fakeTracker = &fake.Tracker{}
@@ -193,13 +195,14 @@ var _ = Describe("Projects", func() {
 				Expect(trackCall).NotTo(BeNil())
 				Expect(trackCall.Arguments[0]).To(Equal(fmt.Sprintf("%d", u.ID)))
 				Expect(trackCall.Arguments[1]).To(Equal("Used Blacklisted Project Name"))
+				Expect(trackCall.Arguments[2]).To(Equal(""))
 
-				t := trackCall.Arguments[2]
+				t := trackCall.Arguments[3]
 				props, ok := t.(map[string]interface{})
 				Expect(ok).To(BeTrue())
 				Expect(props["projectName"]).To(Equal("foo-bar-express"))
 
-				Expect(trackCall.Arguments[3]).To(BeNil())
+				Expect(trackCall.Arguments[4]).To(BeNil())
 				Expect(trackCall.ReturnValues[0]).To(BeNil())
 			})
 		})
@@ -262,13 +265,14 @@ var _ = Describe("Projects", func() {
 				Expect(trackCall).NotTo(BeNil())
 				Expect(trackCall.Arguments[0]).To(Equal(fmt.Sprintf("%d", u.ID)))
 				Expect(trackCall.Arguments[1]).To(Equal("Created Project"))
+				Expect(trackCall.Arguments[2]).To(Equal(""))
 
-				t := trackCall.Arguments[2]
+				t := trackCall.Arguments[3]
 				props, ok := t.(map[string]interface{})
 				Expect(ok).To(BeTrue())
 				Expect(props["projectName"]).To(Equal("foo-bar-express"))
 
-				Expect(trackCall.Arguments[3]).To(BeNil())
+				Expect(trackCall.Arguments[4]).To(BeNil())
 				Expect(trackCall.ReturnValues[0]).To(BeNil())
 			})
 		})
@@ -946,14 +950,306 @@ var _ = Describe("Projects", func() {
 			Expect(trackCall).NotTo(BeNil())
 			Expect(trackCall.Arguments[0]).To(Equal(fmt.Sprintf("%d", u.ID)))
 			Expect(trackCall.Arguments[1]).To(Equal("Deleted Project"))
+			Expect(trackCall.Arguments[2]).To(Equal(""))
 
-			t := trackCall.Arguments[2]
+			t := trackCall.Arguments[3]
 			props, ok := t.(map[string]interface{})
 			Expect(ok).To(BeTrue())
 			Expect(props["projectName"]).To(Equal(proj.Name))
 
-			Expect(trackCall.Arguments[3]).To(BeNil())
+			Expect(trackCall.Arguments[4]).To(BeNil())
 			Expect(trackCall.ReturnValues[0]).To(BeNil())
+		})
+
+		Context("when there are associated raw bundles", func() {
+			var (
+				bun1 *rawbundle.RawBundle
+				bun2 *rawbundle.RawBundle
+			)
+
+			BeforeEach(func() {
+				bun1 = factories.RawBundle(db, proj)
+				bun2 = factories.RawBundle(db, proj)
+			})
+
+			It("deletes associated raw bundles from DB and S3", func() {
+				doRequest()
+
+				Expect(db.First(bun1, bun1.ID).Error).To(Equal(gorm.RecordNotFound))
+				Expect(db.First(bun2, bun2.ID).Error).To(Equal(gorm.RecordNotFound))
+
+				Expect(fakeS3.DeleteCalls.Count()).To(Equal(1))
+
+				deleteCall := fakeS3.DeleteCalls.NthCall(1)
+				Expect(deleteCall).NotTo(BeNil())
+				Expect(deleteCall.Arguments[0]).To(Equal(s3client.BucketRegion))
+				Expect(deleteCall.Arguments[1]).To(Equal(s3client.BucketName))
+				Expect(deleteCall.ReturnValues[0]).To(BeNil())
+
+				filesToDelete := []string{
+					"domains/" + proj.DefaultDomainName() + "/meta.json",
+					"domains/" + dm1.Name + "/meta.json",
+					"certs/" + dm1.Name + "/ssl.crt",
+					"certs/" + dm1.Name + "/ssl.key",
+					"domains/" + dm2.Name + "/meta.json",
+					"certs/" + dm2.Name + "/ssl.crt",
+					"certs/" + dm2.Name + "/ssl.key",
+
+					bun1.UploadedPath,
+					bun2.UploadedPath,
+				}
+
+				for i, path := range filesToDelete {
+					Expect(deleteCall.Arguments[2+i]).To(Equal(path))
+				}
+			})
+		})
+
+		sharedexamples.ItRequiresAuthentication(func() (*gorm.DB, *user.User, *http.Header) {
+			return db, u, &headers
+		}, func() *http.Response {
+			doRequest()
+			return res
+		}, nil)
+
+		sharedexamples.ItRequiresProject(func() (*gorm.DB, *project.Project) {
+			return db, proj
+		}, func() *http.Response {
+			doRequest()
+			return res
+		}, nil)
+
+		sharedexamples.ItLocksProject(func() (*gorm.DB, *project.Project) {
+			return db, proj
+		}, func() *http.Response {
+			doRequest()
+			return res
+		}, nil)
+	})
+
+	Describe("POST /projects/:name/auth", func() {
+		var (
+			mq *amqp.Connection
+
+			proj *project.Project
+
+			params  url.Values
+			headers http.Header
+		)
+
+		BeforeEach(func() {
+			mq, err = mqconn.MQ()
+			Expect(err).To(BeNil())
+
+			testhelper.DeleteQueue(mq, queues.All...)
+
+			headers = http.Header{
+				"Authorization": {"Bearer " + t.Token},
+			}
+
+			proj = factories.Project(db, u)
+
+			params = url.Values{
+				"basic_auth_username": {"user"},
+				"basic_auth_password": {"pass"},
+			}
+		})
+
+		doRequest := func() {
+			s = httptest.NewServer(server.New())
+			res, err = testhelper.MakeRequest("POST", s.URL+"/projects/"+proj.Name+"/auth", params, headers, nil)
+			Expect(err).To(BeNil())
+		}
+
+		Context("`basic_auth_username` and `basic_auth_password` is provided", func() {
+			It("returns 200 OK and updates the project", func() {
+				doRequest()
+
+				b := &bytes.Buffer{}
+				_, err := b.ReadFrom(res.Body)
+				Expect(err).To(BeNil())
+
+				Expect(res.StatusCode).To(Equal(http.StatusOK))
+				Expect(b.String()).To(MatchJSON(`{
+					"protected": true
+				}`))
+
+				err = db.First(proj, proj.ID).Error
+				Expect(err).To(BeNil())
+
+				Expect(proj.BasicAuthUsername).NotTo(BeNil())
+				Expect(*proj.BasicAuthUsername).To(Equal("user"))
+
+				hasher := sha256.New()
+				_, err = hasher.Write([]byte("user:pass"))
+				Expect(err).To(BeNil())
+
+				Expect(*proj.EncryptedBasicAuthPassword).To(Equal(hex.EncodeToString(hasher.Sum(nil))))
+			})
+
+			Context("when there is an active deployment", func() {
+				var depl *deployment.Deployment
+
+				BeforeEach(func() {
+					depl = factories.Deployment(db, proj, u, deployment.StateDeployed)
+					err := db.Model(proj).Update("active_deployment_id", depl.ID).Error
+					Expect(err).To(BeNil())
+				})
+
+				It("enqueues a deploy job to update meta.json", func() {
+					doRequest()
+
+					d := testhelper.ConsumeQueue(mq, queues.Deploy)
+					Expect(d).NotTo(BeNil())
+					Expect(d.Body).To(MatchJSON(fmt.Sprintf(`{
+						"deployment_id": %d,
+						"skip_webroot_upload": true,
+						"skip_invalidation": false,
+						"use_raw_bundle": false
+					}`, *proj.ActiveDeploymentID)))
+				})
+			})
+		})
+
+		Context("when invalid params are provided", func() {
+			DescribeTable("it returns 422 and does not update project",
+				func(setUp func(), message string) {
+					setUp()
+					doRequest()
+
+					b := &bytes.Buffer{}
+					_, err := b.ReadFrom(res.Body)
+					Expect(err).To(BeNil())
+
+					Expect(res.StatusCode).To(Equal(422))
+					Expect(b.String()).To(MatchJSON(message))
+
+					err = db.First(proj, proj.ID).Error
+					Expect(err).To(BeNil())
+
+					Expect(proj.BasicAuthUsername).To(BeNil())
+					Expect(proj.EncryptedBasicAuthPassword).To(BeNil())
+				},
+
+				Entry("require basic_auth_username", func() {
+					params.Del("basic_auth_username")
+				}, `{
+						"error": "invalid_params",
+						"errors": {
+							"basic_auth_username": "is required"
+						}
+					}`),
+
+				Entry("require basic_auth_password", func() {
+					params.Del("basic_auth_password")
+				}, `{
+						"error": "invalid_params",
+						"errors": {
+							"basic_auth_password": "is required"
+						}
+					}`),
+			)
+		})
+
+		sharedexamples.ItRequiresAuthentication(func() (*gorm.DB, *user.User, *http.Header) {
+			return db, u, &headers
+		}, func() *http.Response {
+			doRequest()
+			return res
+		}, nil)
+
+		sharedexamples.ItRequiresProject(func() (*gorm.DB, *project.Project) {
+			return db, proj
+		}, func() *http.Response {
+			doRequest()
+			return res
+		}, nil)
+
+		sharedexamples.ItLocksProject(func() (*gorm.DB, *project.Project) {
+			return db, proj
+		}, func() *http.Response {
+			doRequest()
+			return res
+		}, nil)
+	})
+
+	Describe("DELETE /projects/:name/auth", func() {
+		var (
+			mq *amqp.Connection
+
+			proj *project.Project
+
+			headers http.Header
+		)
+
+		BeforeEach(func() {
+			mq, err = mqconn.MQ()
+			Expect(err).To(BeNil())
+
+			testhelper.DeleteQueue(mq, queues.All...)
+
+			headers = http.Header{
+				"Authorization": {"Bearer " + t.Token},
+			}
+
+			proj = factories.Project(db, u)
+			username := "user"
+			password := "pass"
+			proj.BasicAuthUsername = &username
+			proj.BasicAuthPassword = password
+			Expect(proj.EncryptBasicAuthPassword()).To(BeNil())
+			Expect(db.Save(proj).Error).To(BeNil())
+		})
+
+		doRequest := func() {
+			s = httptest.NewServer(server.New())
+			res, err = testhelper.MakeRequest("DELETE", s.URL+"/projects/"+proj.Name+"/auth", nil, headers, nil)
+			Expect(err).To(BeNil())
+		}
+
+		Context("`basic_auth_username` and `basic_auth_password` is provided", func() {
+			It("returns 200 OK and updates the project", func() {
+				doRequest()
+
+				b := &bytes.Buffer{}
+				_, err := b.ReadFrom(res.Body)
+				Expect(err).To(BeNil())
+
+				Expect(b.String()).To(MatchJSON(`{
+					"unprotected": true
+				}`))
+				Expect(res.StatusCode).To(Equal(http.StatusOK))
+
+				err = db.First(proj, proj.ID).Error
+				Expect(err).To(BeNil())
+
+				Expect(proj.BasicAuthUsername).To(BeNil())
+				Expect(proj.EncryptedBasicAuthPassword).To(BeNil())
+			})
+
+			Context("when there is an active deployment", func() {
+				var depl *deployment.Deployment
+
+				BeforeEach(func() {
+					depl = factories.Deployment(db, proj, u, deployment.StateDeployed)
+					err := db.Model(proj).Update("active_deployment_id", depl.ID).Error
+					Expect(err).To(BeNil())
+				})
+
+				It("enqueues a deploy job to update meta.json", func() {
+					doRequest()
+
+					d := testhelper.ConsumeQueue(mq, queues.Deploy)
+					Expect(d).NotTo(BeNil())
+					Expect(d.Body).To(MatchJSON(fmt.Sprintf(`{
+						"deployment_id": %d,
+						"skip_webroot_upload": true,
+						"skip_invalidation": false,
+						"use_raw_bundle": false
+					}`, *proj.ActiveDeploymentID)))
+				})
+			})
+
 		})
 
 		sharedexamples.ItRequiresAuthentication(func() (*gorm.DB, *user.User, *http.Header) {

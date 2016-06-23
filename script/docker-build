@@ -1,4 +1,7 @@
 #!/bin/bash
+#
+# Builds and releases binaries to S3. This is meant to be run in a Docker
+# container - see script/ci-build.
 
 PUBLIC_BUCKET=${PUBLIC_BUCKET:="rise-server-staging"}
 UPLOAD_S3=${UPLOAD_S3:="false"}
@@ -20,7 +23,7 @@ get_version() {
   version=$(cat $app/VERSION) # get version from version file
   sha=$(git rev-list --max-count=1 --abbrev-commit HEAD)
 
-  echo "${version}-${sha}" # 1.0.1-asdf
+  echo "${version}-${sha}" # E.g. 1.0.1-deadbeef
 }
 
 hash_files() {
@@ -48,8 +51,25 @@ build() {
   echo $version > $BUILD_DIR/$app-VERSION
 }
 
-# bundle binary (from dedicated/script/release)
+build_jobs() {
+  # Build all top-level subfolders in jobs/ folder.
+  cd /opt/src/github.com/nitrous-io/rise-server
+  version=$(get_version jobs)
+  LDFLAGS="-s -w -X main.version=$version"
+
+  cd /opt/src/github.com/nitrous-io/rise-server/jobs
+  for d in *; do
+    if [[ -d $d ]]; then
+      echo "Building job: $d (version: $version)"
+      go install github.com/nitrous-io/rise-server/jobs/$d
+      echo $version > $BUILD_DIR/$d-VERSION
+    fi
+  done
+}
+
 bundle_binary() {
+  cd /opt/src/github.com/nitrous-io/rise-server
+
   BINARY=$1
   shift
   VERSION=$(cat $BUILD_DIR/${BINARY}-VERSION)
@@ -68,10 +88,20 @@ bundle_binary() {
   upload_s3 ${BINARY}.md5 ${BINARY}-${VERSION}.md5
   upload_s3 ${BINARY}.sha256 ${BINARY}-${VERSION}.sha256
 
-  upload_s3 $pkg $latestpkg
-  upload_s3 ${BINARY}.md5 ${BINARY}-latest.md5
+
+  cp $pkg $latestpkg
+  hash_files $latestpkg ${BINARY}-latest
+
+  upload_s3 $latestpkg $latestpkg
+  upload_s3 ${BINARY}-latest.md5 ${BINARY}-latest.md5
   upload_s3 ${BINARY}.sha256 ${BINARY}-latest.sha256
   )
+}
+
+copy_migrations() {
+  cp -r /opt/src/github.com/nitrous-io/rise-server/apiserver/migrations /opt/bin
+  chmod 777 /opt/bin/migrations
+  chmod 666 /opt/bin/migrations/*
 }
 
 run_tests() {
@@ -91,23 +121,26 @@ run_tests() {
   ./script/migrate up
   ./script/prepare-test-db
   ./script/test
-
-  cp -r /opt/src/github.com/nitrous-io/rise-server/apiserver/migrations /opt/bin
-  chmod 777 /opt/bin/migrations
-  chmod 666 /opt/bin/migrations/*
 }
 
 echo "Running tests"
 run_tests
-# Create binaries
+
 echo "Creating binaries"
 build apiserver
 build edged
 build deployer
 build builder
 
+build_jobs
+
+copy_migrations
+
 # TODO: Perform release to s3
 bundle_binary apiserver migrate migrations/*
 bundle_binary edged
 bundle_binary deployer
 bundle_binary builder
+
+bundle_binary digestcron
+bundle_binary purgedeploys

@@ -13,11 +13,6 @@ var (
 )
 
 func init() {
-	riseEnv := os.Getenv("RISE_ENV")
-	if riseEnv == "" {
-		riseEnv = "development"
-	}
-
 	if DefaultDomain == "" {
 		DefaultDomain = "risecloud.dev"
 	}

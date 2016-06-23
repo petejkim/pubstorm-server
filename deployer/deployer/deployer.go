@@ -31,7 +31,12 @@ import (
 	"github.com/nitrous-io/rise-server/shared/s3client"
 )
 
-var ErrProjectLocked = errors.New("project is locked")
+var (
+	ErrProjectLocked = errors.New("project is locked")
+	ErrTimeout       = errors.New("failed to upload files due to timeout on uploading to s3")
+
+	UploadTimeout = 3 * time.Minute
+)
 
 func init() {
 	riseEnv := os.Getenv("RISE_ENV")
@@ -57,8 +62,7 @@ var (
 
 func Work(data []byte) error {
 	d := &messages.DeployJobData{}
-	err := json.Unmarshal(data, d)
-	if err != nil {
+	if err := json.Unmarshal(data, d); err != nil {
 		return err
 	}
 
@@ -85,7 +89,7 @@ func Work(data []byte) error {
 	}
 
 	if !d.SkipWebrootUpload {
-		// We should not allow to re-upload for deployed project
+		// Disallow re-deploying a deployed project.
 		if depl.State == deployment.StateDeployed {
 			return errUnexpectedState
 		}
@@ -95,9 +99,7 @@ func Work(data []byte) error {
 			bundlePath = "deployments/" + prefixID + "/raw-bundle.tar.gz"
 		}
 
-		tmpFileName := prefixID + "-optimized-bundle.tar.gz"
-
-		f, err := ioutil.TempFile("", tmpFileName)
+		f, err := ioutil.TempFile("", prefixID+"-optimized-bundle.tar.gz")
 		if err != nil {
 			return err
 		}
@@ -110,42 +112,64 @@ func Work(data []byte) error {
 			return err
 		}
 
+		done := make(chan struct{})
+		errCh := make(chan error)
+
 		gr, err := gzip.NewReader(f)
 		if err != nil {
-			fmt.Println("could not unzip", err)
 			return err
 		}
-		defer gr.Close()
-
 		tr := tar.NewReader(gr)
 
-		webroot := "deployments/" + prefixID + "/webroot"
+		defer gr.Close()
 
-		// webroot is publicly readable
-		for {
-			hdr, err := tr.Next()
-			if err != nil {
-				if err == io.EOF {
-					break
+		go func() {
+			// webroot is a publicly readable directory on S3.
+			webroot := "deployments/" + prefixID + "/webroot"
+
+			for {
+				hdr, err := tr.Next()
+				if err != nil {
+					if err == io.EOF {
+						break
+					}
+					errCh <- err
+					return
 				}
-				return err
+
+				if hdr.FileInfo().IsDir() {
+					continue
+				}
+
+				fileName := path.Clean(hdr.Name)
+				remotePath := webroot + "/" + fileName
+
+				contentType := mime.TypeByExtension(filepath.Ext(fileName))
+				if i := strings.Index(contentType, ";"); i != -1 {
+					contentType = contentType[:i]
+				}
+
+				if err := S3.Upload(s3client.BucketRegion, s3client.BucketName, remotePath, tr, contentType, "public-read"); err != nil {
+					errCh <- err
+					return
+				}
 			}
 
-			if hdr.FileInfo().IsDir() {
-				continue
+			done <- struct{}{}
+		}()
+
+		select {
+		case <-done:
+		case err := <-errCh:
+			return err
+		case <-time.After(UploadTimeout):
+			errorMessage := "Timed out due to too many files"
+			depl.ErrorMessage = &errorMessage
+			if err := depl.UpdateState(db, deployment.StateDeployFailed); err != nil {
+				fmt.Printf("Failed to update deployment state for %s due to %v", prefixID, err)
 			}
 
-			fileName := path.Clean(hdr.Name)
-			remotePath := webroot + "/" + fileName
-
-			contentType := mime.TypeByExtension(filepath.Ext(fileName))
-			if i := strings.Index(contentType, ";"); i != -1 {
-				contentType = contentType[:i]
-			}
-
-			if err := S3.Upload(s3client.BucketRegion, s3client.BucketName, remotePath, tr, contentType, "public-read"); err != nil {
-				return err
-			}
+			return ErrTimeout
 		}
 	}
 
@@ -155,23 +179,28 @@ func Work(data []byte) error {
 
 	// the metadata file is also publicly readable, do not put sensitive data
 	metaJson, err := json.Marshal(struct {
-		Prefix     string `json:"prefix"`
-		ForceHTTPS bool   `json:"force_https,omitempty"`
+		Prefix            string  `json:"prefix"`
+		ForceHTTPS        bool    `json:"force_https,omitempty"`
+		BasicAuthUsername *string `json:"basic_auth_username,omitempty"`
+		BasicAuthPassword *string `json:"basic_auth_password,omitempty"`
 	}{
 		prefixID,
 		proj.ForceHTTPS,
+		proj.BasicAuthUsername,
+		proj.EncryptedBasicAuthPassword,
 	})
 
 	if err != nil {
 		return err
 	}
-	reader := bytes.NewReader(metaJson)
 
 	domainNames, err := proj.DomainNames(db)
 	if err != nil {
 		return err
 	}
 
+	// Upload metadata file for each domain.
+	reader := bytes.NewReader(metaJson)
 	for _, domain := range domainNames {
 		reader.Seek(0, 0)
 		if err := S3.Upload(s3client.BucketRegion, s3client.BucketName, "domains/"+domain+"/meta.json", reader, "application/json", "public-read"); err != nil {
@@ -206,6 +235,14 @@ func Work(data []byte) error {
 		return err
 	}
 
+	// If project has exceeded its max number of deployments (N), we soft delete
+	// deployments older than the last N deployments.
+	if proj.MaxDeploysKept > 0 {
+		if err := deployment.DeleteExceptLastN(tx, proj.ID, proj.MaxDeploysKept); err != nil {
+			return err
+		}
+	}
+
 	if err := tx.Commit().Error; err != nil {
 		return err
 	}
@@ -225,7 +262,7 @@ func Work(data []byte) error {
 				}
 				context map[string]interface{}
 			)
-			if err := common.Track(strconv.Itoa(int(u.ID)), event, props, context); err != nil {
+			if err := common.Track(strconv.Itoa(int(u.ID)), event, "", props, context); err != nil {
 				log.Printf("failed to track %q event for user ID %d, err: %v",
 					event, u.ID, err)
 			}

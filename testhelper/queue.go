@@ -38,8 +38,6 @@ func ConsumeQueue(mq *amqp.Connection, queueName string) *amqp.Delivery {
 	case <-time.After(100 * time.Millisecond):
 		return nil
 	}
-
-	return nil
 }
 
 func DeleteExchange(mq *amqp.Connection, exchangeNames ...string) {
