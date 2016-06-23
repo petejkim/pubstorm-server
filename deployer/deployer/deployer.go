@@ -76,17 +76,32 @@ func Work(data []byte) error {
 		return err
 	}
 
+	proj := &project.Project{}
+	if err := db.Where("id = ?", depl.ProjectID).First(proj).Error; err != nil {
+		return err
+	}
+
+	acquired, err := proj.Lock(db)
+	if err != nil {
+		return err
+	}
+
+	if !acquired {
+		return ErrProjectLocked
+	}
+
+	defer func() {
+		if err := proj.Unlock(db); err != nil {
+			log.Printf("failed to unlock project %d due to %v", proj.ID, err)
+		}
+	}()
+
 	// Return error if the deployment is in a state that bundle is not uploaded or not prepared for deploying
 	if depl.State == deployment.StateUploaded || depl.State == deployment.StatePendingUpload {
 		return errUnexpectedState
 	}
 
 	prefixID := depl.PrefixID()
-
-	proj := &project.Project{}
-	if err := db.Where("id = ?", depl.ProjectID).First(proj).Error; err != nil {
-		return err
-	}
 
 	if !d.SkipWebrootUpload {
 		// Disallow re-deploying a deployed project.
@@ -171,10 +186,6 @@ func Work(data []byte) error {
 
 			return ErrTimeout
 		}
-	}
-
-	if proj.LockedAt != nil {
-		return ErrProjectLocked
 	}
 
 	// the metadata file is also publicly readable, do not put sensitive data

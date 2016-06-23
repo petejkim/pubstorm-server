@@ -210,6 +210,10 @@ var _ = Describe("Deployer", func() {
 
 		// it should set project's active deployment to current deployment id
 		assertActiveDeploymentIDUpdate()
+
+		// make sure it does not leave project as locked
+		Expect(db.First(proj, proj.ID).Error).To(BeNil())
+		Expect(proj.LockedAt).To(BeNil())
 	})
 
 	It("tracks a 'Project Deployed' event", func() {
@@ -646,6 +650,10 @@ var _ = Describe("Deployer", func() {
 				"deployment_id": %d
 			}`, depl.ID)))
 			Expect(err).To(Equal(deployer.ErrProjectLocked))
+
+			// make sure it does not unlock the project
+			Expect(db.First(proj, proj.ID).Error).To(BeNil())
+			Expect(proj.LockedAt).NotTo(BeNil())
 		})
 	})
 
@@ -674,6 +682,10 @@ var _ = Describe("Deployer", func() {
 			time.Sleep(50 * time.Millisecond)
 
 			Expect(err).To(Equal(deployer.ErrTimeout))
+
+			// make sure it does not leave project as locked
+			Expect(db.First(proj, proj.ID).Error).To(BeNil())
+			Expect(proj.LockedAt).To(BeNil())
 		})
 
 		It("does not upload the rest of files", func() {

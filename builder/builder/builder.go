@@ -77,17 +77,28 @@ func Work(data []byte) error {
 		return err
 	}
 
-	if depl.State != deployment.StatePendingBuild {
-		return errUnexpectedState
-	}
-
 	proj := &project.Project{}
 	if err := db.Where("id = ?", depl.ProjectID).First(proj).Error; err != nil {
 		return err
 	}
 
-	if proj.LockedAt != nil {
+	acquired, err := proj.Lock(db)
+	if err != nil {
+		return err
+	}
+
+	if !acquired {
 		return ErrProjectLocked
+	}
+
+	defer func() {
+		if err := proj.Unlock(db); err != nil {
+			log.Printf("failed to unlock project %d due to %v", proj.ID, err)
+		}
+	}()
+
+	if depl.State != deployment.StatePendingBuild {
+		return errUnexpectedState
 	}
 
 	var rawBundlePath string
