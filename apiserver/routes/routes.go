@@ -5,6 +5,7 @@ import (
 	"github.com/nitrous-io/rise-server/apiserver/controllers/certs"
 	"github.com/nitrous-io/rise-server/apiserver/controllers/deployments"
 	"github.com/nitrous-io/rise-server/apiserver/controllers/domains"
+	"github.com/nitrous-io/rise-server/apiserver/controllers/jsenvvars"
 	"github.com/nitrous-io/rise-server/apiserver/controllers/oauth"
 	"github.com/nitrous-io/rise-server/apiserver/controllers/ping"
 	"github.com/nitrous-io/rise-server/apiserver/controllers/projects"
@@ -53,6 +54,7 @@ func Draw(r *gin.Engine) {
 			projCollab.POST("/domains/:name/cert", certs.Create)
 			projCollab.DELETE("/domains/:name/cert", certs.Destroy)
 			projCollab.GET("/raw_bundles/:bundle_checksum", rawbundles.Get)
+			projCollab.GET("/jsenvvars", jsenvvars.Index)
 
 			{ // Routes that lock a project
 				lock := projCollab.Group("", middleware.LockProject)
@@ -63,6 +65,8 @@ func Draw(r *gin.Engine) {
 				lock.POST("/rollback", deployments.Rollback)
 				lock.POST("/auth", projects.CreateAuth)
 				lock.DELETE("/auth", projects.DeleteAuth)
+				lock.PUT("/jsenvvars/add", jsenvvars.Add)
+				lock.PUT("/jsenvvars/delete", jsenvvars.Delete)
 			}
 		}
 

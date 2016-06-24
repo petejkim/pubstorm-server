@@ -38,6 +38,15 @@ var (
 	UploadTimeout = 3 * time.Minute
 )
 
+var jsenvFormat = `(function(global, env) {
+	if (typeof module === "object" && typeof module.exports === "object") {
+		module.exports = env;
+	} else {
+		global.JSENV = env;
+	}
+}(this, %s));
+`
+
 func init() {
 	riseEnv := os.Getenv("RISE_ENV")
 	if riseEnv == "" {
@@ -185,6 +194,20 @@ func Work(data []byte) error {
 			}
 
 			return ErrTimeout
+		}
+
+		var envvars map[string]string
+		if err := json.Unmarshal(depl.JsEnvVars, &envvars); err != nil {
+			return err
+		}
+
+		if err := S3.Upload(s3client.BucketRegion,
+			s3client.BucketName,
+			webroot+"/jsenv.js",
+			bytes.NewBufferString(fmt.Sprintf(jsenvFormat, depl.JsEnvVars)),
+			"application/javascript",
+			"public-read"); err != nil {
+			return err
 		}
 	}
 

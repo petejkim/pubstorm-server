@@ -10,15 +10,16 @@ import (
 
 // Allowed deployment states.
 const (
-	StatePendingUpload   = "pending_upload"
-	StateUploaded        = "uploaded"
-	StatePendingDeploy   = "pending_deploy"
-	StateDeployed        = "deployed"
-	StateDeployFailed    = "deploy_failed"
-	StatePendingRollback = "pending_rollback"
-	StatePendingBuild    = "pending_build"
-	StateBuilt           = "built"
-	StateBuildFailed     = "build_failed"
+	StatePendingUpload       = "pending_upload"
+	StateUploaded            = "uploaded"
+	StatePendingDeploy       = "pending_deploy"
+	StateDeployed            = "deployed"
+	StateDeployFailed        = "deploy_failed"
+	StatePendingRollback     = "pending_rollback"
+	StatePendingBuild        = "pending_build"
+	StateBuilt               = "built"
+	StateBuildFailed         = "build_failed"
+	StatePendingUpdateConfig = "pending_update_config"
 )
 
 // Errors returned from this package.
@@ -39,6 +40,8 @@ type Deployment struct {
 	ProjectID   uint
 	UserID      uint
 	RawBundleID *uint
+
+	JsEnvVars []byte `sql:"default:{}"`
 
 	DeployedAt *time.Time
 	PurgedAt   *time.Time
@@ -167,5 +170,6 @@ func isValidState(state string) bool {
 		StatePendingRollback == state ||
 		StatePendingBuild == state ||
 		StateBuilt == state ||
-		StateBuildFailed == state
+		StateBuildFailed == state ||
+		StatePendingUpdateConfig == state
 }
