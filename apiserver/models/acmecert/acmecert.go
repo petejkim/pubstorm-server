@@ -38,6 +38,10 @@ type AcmeCert struct {
 	// should include the actual certificate and the issuer certificate.
 	Cert string
 
+	// CertURI is the URI to get a renewed version of this cert from Let's
+	// Encrypt.
+	CertURI string `sql:"column:cert_uri"`
+
 	HTTPChallengePath     string `sql:"column:http_challenge_path"`
 	HTTPChallengeResource string `sql:"column:http_challenge_resource"`
 }
