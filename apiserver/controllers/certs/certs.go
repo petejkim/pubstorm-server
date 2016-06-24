@@ -406,22 +406,29 @@ func LetsEncrypt(c *gin.Context) {
 		return
 	}
 
+	// Bundle cert with issuer cert.
+	bundledPEM, err := cli.Bundle(certResp)
+	if err != nil {
+		log.Errorf("failed to get issuer certificate from Let's Encrypt, domain: %q, err: %v", dom.Name, err)
+		c.JSON(http.StatusServiceUnavailable, gin.H{
+			"error":             "service_unavailable",
+			"error_description": "could not obtain issuer certificate from Let's Encrypt",
+		})
+		return
+	}
+
 	// Save cert to database so we can use it elsewhere (e.g. for renewals).
-	if err := acmeCert.SaveCert(db, certResp.Certificate, common.AesKey); err != nil {
+	if err := acmeCert.SaveCert(db, bundledPEM, common.AesKey); err != nil {
 		controllers.InternalServerError(c, err)
 		return
 	}
 
 	// Upload cert and its private key to S3.
-	certPEM := pem.EncodeToMemory(&pem.Block{
-		Type:  "CERTIFICATE",
-		Bytes: certResp.Certificate.Raw,
-	})
 	certKeyPEM := pem.EncodeToMemory(&pem.Block{
 		Type:  "RSA PRIVATE KEY",
 		Bytes: x509.MarshalPKCS1PrivateKey(certKey),
 	})
-	if err := uploadCert(dom.Name, certPEM, certKeyPEM); err != nil {
+	if err := uploadCert(dom.Name, bundledPEM, certKeyPEM); err != nil {
 		controllers.InternalServerError(c, err)
 		return
 	}

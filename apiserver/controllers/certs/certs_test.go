@@ -670,7 +670,8 @@ A6ao9QSL1ryillYV9Y4001C3jApzmMtBWoMp3NPzwU8nacAOzClJYUcSLkbAIEWV
 			origAesKey  string
 			origAcmeURL string
 
-			letsencryptPEM *pem.Block
+			letsencryptPEM       *pem.Block
+			letsencryptIssuerPEM *pem.Block
 
 			// These values can be changed in tests to test cases other than the
 			// "happy path".
@@ -704,9 +705,12 @@ A6ao9QSL1ryillYV9Y4001C3jApzmMtBWoMp3NPzwU8nacAOzClJYUcSLkbAIEWV
 
 			invalidationQueueName = testhelper.StartQueueWithExchange(mq, exchanges.Edges, exchanges.RouteV1Invalidation)
 
-			// Decode PEM encoded cert so that we can return it from the mock
+			// Decode PEM encoded certs so that we can return them from the mock
 			// ACME server in ASN.1 DER format.
 			letsencryptPEM, _ = pem.Decode(letsencryptCert)
+			Expect(letsencryptPEM).NotTo(BeNil())
+			letsencryptIssuerPEM, _ = pem.Decode(letsencryptIssuerCert)
+			Expect(letsencryptIssuerPEM).NotTo(BeNil())
 
 			acmeServer = ghttp.NewServer()
 
@@ -781,7 +785,20 @@ A6ao9QSL1ryillYV9Y4001C3jApzmMtBWoMp3NPzwU8nacAOzClJYUcSLkbAIEWV
 				ghttp.CombineHandlers(
 					ghttp.VerifyRequest("POST", "/new-cert"),
 					ghttp.VerifyContentType("application/jose+jws"),
-					ghttp.RespondWith(http.StatusCreated, string(letsencryptPEM.Bytes), http.Header{"Replay-Nonce": {"nonce-6"}}),
+					ghttp.RespondWith(
+						http.StatusCreated,
+						string(letsencryptPEM.Bytes),
+						http.Header{
+							"Replay-Nonce": {"nonce-6"},
+							// Specify issuer certificate URL in the "up" Link.
+							// We will need to make a request to this URL to create a
+							// certificate bundle.
+							"Link": {`<` + acmeServer.URL() + `/issuer-cert>;rel="up"`}},
+					),
+				),
+				ghttp.CombineHandlers(
+					ghttp.VerifyRequest("GET", "/issuer-cert"),
+					ghttp.RespondWith(http.StatusOK, string(letsencryptIssuerPEM.Bytes)),
 				),
 			)
 
@@ -863,20 +880,25 @@ A6ao9QSL1ryillYV9Y4001C3jApzmMtBWoMp3NPzwU8nacAOzClJYUcSLkbAIEWV
 			Expect(acmeCert.Cert).NotTo(Equal(""))
 		})
 
-		It("encrypts and saves the certificate returned from Let's Encrypted", func() {
+		It("encrypts and saves the certificate returned from Let's Encrypted bundled with the issuer certificate", func() {
 			doRequest()
 
 			acmeCert := &acmecert.AcmeCert{}
 			err := db.Where("domain_id = ?", dm.ID).First(acmeCert).Error
 			Expect(err).To(BeNil())
 
-			crt, err := acmeCert.DecryptedCert(common.AesKey)
+			certChain, err := acmeCert.DecryptedCerts(common.AesKey)
 			Expect(err).To(BeNil())
 
-			letsencryptX509Cert, err := x509.ParseCertificate(letsencryptPEM.Bytes)
-			Expect(err).To(BeNil())
+			Expect(certChain).To(HaveLen(2))
 
-			Expect(crt).To(Equal(letsencryptX509Cert))
+			// The actual cert comes first in the chain.
+			domainCert := certChain[0]
+			Expect(domainCert.Raw).To(Equal(letsencryptPEM.Bytes))
+
+			// Followed by the issuer cert.
+			issuerCert := certChain[1]
+			Expect(issuerCert.Raw).To(Equal(letsencryptIssuerPEM.Bytes))
 		})
 
 		It("uses an existing Let's Encrypt private key when there's one", func() {
@@ -908,7 +930,8 @@ A6ao9QSL1ryillYV9Y4001C3jApzmMtBWoMp3NPzwU8nacAOzClJYUcSLkbAIEWV
 			Expect(ok).To(BeTrue())
 			decryptedCrt, err := aesencrypter.Decrypt(encryptedCrt, []byte(common.AesKey))
 			Expect(err).To(BeNil())
-			Expect(decryptedCrt).To(Equal(letsencryptCert))
+			bundledPEM := append(letsencryptCert, letsencryptIssuerCert...)
+			Expect(decryptedCrt).To(Equal(bundledPEM))
 
 			call = fakeS3.UploadCalls.NthCall(2)
 			Expect(call).NotTo(BeNil())
@@ -1437,5 +1460,34 @@ X+QyngquLVUSKH3W/1NbblsL4PtYGpVX9vluAzZlZvz8s/WJagcYEXfekPU5y9oQ
 3GFJQhiuYgHrqqiUvY8VI4xq/jddDcn8tKaCTHSoTVzy7UHDAF4JA8EsGrllZPyN
 x6bN9vuFFH/ERkYYBJf38RFiOdiQhY/yvVbplHmtMcnywqDuRJAM6brzGIVr6yy4
 HFmuSS8xVtPt1xhOwzUAygEWhQ==
+-----END CERTIFICATE-----
+`)
+
+var letsencryptIssuerCert = []byte(`-----BEGIN CERTIFICATE-----
+MIIEkjCCA3qgAwIBAgIQCgFBQgAAAVOFc2oLheynCDANBgkqhkiG9w0BAQsFADA/
+MSQwIgYDVQQKExtEaWdpdGFsIFNpZ25hdHVyZSBUcnVzdCBDby4xFzAVBgNVBAMT
+DkRTVCBSb290IENBIFgzMB4XDTE2MDMxNzE2NDA0NloXDTIxMDMxNzE2NDA0Nlow
+SjELMAkGA1UEBhMCVVMxFjAUBgNVBAoTDUxldCdzIEVuY3J5cHQxIzAhBgNVBAMT
+GkxldCdzIEVuY3J5cHQgQXV0aG9yaXR5IFgzMIIBIjANBgkqhkiG9w0BAQEFAAOC
+AQ8AMIIBCgKCAQEAnNMM8FrlLke3cl03g7NoYzDq1zUmGSXhvb418XCSL7e4S0EF
+q6meNQhY7LEqxGiHC6PjdeTm86dicbp5gWAf15Gan/PQeGdxyGkOlZHP/uaZ6WA8
+SMx+yk13EiSdRxta67nsHjcAHJyse6cF6s5K671B5TaYucv9bTyWaN8jKkKQDIZ0
+Z8h/pZq4UmEUEz9l6YKHy9v6Dlb2honzhT+Xhq+w3Brvaw2VFn3EK6BlspkENnWA
+a6xK8xuQSXgvopZPKiAlKQTGdMDQMc2PMTiVFrqoM7hD8bEfwzB/onkxEz0tNvjj
+/PIzark5McWvxI0NHWQWM6r6hCm21AvA2H3DkwIDAQABo4IBfTCCAXkwEgYDVR0T
+AQH/BAgwBgEB/wIBADAOBgNVHQ8BAf8EBAMCAYYwfwYIKwYBBQUHAQEEczBxMDIG
+CCsGAQUFBzABhiZodHRwOi8vaXNyZy50cnVzdGlkLm9jc3AuaWRlbnRydXN0LmNv
+bTA7BggrBgEFBQcwAoYvaHR0cDovL2FwcHMuaWRlbnRydXN0LmNvbS9yb290cy9k
+c3Ryb290Y2F4My5wN2MwHwYDVR0jBBgwFoAUxKexpHsscfrb4UuQdf/EFWCFiRAw
+VAYDVR0gBE0wSzAIBgZngQwBAgEwPwYLKwYBBAGC3xMBAQEwMDAuBggrBgEFBQcC
+ARYiaHR0cDovL2Nwcy5yb290LXgxLmxldHNlbmNyeXB0Lm9yZzA8BgNVHR8ENTAz
+MDGgL6AthitodHRwOi8vY3JsLmlkZW50cnVzdC5jb20vRFNUUk9PVENBWDNDUkwu
+Y3JsMB0GA1UdDgQWBBSoSmpjBH3duubRObemRWXv86jsoTANBgkqhkiG9w0BAQsF
+AAOCAQEA3TPXEfNjWDjdGBX7CVW+dla5cEilaUcne8IkCJLxWh9KEik3JHRRHGJo
+uM2VcGfl96S8TihRzZvoroed6ti6WqEBmtzw3Wodatg+VyOeph4EYpr/1wXKtx8/
+wApIvJSwtmVi4MFU5aMqrSDE6ea73Mj2tcMyo5jMd6jmeWUHK8so/joWUoHOUgwu
+X4Po1QYz+3dszkDqMp4fklxBwXRsW10KXzPMTZ+sOPAveyxindmjkW8lGy+QsRlG
+PfZ+G6Z6h7mjem0Y+iWlkYcV4PIWL1iwBi8saCbGS5jN2p8M+X+Q7UNKEkROb3N6
+KOqkqm57TH2H3eDJAkSnh6/DNFu0Qg==
 -----END CERTIFICATE-----
 `)
