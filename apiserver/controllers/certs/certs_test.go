@@ -793,7 +793,10 @@ A6ao9QSL1ryillYV9Y4001C3jApzmMtBWoMp3NPzwU8nacAOzClJYUcSLkbAIEWV
 							// Specify issuer certificate URL in the "up" Link.
 							// We will need to make a request to this URL to create a
 							// certificate bundle.
-							"Link": {`<` + acmeServer.URL() + `/issuer-cert>;rel="up"`}},
+							"Link": {`<` + acmeServer.URL() + `/issuer-cert>;rel="up"`},
+							// URI to get a renewed cert from.
+							"Location": {acmeServer.URL() + `/renew-cert/deadbeef`},
+						},
 					),
 				),
 				ghttp.CombineHandlers(
@@ -976,6 +979,16 @@ A6ao9QSL1ryillYV9Y4001C3jApzmMtBWoMp3NPzwU8nacAOzClJYUcSLkbAIEWV
 
 			Expect(acmeCert.HTTPChallengePath).To(Equal("/.well-known/acme-challenge/secret-token"))
 			Expect(acmeCert.HTTPChallengeResource).To((HavePrefix("secret-token.")))
+		})
+
+		It("saves the cert renewal URI returned by Let's Encrypt", func() {
+			doRequest()
+
+			acmeCert := &acmecert.AcmeCert{}
+			err := db.Where("domain_id = ?", dm.ID).First(acmeCert).Error
+			Expect(err).To(BeNil())
+
+			Expect(acmeCert.CertURI).To(Equal(acmeServer.URL() + `/renew-cert/deadbeef`))
 		})
 
 		It("tracks an Activated Let's Encrypt certificate event", func() {

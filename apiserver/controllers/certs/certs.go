@@ -426,6 +426,13 @@ func LetsEncrypt(c *gin.Context) {
 		return
 	}
 
+	// Save cert URI which we will use in future to renew the cert.
+	acmeCert.CertURI = certResp.URI
+	if err := db.Save(acmeCert).Error; err != nil {
+		controllers.InternalServerError(c, err)
+		return
+	}
+
 	// Save cert to database so we can use it elsewhere (e.g. for renewals).
 	if err := acmeCert.SaveCert(db, bundledPEM, common.AesKey); err != nil {
 		controllers.InternalServerError(c, err)
