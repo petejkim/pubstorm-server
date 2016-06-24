@@ -33,7 +33,10 @@ type AcmeCert struct {
 	LetsencryptKey string
 
 	PrivateKey string
-	Cert       string
+
+	// Cert stores the base64-encoded, encrypted cert bundle in PEM format. It
+	// should include the actual certificate and the issuer certificate.
+	Cert string
 
 	HTTPChallengePath     string `sql:"column:http_challenge_path"`
 	HTTPChallengeResource string `sql:"column:http_challenge_resource"`
@@ -116,10 +119,8 @@ func decryptBase64(data, aesKey string) ([]byte, error) {
 	return aesencrypter.Decrypt(cipherText, []byte(aesKey))
 }
 
-func (c *AcmeCert) SaveCert(db *gorm.DB, cert *x509.Certificate, aesKey string) error {
-	certPEM := pem.EncodeToMemory(&pem.Block{Bytes: cert.Raw, Type: "CERTIFICATE"})
-
-	b, err := encryptBase64(certPEM, aesKey)
+func (c *AcmeCert) SaveCert(db *gorm.DB, certBundlePEM []byte, aesKey string) error {
+	b, err := encryptBase64(certBundlePEM, aesKey)
 	if err != nil {
 		return err
 	}
@@ -129,15 +130,33 @@ func (c *AcmeCert) SaveCert(db *gorm.DB, cert *x509.Certificate, aesKey string) 
 	return db.Model(AcmeCert{}).Where("id = ?", c.ID).Update("cert", b).Error
 }
 
-func (c *AcmeCert) DecryptedCert(aesKey string) (*x509.Certificate, error) {
+func (c *AcmeCert) DecryptedCerts(aesKey string) ([]*x509.Certificate, error) {
 	decrypted, err := decryptBase64(c.Cert, aesKey)
 	if err != nil {
 		return nil, err
 	}
 
-	pemBlock, _ := pem.Decode(decrypted)
+	var certChain []*x509.Certificate
+	remaining := decrypted
+	for len(remaining) > 0 {
+		var block *pem.Block
+		block, remaining = pem.Decode(remaining)
+		if block == nil {
+			break
+		}
+		if block.Type != "CERTIFICATE" || len(block.Headers) != 0 {
+			continue
+		}
 
-	return x509.ParseCertificate(pemBlock.Bytes)
+		cert, err := x509.ParseCertificate(block.Bytes)
+		if err != nil {
+			continue
+		}
+
+		certChain = append(certChain, cert)
+	}
+
+	return certChain, nil
 }
 
 func (c *AcmeCert) DecryptedLetsencryptKey(aesKey string) (*rsa.PrivateKey, error) {
