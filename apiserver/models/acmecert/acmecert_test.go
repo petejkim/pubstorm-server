@@ -65,6 +65,46 @@ var _ = Describe("AcmeCert", func() {
 		})
 	})
 
+	Describe("IsValid()", func() {
+		It("returns true if domain ID, certificate, and private keys are non-zero", func() {
+			dm := factories.Domain(db, nil)
+			c := AcmeCert{
+				DomainID:       dm.ID,
+				Cert:           "super-secure-cert",
+				LetsencryptKey: "lets-encrypt-key",
+				PrivateKey:     "cert-key",
+			}
+			Expect(c.IsValid()).To(BeTrue())
+		})
+
+		It("returns false if any required fields are zero value", func() {
+			dm := factories.Domain(db, nil)
+			c := AcmeCert{
+				DomainID:       dm.ID,
+				Cert:           "super-secure-cert",
+				LetsencryptKey: "lets-encrypt-key",
+				PrivateKey:     "cert-key",
+			}
+			Expect(c.IsValid()).To(BeTrue())
+
+			c1 := c
+			c1.DomainID = 0
+			Expect(c1.IsValid()).To(BeFalse())
+
+			c2 := c
+			c2.Cert = ""
+			Expect(c2.IsValid()).To(BeFalse())
+
+			c3 := c
+			c3.LetsencryptKey = ""
+			Expect(c3.IsValid()).To(BeFalse())
+
+			c4 := c
+			c4.PrivateKey = ""
+			Expect(c4.IsValid()).To(BeFalse())
+		})
+	})
+
 	Describe("SaveCert()", func() {
 		It("encrypts a PEM-encoded cert, applies base64 encoding, and saves it", func() {
 			dm := factories.Domain(db, nil)

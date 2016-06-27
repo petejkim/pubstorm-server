@@ -119,6 +119,10 @@ func decryptBase64(data, aesKey string) ([]byte, error) {
 	return aesencrypter.Decrypt(cipherText, []byte(aesKey))
 }
 
+func (c *AcmeCert) IsValid() bool {
+	return c.DomainID != 0 && c.LetsencryptKey != "" && c.PrivateKey != "" && c.Cert != ""
+}
+
 func (c *AcmeCert) SaveCert(db *gorm.DB, certBundlePEM []byte, aesKey string) error {
 	b, err := encryptBase64(certBundlePEM, aesKey)
 	if err != nil {

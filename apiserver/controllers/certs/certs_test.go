@@ -1003,6 +1003,30 @@ A6ao9QSL1ryillYV9Y4001C3jApzmMtBWoMp3NPzwU8nacAOzClJYUcSLkbAIEWV
 			Expect(trackCall.ReturnValues[0]).To(BeNil())
 		})
 
+		Context("when a Let's Encrypt certificate has previously been setup", func() {
+			var acmeCert = &acmecert.AcmeCert{}
+
+			BeforeEach(func() {
+				doRequest()
+				Expect(res.StatusCode).To(Equal(http.StatusOK))
+
+				err := db.Where("domain_id = ?", dm.ID).First(acmeCert).Error
+				Expect(err).To(BeNil())
+			})
+
+			It("returns HTTP 409 Conflict and does not update the certificate", func() {
+				doRequest()
+
+				Expect(res.StatusCode).To(Equal(http.StatusConflict))
+
+				acmeCert2 := &acmecert.AcmeCert{}
+				err := db.Where("domain_id = ?", dm.ID).First(acmeCert2).Error
+				Expect(err).To(BeNil())
+
+				Expect(acmeCert).To(Equal(acmeCert2))
+			})
+		})
+
 		Context("when Let's Encrypt fails to return a HTTP challenge", func() {
 			BeforeEach(func() {
 				newAuthzBody = `{

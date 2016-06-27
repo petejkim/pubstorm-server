@@ -298,6 +298,15 @@ func LetsEncrypt(c *gin.Context) {
 		}
 	}
 
+	// Check if a cert has already been setup.
+	if acmeCert.IsValid() {
+		c.JSON(http.StatusConflict, gin.H{
+			"error":             "already_exists",
+			"error_description": "a certificate from Let's Encrypt has already been setup",
+		})
+		return
+	}
+
 	cli, err := letsencrypt.NewClient(common.AcmeURL)
 	if err != nil {
 		log.Errorf("failed to query Let's Encrypt directory %q, err: %v", common.AcmeURL, err)
