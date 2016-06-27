@@ -523,8 +523,15 @@ func Destroy(c *gin.Context) {
 		return
 	}
 
+	tx := db.Begin()
+	if err := tx.Error; err != nil {
+		controllers.InternalServerError(c, err)
+		return
+	}
+	defer tx.Rollback()
+
 	var d domain.Domain
-	if err := db.Where("name = ? AND project_id = ?", domainName, proj.ID).First(&d).Error; err != nil {
+	if err := tx.Where("name = ? AND project_id = ?", domainName, proj.ID).First(&d).Error; err != nil {
 		if err == gorm.RecordNotFound {
 			c.JSON(http.StatusNotFound, gin.H{
 				"error":             "not_found",
@@ -537,7 +544,7 @@ func Destroy(c *gin.Context) {
 	}
 
 	var crt cert.Cert
-	if err := db.Where("domain_id = ?", d.ID).First(&crt).Error; err != nil {
+	if err := tx.Where("domain_id = ?", d.ID).First(&crt).Error; err != nil {
 		if err == gorm.RecordNotFound {
 			c.JSON(http.StatusNotFound, gin.H{
 				"error":             "not_found",
@@ -547,7 +554,20 @@ func Destroy(c *gin.Context) {
 		}
 	}
 
-	if err := db.Delete(&crt).Error; err != nil {
+	// Delete Let's Encrypt cert record, but only if it exists.
+	var acmeCert acmecert.AcmeCert
+	if err := tx.Where("domain_id = ?", d.ID).First(&acmeCert).Error; err == nil {
+		if err := tx.Delete(&acmeCert).Error; err != nil {
+
+		}
+	}
+
+	if err := tx.Delete(&crt).Error; err != nil {
+		controllers.InternalServerError(c, err)
+		return
+	}
+
+	if err := tx.Commit().Error; err != nil {
 		controllers.InternalServerError(c, err)
 		return
 	}

@@ -1346,6 +1346,21 @@ A6ao9QSL1ryillYV9Y4001C3jApzmMtBWoMp3NPzwU8nacAOzClJYUcSLkbAIEWV
 			Expect(db.First(ct, ct.ID).Error).To(Equal(gorm.RecordNotFound))
 		})
 
+		It("deletes Let's Encrypt ACME cert from DB, if it exists", func() {
+			aesKey := "something-something-something-32"
+			acmeCert, err := acmecert.New(dm.ID, aesKey)
+			Expect(err).To(BeNil())
+			Expect(db.Create(acmeCert).Error).To(BeNil())
+
+			err = db.Where("domain_id = ?", dm.ID).First(acmeCert).Error
+			Expect(err).To(BeNil())
+
+			doRequest()
+
+			err = db.Where("domain_id = ?", dm.ID).First(acmeCert).Error
+			Expect(err).To(Equal(gorm.RecordNotFound))
+		})
+
 		It("deletes ssl cert from S3", func() {
 			doRequest()
 
