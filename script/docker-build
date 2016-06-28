@@ -142,5 +142,6 @@ bundle_binary edged
 bundle_binary deployer
 bundle_binary builder
 
+bundle_binary acmerenewal
 bundle_binary digestcron
 bundle_binary purgedeploys
