@@ -9,6 +9,7 @@ import (
 
 	"github.com/jinzhu/gorm"
 	"github.com/nitrous-io/rise-server/apiserver/dbconn"
+	"github.com/nitrous-io/rise-server/apiserver/models/acmecert"
 	"github.com/nitrous-io/rise-server/apiserver/models/cert"
 	"github.com/nitrous-io/rise-server/apiserver/models/collab"
 	"github.com/nitrous-io/rise-server/apiserver/models/domain"
@@ -438,6 +439,14 @@ var _ = Describe("Project", func() {
 				}
 				Expect(db.Create(ct2).Error).To(BeNil())
 
+				letsencryptCert := &acmecert.AcmeCert{
+					DomainID:       dm1.ID,
+					LetsencryptKey: "key1",
+					PrivateKey:     "key2",
+					Cert:           "cert",
+				}
+				Expect(db.Create(letsencryptCert).Error).To(BeNil())
+
 				dm3 = factories.Domain(db, proj2)
 
 				ct3 = &cert.Cert{
@@ -462,6 +471,9 @@ var _ = Describe("Project", func() {
 				Expect(count).To(Equal(0))
 
 				Expect(db.Model(cert.Cert{}).Where("domain_id IN (?,?)", dm1.ID, dm2.ID).Count(&count).Error).To(BeNil())
+				Expect(count).To(Equal(0))
+
+				Expect(db.Model(acmecert.AcmeCert{}).Where("domain_id IN (?,?)", dm1.ID, dm2.ID).Count(&count).Error).To(BeNil())
 				Expect(count).To(Equal(0))
 
 				// Make sure it does not delete other project's domains and certs

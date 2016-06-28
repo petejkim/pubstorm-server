@@ -11,6 +11,7 @@ var (
 	MailerEmail = os.Getenv("MAILER_EMAIL")
 	AesKey      = os.Getenv("AES_KEY")
 	StatsToken  = os.Getenv("STATS_TOKEN")
+	AcmeURL     = os.Getenv("ACME_URL")
 )
 
 func init() {

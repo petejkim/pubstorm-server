@@ -51,7 +51,7 @@ func main() {
 
 	depls, err := findSoftDeletedDeployments(db)
 	if err != nil {
-		log.WithFields(fields).Fatalf("failed to retrieve soft deleted deployments from db", err)
+		log.WithFields(fields).Fatalf("failed to retrieve soft deleted deployments from db, err: %v", err)
 	}
 	if len(depls) == 0 {
 		log.WithFields(fields).WithField("event", "completed").Infof("No deployments to purge, exiting")
@@ -98,7 +98,7 @@ func findSoftDeletedDeployments(db *gorm.DB) ([]*deployment.Deployment, error) {
 
 func purger(db *gorm.DB, wg *sync.WaitGroup, jobs chan *deployment.Deployment) {
 	for depl := range jobs {
-		log.WithFields(fields).Infof("Purging deployment %v", depl)
+		log.WithFields(fields).Infof("Purging deployment %s", depl)
 
 		if err := purge(db, depl); err != nil {
 			log.WithFields(fields).Errorf("failed to purge deployment %s, err: %v", depl, err)

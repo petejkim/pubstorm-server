@@ -38,6 +38,15 @@ var (
 	UploadTimeout = 3 * time.Minute
 )
 
+var jsenvFormat = `(function(global, env) {
+	if (typeof module === "object" && typeof module.exports === "object") {
+		module.exports = env;
+	} else {
+		global.JSENV = env;
+	}
+}(this, %s));
+`
+
 func init() {
 	riseEnv := os.Getenv("RISE_ENV")
 	if riseEnv == "" {
@@ -76,17 +85,32 @@ func Work(data []byte) error {
 		return err
 	}
 
+	proj := &project.Project{}
+	if err := db.Where("id = ?", depl.ProjectID).First(proj).Error; err != nil {
+		return err
+	}
+
+	acquired, err := proj.Lock(db)
+	if err != nil {
+		return err
+	}
+
+	if !acquired {
+		return ErrProjectLocked
+	}
+
+	defer func() {
+		if err := proj.Unlock(db); err != nil {
+			log.Printf("failed to unlock project %d due to %v", proj.ID, err)
+		}
+	}()
+
 	// Return error if the deployment is in a state that bundle is not uploaded or not prepared for deploying
 	if depl.State == deployment.StateUploaded || depl.State == deployment.StatePendingUpload {
 		return errUnexpectedState
 	}
 
 	prefixID := depl.PrefixID()
-
-	proj := &project.Project{}
-	if err := db.Where("id = ?", depl.ProjectID).First(proj).Error; err != nil {
-		return err
-	}
 
 	if !d.SkipWebrootUpload {
 		// Disallow re-deploying a deployed project.
@@ -123,10 +147,10 @@ func Work(data []byte) error {
 
 		defer gr.Close()
 
-		go func() {
-			// webroot is a publicly readable directory on S3.
-			webroot := "deployments/" + prefixID + "/webroot"
+		// webroot is a publicly readable directory on S3.
+		webroot := "deployments/" + prefixID + "/webroot"
 
+		go func() {
 			for {
 				hdr, err := tr.Next()
 				if err != nil {
@@ -171,10 +195,20 @@ func Work(data []byte) error {
 
 			return ErrTimeout
 		}
-	}
 
-	if proj.LockedAt != nil {
-		return ErrProjectLocked
+		var envvars map[string]string
+		if err := json.Unmarshal(depl.JsEnvVars, &envvars); err != nil {
+			return err
+		}
+
+		if err := S3.Upload(s3client.BucketRegion,
+			s3client.BucketName,
+			webroot+"/jsenv.js",
+			bytes.NewBufferString(fmt.Sprintf(jsenvFormat, depl.JsEnvVars)),
+			"application/javascript",
+			"public-read"); err != nil {
+			return err
+		}
 	}
 
 	// the metadata file is also publicly readable, do not put sensitive data

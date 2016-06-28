@@ -128,6 +128,18 @@
 			"revisionTime": "2016-03-04T22:42:15-08:00"
 		},
 		{
+			"checksumSHA1": "5eU+KEOVzkDaf4F+zr8xhpfANWM=",
+			"path": "github.com/ericchiang/letsencrypt",
+			"revision": "00224ab4ce9f98ee50882ecc397b0001449d1782",
+			"revisionTime": "2016-05-25T15:20:46Z"
+		},
+		{
+			"checksumSHA1": "JIWwmDUD3bB/Jdq1bHe3YDX6Iuo=",
+			"path": "github.com/ericchiang/letsencrypt/internal/base64",
+			"revision": "00224ab4ce9f98ee50882ecc397b0001449d1782",
+			"revisionTime": "2016-05-25T15:20:46Z"
+		},
+		{
 			"path": "github.com/gin-gonic/gin",
 			"revision": "27f912f5b2c8ee7dd7655d479dee2fc4d41d32d7",
 			"revisionTime": "2016-01-30T01:34:20+01:00"
@@ -363,6 +375,24 @@
 			"revisionTime": "2015-07-19T17:22:15-04:00"
 		},
 		{
+			"checksumSHA1": "FNWNJ6VEuaZQvemK7+KkHR7HWfQ=",
+			"path": "github.com/square/go-jose",
+			"revision": "f7dab0d84e417e827829f248ef197af7d87c714c",
+			"revisionTime": "2016-06-13T18:20:07Z"
+		},
+		{
+			"checksumSHA1": "Z3AGpc+8DTY80qCIiJvvpd+gGo8=",
+			"path": "github.com/square/go-jose/cipher",
+			"revision": "f7dab0d84e417e827829f248ef197af7d87c714c",
+			"revisionTime": "2016-06-13T18:20:07Z"
+		},
+		{
+			"checksumSHA1": "MjFMyZLaQYCfJyi3O0ynKNSmneA=",
+			"path": "github.com/square/go-jose/json",
+			"revision": "f7dab0d84e417e827829f248ef197af7d87c714c",
+			"revisionTime": "2016-06-13T18:20:07Z"
+		},
+		{
 			"path": "github.com/streadway/amqp",
 			"revision": "56eb08f0d1f9d90936ab1ab4e20ee9b9bf45ce26",
 			"revisionTime": "2015-08-19T17:11:42-07:00"
@@ -372,6 +402,30 @@
 			"path": "github.com/xtgo/uuid",
 			"revision": "a0b114877d4caeffbd7f87e3757c17fce570fea7",
 			"revisionTime": "2014-08-04T02:12:11Z"
+		},
+		{
+			"checksumSHA1": "h+pFYiRHBogczS8/F1NoN3Ata44=",
+			"path": "golang.org/x/crypto/curve25519",
+			"revision": "f3241ce8505855877cc8a9717bd61a0f7c4ea83c",
+			"revisionTime": "2016-06-10T10:58:35Z"
+		},
+		{
+			"checksumSHA1": "wGb//LjBPNxYHqk+dcLo7BjPXK8=",
+			"path": "golang.org/x/crypto/ed25519",
+			"revision": "f3241ce8505855877cc8a9717bd61a0f7c4ea83c",
+			"revisionTime": "2016-06-10T10:58:35Z"
+		},
+		{
+			"checksumSHA1": "LXFcVx8I587SnWmKycSDEq9yvK8=",
+			"path": "golang.org/x/crypto/ed25519/internal/edwards25519",
+			"revision": "f3241ce8505855877cc8a9717bd61a0f7c4ea83c",
+			"revisionTime": "2016-06-10T10:58:35Z"
+		},
+		{
+			"checksumSHA1": "3dxfePz1LkJB7x0nIiTI88o/fFY=",
+			"path": "golang.org/x/crypto/ssh",
+			"revision": "f3241ce8505855877cc8a9717bd61a0f7c4ea83c",
+			"revisionTime": "2016-06-10T10:58:35Z"
 		},
 		{
 			"path": "golang.org/x/net/context",

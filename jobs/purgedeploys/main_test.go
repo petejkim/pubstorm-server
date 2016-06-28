@@ -83,6 +83,10 @@ var _ = Describe("purgedeploys", func() {
 		Expect(err).To(BeNil())
 	})
 
+	AfterEach(func() {
+		S3 = origS3
+	})
+
 	Describe("findSoftDeletedDeployments()", func() {
 		It("returns soft-deleted deployments that have not yet been purged", func() {
 			depls, err := findSoftDeletedDeployments(db)

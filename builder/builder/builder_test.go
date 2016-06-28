@@ -207,6 +207,10 @@ var _ = Describe("Builder", func() {
 		Expect(depl.State).To(Equal(deployment.StatePendingDeploy))
 
 		assertCleanTempFile(depl.PrefixID())
+
+		// make sure it does not leave project as locked
+		Expect(db.First(proj, proj.ID).Error).To(BeNil())
+		Expect(proj.LockedAt).To(BeNil())
 	})
 
 	Context("when the deployment uses a raw bundle from a previous deployment", func() {
@@ -420,6 +424,10 @@ var _ = Describe("Builder", func() {
 				"deployment_id": %d
 			}`, depl.ID)))
 			Expect(err).To(Equal(builder.ErrProjectLocked))
+
+			// make sure it does not unlock the project
+			Expect(db.First(proj, proj.ID).Error).To(BeNil())
+			Expect(proj.LockedAt).NotTo(BeNil())
 		})
 	})
 })

@@ -12,6 +12,7 @@ import (
 	"github.com/jinzhu/gorm"
 	"github.com/nitrous-io/rise-server/apiserver/common"
 	"github.com/nitrous-io/rise-server/apiserver/dbconn"
+	"github.com/nitrous-io/rise-server/apiserver/models/acmecert"
 	"github.com/nitrous-io/rise-server/apiserver/models/cert"
 	"github.com/nitrous-io/rise-server/apiserver/models/deployment"
 	"github.com/nitrous-io/rise-server/apiserver/models/domain"
@@ -562,7 +563,7 @@ var _ = Describe("Domains", func() {
 				Expect(trackCall.ReturnValues[0]).To(BeNil())
 			})
 
-			Context("domains has a ssl cert", func() {
+			Context("domain has an SSL cert", func() {
 				var ct *cert.Cert
 
 				BeforeEach(func() {
@@ -623,6 +624,29 @@ var _ = Describe("Domains", func() {
 					Expect(d.Body).To(MatchJSON(fmt.Sprintf(`{
 						"domains": ["%s"]
 					}`, domainName)))
+				})
+
+				Context("when cert is a Let's Encrypt ACME cert", func() {
+					BeforeEach(func() {
+						letsencryptCert := &acmecert.AcmeCert{
+							DomainID:       d.ID,
+							LetsencryptKey: "key1",
+							PrivateKey:     "key2",
+							Cert:           "cert",
+						}
+						Expect(db.Create(letsencryptCert).Error).To(BeNil())
+					})
+
+					It("deletes the ACME cert", func() {
+						var count int
+						Expect(db.Model(acmecert.AcmeCert{}).Where("domain_id = ?", d.ID).Count(&count).Error).To(BeNil())
+						Expect(count).To(Equal(1))
+
+						doRequest()
+
+						Expect(db.Model(acmecert.AcmeCert{}).Where("domain_id = ?", d.ID).Count(&count).Error).To(BeNil())
+						Expect(count).To(Equal(0))
+					})
 				})
 			})
 		})

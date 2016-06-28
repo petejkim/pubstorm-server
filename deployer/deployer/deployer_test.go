@@ -1,6 +1,7 @@
 package deployer_test
 
 import (
+	"encoding/json"
 	"fmt"
 	"io/ioutil"
 	"testing"
@@ -82,6 +83,22 @@ var _ = Describe("Deployer", func() {
 			State:       deployment.StatePendingDeploy,
 			RawBundleID: &bun.ID,
 		})
+
+		// mock download
+		fakeS3.DownloadContent, err = ioutil.ReadFile("../../testhelper/fixtures/website.tar.gz")
+		Expect(err).To(BeNil())
+
+		// Add js environment variables
+		envvars := map[string]string{
+			"foo": "bar",
+			"baz": "qux",
+		}
+
+		b, err := json.Marshal(&envvars)
+		Expect(err).To(BeNil())
+
+		depl.JsEnvVars = b
+		Expect(db.Save(depl).Error).To(BeNil())
 	})
 
 	AfterEach(func() {
@@ -150,7 +167,7 @@ var _ = Describe("Deployer", func() {
 		Expect(downloadCall.ReturnValues[0]).To(BeNil())
 
 		// it should upload assets
-		Expect(fakeS3.UploadCalls.Count()).To(Equal(7)) // 5 asset files + 2 metadata files (2 domains)
+		Expect(fakeS3.UploadCalls.Count()).To(Equal(8)) // 5 asset files + 1 jsenv.js + 2 metadata files (2 domains)
 
 		uploads := []struct {
 			filename    string
@@ -175,13 +192,27 @@ var _ = Describe("Deployer", func() {
 			)
 		}
 
+		// it should upload jsenv.js
+		assertUpload(
+			6,
+			"deployments/"+depl.PrefixID()+"/webroot/jsenv.js",
+			"application/javascript",
+			[]byte(`(function(global, env) {
+	if (typeof module === "object" && typeof module.exports === "object") {
+		module.exports = env;
+	} else {
+		global.JSENV = env;
+	}
+}(this, {"baz":"qux","foo":"bar"}));
+`))
+
 		// it should upload meta.json for each domain
 		for i, domain := range []string{
 			proj.DefaultDomainName(),
 			"www.foo-bar-express.com",
 		} {
 			assertUpload(
-				6+i,
+				7+i,
 				"domains/"+domain+"/meta.json",
 				"application/json",
 				[]byte(fmt.Sprintf(`{
@@ -210,6 +241,10 @@ var _ = Describe("Deployer", func() {
 
 		// it should set project's active deployment to current deployment id
 		assertActiveDeploymentIDUpdate()
+
+		// make sure it does not leave project as locked
+		Expect(db.First(proj, proj.ID).Error).To(BeNil())
+		Expect(proj.LockedAt).To(BeNil())
 	})
 
 	It("tracks a 'Project Deployed' event", func() {
@@ -300,7 +335,7 @@ var _ = Describe("Deployer", func() {
 				"www.foo-bar-express.com",
 			} {
 				assertUpload(
-					6+i,
+					7+i,
 					"domains/"+domain+"/meta.json",
 					"application/json",
 					[]byte(fmt.Sprintf(`{
@@ -341,7 +376,7 @@ var _ = Describe("Deployer", func() {
 				"www.foo-bar-express.com",
 			} {
 				assertUpload(
-					6+i,
+					7+i,
 					"domains/"+domain+"/meta.json",
 					"application/json",
 					[]byte(fmt.Sprintf(`{
@@ -379,7 +414,7 @@ var _ = Describe("Deployer", func() {
 				"www.foo-bar-express.com",
 			} {
 				assertUpload(
-					6+i,
+					7+i,
 					"domains/"+domain+"/meta.json",
 					"application/json",
 					[]byte(fmt.Sprintf(`{
@@ -646,6 +681,10 @@ var _ = Describe("Deployer", func() {
 				"deployment_id": %d
 			}`, depl.ID)))
 			Expect(err).To(Equal(deployer.ErrProjectLocked))
+
+			// make sure it does not unlock the project
+			Expect(db.First(proj, proj.ID).Error).To(BeNil())
+			Expect(proj.LockedAt).NotTo(BeNil())
 		})
 	})
 
@@ -674,6 +713,10 @@ var _ = Describe("Deployer", func() {
 			time.Sleep(50 * time.Millisecond)
 
 			Expect(err).To(Equal(deployer.ErrTimeout))
+
+			// make sure it does not leave project as locked
+			Expect(db.First(proj, proj.ID).Error).To(BeNil())
+			Expect(proj.LockedAt).To(BeNil())
 		})
 
 		It("does not upload the rest of files", func() {
