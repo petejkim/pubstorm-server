@@ -233,6 +233,10 @@ func (p *Project) Destroy(db *gorm.DB) error {
 		return err
 	}
 
+	if err := db.Exec("UPDATE acme_certs c SET deleted_at = now() FROM domains d WHERE c.domain_id = d.id AND d.project_id = ?", p.ID).Error; err != nil {
+		return err
+	}
+
 	if err := db.Delete(rawbundle.RawBundle{}, "project_id = ?", p.ID).Error; err != nil {
 		return err
 	}

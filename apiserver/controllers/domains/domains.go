@@ -12,6 +12,7 @@ import (
 	"github.com/nitrous-io/rise-server/apiserver/common"
 	"github.com/nitrous-io/rise-server/apiserver/controllers"
 	"github.com/nitrous-io/rise-server/apiserver/dbconn"
+	"github.com/nitrous-io/rise-server/apiserver/models/acmecert"
 	"github.com/nitrous-io/rise-server/apiserver/models/cert"
 	"github.com/nitrous-io/rise-server/apiserver/models/domain"
 	"github.com/nitrous-io/rise-server/pkg/job"
@@ -179,8 +180,12 @@ func Destroy(c *gin.Context) {
 		return
 	}
 
-	q := tx.Where("domain_id = ?", d.ID).Delete(cert.Cert{})
-	if q.Error != nil {
+	if err := tx.Where("domain_id = ?", d.ID).Delete(cert.Cert{}).Error; err != nil {
+		controllers.InternalServerError(c, err)
+		return
+	}
+
+	if err := tx.Where("domain_id = ?", d.ID).Delete(acmecert.AcmeCert{}).Error; err != nil {
 		controllers.InternalServerError(c, err)
 		return
 	}
