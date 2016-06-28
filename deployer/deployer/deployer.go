@@ -147,10 +147,10 @@ func Work(data []byte) error {
 
 		defer gr.Close()
 
-		go func() {
-			// webroot is a publicly readable directory on S3.
-			webroot := "deployments/" + prefixID + "/webroot"
+		// webroot is a publicly readable directory on S3.
+		webroot := "deployments/" + prefixID + "/webroot"
 
+		go func() {
 			for {
 				hdr, err := tr.Next()
 				if err != nil {
