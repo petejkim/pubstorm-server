@@ -22,6 +22,7 @@ import (
 	"github.com/nitrous-io/rise-server/apiserver/dbconn"
 	"github.com/nitrous-io/rise-server/apiserver/models/deployment"
 	"github.com/nitrous-io/rise-server/apiserver/models/project"
+	"github.com/nitrous-io/rise-server/apiserver/models/rawbundle"
 	"github.com/nitrous-io/rise-server/apiserver/models/user"
 	"github.com/nitrous-io/rise-server/pkg/filetransfer"
 	"github.com/nitrous-io/rise-server/pkg/pubsub"
@@ -120,7 +121,15 @@ func Work(data []byte) error {
 
 		bundlePath := "deployments/" + prefixID + "/optimized-bundle.tar.gz"
 		if d.UseRawBundle {
-			bundlePath = "deployments/" + prefixID + "/raw-bundle.tar.gz"
+			// If this deployment uses a raw bundle from a previous deploy, use that.
+			if depl.RawBundleID != nil {
+				bun := &rawbundle.RawBundle{}
+				if err := db.First(bun, *depl.RawBundleID).Error; err == nil {
+					bundlePath = bun.UploadedPath
+				}
+			} else {
+				bundlePath = "deployments/" + prefixID + "/raw-bundle.tar.gz"
+			}
 		}
 
 		f, err := ioutil.TempFile("", prefixID+"-optimized-bundle.tar.gz")
