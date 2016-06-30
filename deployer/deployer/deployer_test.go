@@ -660,7 +660,7 @@ var _ = Describe("Deployer", func() {
 			Expect(downloadCall).NotTo(BeNil())
 			Expect(downloadCall.Arguments[0]).To(Equal(s3client.BucketRegion))
 			Expect(downloadCall.Arguments[1]).To(Equal(s3client.BucketName))
-			Expect(downloadCall.Arguments[2]).To(Equal(fmt.Sprintf("deployments/%s/raw-bundle.tar.gz", depl.PrefixID())))
+			Expect(downloadCall.Arguments[2]).To(Equal(bun.UploadedPath))
 			Expect(downloadCall.ReturnValues[0]).To(BeNil())
 		})
 	})
