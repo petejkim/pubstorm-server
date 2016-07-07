@@ -15,6 +15,7 @@ import (
 	"path/filepath"
 	"strings"
 	"time"
+	"unicode/utf8"
 
 	"github.com/nitrous-io/rise-server/apiserver/dbconn"
 	"github.com/nitrous-io/rise-server/apiserver/models/deployment"
@@ -198,7 +199,7 @@ func Work(data []byte) error {
 		var errorMessages []string
 		outputs := strings.Split(output, "\n")
 		for _, output := range outputs {
-			if strings.HasPrefix(output, ErrorMessagePrefix) {
+			if strings.HasPrefix(output, ErrorMessagePrefix) && utf8.ValidString(output) {
 				errorMessages = append(errorMessages, strings.TrimLeft(output, ErrorMessagePrefix))
 			}
 		}

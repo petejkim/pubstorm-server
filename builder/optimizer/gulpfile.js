@@ -82,7 +82,7 @@ gulp.task('js', function() {
 });
 
 gulp.task('css', function() {
-  return gulp.src(paths.css).pipe(cleanCSS({ debug: true }, cssErrorHandler)).pipe(gulp.dest('build'));
+  return gulp.src(paths.css).pipe(cleanCSS({ debug: true, processImport: false }, cssErrorHandler)).pipe(gulp.dest('build'));
 });
 
 gulp.task('html', function() {
