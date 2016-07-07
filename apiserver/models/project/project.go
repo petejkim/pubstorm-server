@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/lib/pq"
+	"github.com/nitrous-io/rise-cli-go/project"
 	"github.com/nitrous-io/rise-server/apiserver/models/collab"
 	"github.com/nitrous-io/rise-server/apiserver/models/domain"
 	"github.com/nitrous-io/rise-server/apiserver/models/rawbundle"
@@ -20,6 +21,8 @@ import (
 )
 
 var (
+	MaxProjectPerUser = 10
+
 	projectNameRe = regexp.MustCompile(`\A[a-z0-9][a-z0-9\-]{1,61}[a-z0-9]\z`)
 
 	ErrCollaboratorIsOwner       = errors.New("owner of project cannot be added as a collaborator")
@@ -297,4 +300,14 @@ func (p *Project) DomainNamesWithProtocol(db *gorm.DB) ([]string, error) {
 	}
 
 	return domNames, nil
+}
+
+// Returns whether more projects can be added for this user
+func CanAddProject(db *gorm.DB, u *user.User) (bool, error) {
+	var count int
+	if err := db.Model(project.Project{}).Where("user_id = ?", u.ID).Count(&count).Error; err != nil {
+		return false, err
+	}
+
+	return count < MaxProjectPerUser, nil
 }
