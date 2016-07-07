@@ -15,7 +15,6 @@ import (
 	"path/filepath"
 	"strings"
 	"time"
-	"unicode/utf8"
 
 	"github.com/nitrous-io/rise-server/apiserver/dbconn"
 	"github.com/nitrous-io/rise-server/apiserver/models/deployment"
@@ -199,7 +198,7 @@ func Work(data []byte) error {
 		var errorMessages []string
 		outputs := strings.Split(output, "\n")
 		for _, output := range outputs {
-			if strings.HasPrefix(output, ErrorMessagePrefix) && utf8.ValidString(output) {
+			if strings.HasPrefix(output, ErrorMessagePrefix) {
 				errorMessages = append(errorMessages, strings.TrimLeft(output, ErrorMessagePrefix))
 			}
 		}
@@ -207,7 +206,7 @@ func Work(data []byte) error {
 		if len(errorMessages) > 0 {
 			nextState = deployment.StateBuildFailed
 			errorMessage := strings.Join(errorMessages, "\n")
-			depl.ErrorMessage = &errorMessage
+			log.Printf("error on optimizing", errorMessage)
 		}
 
 		if err := pack(optimizedBundleTarball, dirName); err != nil {
