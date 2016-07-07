@@ -23,6 +23,8 @@ import (
 	"github.com/nitrous-io/rise-server/shared/s3client"
 )
 
+var MaxNumOfProject = 10
+
 func Create(c *gin.Context) {
 	u := controllers.CurrentUser(c)
 
@@ -71,6 +73,17 @@ func Create(c *gin.Context) {
 				"name": "is taken",
 			},
 		})
+		return
+	}
+
+	var count int
+	if err := db.Model(project.Project{}).Where("user_id = ?", u.ID).Count(&count).Error; err != nil {
+		controllers.InternalServerError(c, err)
+		return
+	}
+
+	if count > MaxNumOfProject {
+		controllers.InternalServerError(c, err)
 		return
 	}
 
