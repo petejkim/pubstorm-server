@@ -254,7 +254,7 @@ var _ = Describe("Projects", func() {
 				Expect(res.StatusCode).To(Equal(http.StatusForbidden))
 				Expect(b.String()).To(MatchJSON(`{
 					"error": "invalid_request",
-					"error_description": "maxinum number of projects reached"
+					"error_description": "maximum number of projects reached"
 				}`))
 			})
 		})
