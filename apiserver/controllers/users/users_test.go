@@ -155,6 +155,22 @@ var _ = Describe("Users", func() {
 				Expect(identifyCall.Arguments[3]).To(BeNil())
 				Expect(identifyCall.ReturnValues[0]).To(BeNil())
 			})
+
+		})
+
+		Context("when email addresss contains uppercase characters", func() {
+			BeforeEach(func() {
+				params.Set("email", "FoO@example.com")
+			})
+
+			It("converts those characters to lowercase", func() {
+				doRequest()
+				u := &user.User{}
+				err := db.Last(u).Error
+				Expect(err).To(BeNil())
+
+				Expect(u.Email).To(Equal("foo@example.com"))
+			})
 		})
 
 		DescribeTable("missing or invalid params",
@@ -205,6 +221,18 @@ var _ = Describe("Users", func() {
 				u := &user.User{Email: "foo@example.com", Password: "foobar"}
 				err = u.Insert(db)
 				Expect(err).To(BeNil())
+			}, `{
+				"error": "invalid_params",
+				"errors": {
+					"email": "is taken"
+				}
+			}`),
+			Entry("taken email address with uppercases", func() {
+				u := &user.User{Email: "foo@example.com", Password: "foobar"}
+				err = u.Insert(db)
+				Expect(err).To(BeNil())
+
+				params.Set("email", "FOO@example.com")
 			}, `{
 				"error": "invalid_params",
 				"errors": {

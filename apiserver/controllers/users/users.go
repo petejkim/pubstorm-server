@@ -3,6 +3,7 @@ package users
 import (
 	"net/http"
 	"strconv"
+	"strings"
 
 	log "github.com/Sirupsen/logrus"
 	"github.com/gin-gonic/gin"
@@ -16,7 +17,7 @@ import (
 
 func Create(c *gin.Context) {
 	u := &user.User{
-		Email:    c.PostForm("email"),
+		Email:    strings.ToLower(c.PostForm("email")),
 		Password: c.PostForm("password"),
 	}
 
