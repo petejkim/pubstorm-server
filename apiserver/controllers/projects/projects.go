@@ -83,7 +83,7 @@ func Create(c *gin.Context) {
 	if !canCreate {
 		c.JSON(http.StatusForbidden, gin.H{
 			"error":             "invalid_request",
-			"error_description": "maxinum number of projects reached",
+			"error_description": "maximum number of projects reached",
 		})
 		return
 	}
