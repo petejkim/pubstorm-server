@@ -9,7 +9,6 @@ import (
 
 	"github.com/jinzhu/gorm"
 	"github.com/lib/pq"
-	"github.com/nitrous-io/rise-cli-go/project"
 )
 
 var (
@@ -18,8 +17,6 @@ var (
 
 // Errors returned from this package.
 var (
-	MaxProjectPerUser = 10
-
 	ErrEmailTaken                  = errors.New("email is taken")
 	ErrPasswordResetTokenRequired  = errors.New("password reset token is required")
 	ErrPasswordResetTokenIncorrect = errors.New("password reset token incorrect")
@@ -195,14 +192,4 @@ func FindByEmail(db *gorm.DB, email string) (u *User, err error) {
 	}
 
 	return u, nil
-}
-
-// Returns whether more projects can be added for this user
-func (u *User) CanAddProject(db *gorm.DB) (bool, error) {
-	var count int
-	if err := db.Model(project.Project{}).Where("user_id = ?", u.ID).Count(&count).Error; err != nil {
-		return false, err
-	}
-
-	return count < MaxProjectPerUser, nil
 }

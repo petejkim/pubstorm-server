@@ -230,35 +230,6 @@ var _ = Describe("Projects", func() {
 			})
 		})
 
-		Context("when the user has more than `MaxNumOfProject` projects", func() {
-			var origMaxProjectPerUser int
-
-			BeforeEach(func() {
-				factories.Project(db, u)
-				origMaxProjectPerUser = user.MaxProjectPerUser
-				user.MaxProjectPerUser = 1
-
-				params.Set("name", "foo-bar-express")
-				doRequest()
-			})
-
-			AfterEach(func() {
-				user.MaxProjectPerUser = origMaxProjectPerUser
-			})
-
-			It("returns 403 invalid request", func() {
-				b := &bytes.Buffer{}
-				_, err := b.ReadFrom(res.Body)
-				Expect(err).To(BeNil())
-
-				Expect(res.StatusCode).To(Equal(http.StatusForbidden))
-				Expect(b.String()).To(MatchJSON(`{
-					"error": "invalid_request",
-					"error_description": "maximum number of projects reached"
-				}`))
-			})
-		})
-
 		Context("when a valid project name is given", func() {
 			var proj *project.Project
 
