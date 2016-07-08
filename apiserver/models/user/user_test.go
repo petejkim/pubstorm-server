@@ -8,6 +8,7 @@ import (
 	"github.com/nitrous-io/rise-server/apiserver/dbconn"
 	"github.com/nitrous-io/rise-server/apiserver/models/user"
 	"github.com/nitrous-io/rise-server/testhelper"
+	"github.com/nitrous-io/rise-server/testhelper/factories"
 
 	. "github.com/onsi/ginkgo"
 	. "github.com/onsi/gomega"
@@ -317,6 +318,45 @@ var _ = Describe("User", func() {
 					Expect(u1).To(BeNil())
 					Expect(err).To(BeNil())
 				})
+			})
+		})
+	})
+
+	Describe("CanAddProject()", func() {
+		var origMaxProjectPerUser int
+
+		BeforeEach(func() {
+			u = &user.User{
+				Email:    "harry.potter@gmail.com",
+				Password: "123456",
+			}
+			Expect(u.Insert(db)).To(BeNil())
+
+			origMaxProjectPerUser = user.MaxProjectPerUser
+			user.MaxProjectPerUser = 1
+		})
+
+		AfterEach(func() {
+			user.MaxProjectPerUser = origMaxProjectPerUser
+		})
+
+		Context("when the user has fewer than the max number of projects allowed", func() {
+			It("returns true", func() {
+				canCreate, err := u.CanAddProject(db)
+				Expect(err).To(BeNil())
+				Expect(canCreate).To(BeTrue())
+			})
+		})
+
+		Context("when the user already has the max number of projects allowed", func() {
+			BeforeEach(func() {
+				factories.Project(db, u)
+			})
+
+			It("returns false", func() {
+				canCreate, err := u.CanAddProject(db)
+				Expect(err).To(BeNil())
+				Expect(canCreate).To(BeFalse())
 			})
 		})
 	})
