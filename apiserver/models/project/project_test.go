@@ -624,4 +624,37 @@ var _ = Describe("Project", func() {
 			})
 		})
 	})
+
+	Describe("CanAddProject()", func() {
+		var origMaxProjectPerUser int
+
+		BeforeEach(func() {
+			origMaxProjectPerUser = project.MaxProjectPerUser
+			project.MaxProjectPerUser = 2
+		})
+
+		AfterEach(func() {
+			project.MaxProjectPerUser = origMaxProjectPerUser
+		})
+
+		Context("when the user has fewer than the max number of projects allowed", func() {
+			It("returns true", func() {
+				canCreate, err := project.CanAddProject(db, u)
+				Expect(err).To(BeNil())
+				Expect(canCreate).To(BeTrue())
+			})
+		})
+
+		Context("when the user already has the max number of projects allowed", func() {
+			BeforeEach(func() {
+				factories.Project(db, u)
+			})
+
+			It("returns false", func() {
+				canCreate, err := project.CanAddProject(db, u)
+				Expect(err).To(BeNil())
+				Expect(canCreate).To(BeFalse())
+			})
+		})
+	})
 })

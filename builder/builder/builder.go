@@ -206,7 +206,7 @@ func Work(data []byte) error {
 		if len(errorMessages) > 0 {
 			nextState = deployment.StateBuildFailed
 			errorMessage := strings.Join(errorMessages, "\n")
-			log.Printf("error on optimizing", errorMessage)
+			log.Printf("error on optimizing: %v", errorMessage)
 		}
 
 		if err := pack(optimizedBundleTarball, dirName); err != nil {
