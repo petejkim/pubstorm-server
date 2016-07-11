@@ -39,7 +39,7 @@ type Project struct {
 	UserID               uint
 	DefaultDomainEnabled bool `sql:"default:true"`
 	ForceHTTPS           bool `sql:"column:force_https"`
-	SkipBuild            bool
+	SkipBuild            bool `sql:"default:true"`
 	MaxDeploysKept       uint
 	LastDigestSentAt     *time.Time
 
