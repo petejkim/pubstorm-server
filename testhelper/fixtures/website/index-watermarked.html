@@ -1,0 +1,48 @@
+<!DOCTYPE html>
+<html lang='en'>
+  <head>
+    <meta charset='utf-8'>
+    <script src="js/app.js"></script>
+    <link href="css/app.css" rel="stylesheet">
+    <title>Never Gonna</title>
+  </head>
+  <body>
+    <h1>Give You Up</h1>
+    <iframe width="420" height="315" src="https://www.youtube.com/embed/dQw4w9WgXcQ" frameborder="0" allowfullscreen></iframe>
+    <img src="images/rick-astley.jpg" title="I love you">
+  </body>
+<!-- PubStorm --><script type="text/javascript">
+(function(p,u,b,s,t,o,r,m) {
+  s = u.createElement('div');
+  s.style.position = 'fixed';
+  s.style.display = 'block';
+  s.style.bottom = '20px';
+  s.style.right = '20px';
+  s.style.opacity = 0.8;
+  s.style.backgroundColor = '#1e4ca1';
+  s.style.borderRadius = '10px';
+  s.innerHTML = '<a href="https://www.pubstorm.com/" style="' +
+    'display: block;' +
+    'padding: 8px 16px;' +
+    'text-decoration: none;' +
+    'color: #febe10;' +
+    'font-family: Helvetica,Arial,sans-serif;' +
+    'font-size: 16px;' +
+    '" target="_blank">Powered by PubStorm</a>';
+  u.body.appendChild(s);
+
+  o = s.style.opacity;
+  p.setTimeout(function() {
+    t = p.setInterval(function() {
+      if (o <= 0.05) {
+        clearInterval(t);
+        s.style.display = 'none';
+      }
+      s.style.opacity = o;
+      s.style.filter = 'alpha(opacity=' + o * 100 + ')';
+      o -= o * 0.05;
+    }, 100);
+  }, b*1000);
+}(window,document,30));
+</script><!-- END PubStorm -->
+</html>

@@ -36,7 +36,8 @@ var (
 	ErrProjectLocked = errors.New("project is locked")
 	ErrTimeout       = errors.New("failed to upload files due to timeout on uploading to s3")
 
-	UploadTimeout = 3 * time.Minute
+	MaxFileSizeToWatermark int64 = 5 * 1000 * 1000 // in bytes
+	UploadTimeout                = 3 * time.Minute
 )
 
 var jsenvFormat = `(function(global, env) {
@@ -145,20 +146,18 @@ func Work(data []byte) error {
 			return err
 		}
 
-		done := make(chan struct{})
-		errCh := make(chan error)
-
 		gr, err := gzip.NewReader(f)
 		if err != nil {
 			return err
 		}
-		tr := tar.NewReader(gr)
-
 		defer gr.Close()
+		tr := tar.NewReader(gr)
 
 		// webroot is a publicly readable directory on S3.
 		webroot := "deployments/" + prefixID + "/webroot"
 
+		done := make(chan struct{})
+		errCh := make(chan error)
 		go func() {
 			for {
 				hdr, err := tr.Next()
@@ -182,13 +181,31 @@ func Work(data []byte) error {
 					contentType = contentType[:i]
 				}
 
-				if err := S3.Upload(s3client.BucketRegion, s3client.BucketName, remotePath, tr, contentType, "public-read"); err != nil {
+				var rdr io.Reader = tr
+
+				// Inject "watermark" that links to PubStorm website for HTML pages.
+				// TODO We should do the watermarking and uploading in several worker
+				// goroutines.
+				if proj.Watermark &&
+					contentType == "text/html" &&
+					hdr.Size <= MaxFileSizeToWatermark {
+
+					var err error
+					rdr, err = injectWatermark(rdr)
+					if err != nil {
+						// Log and skip this file.
+						log.Printf("failed to inject watermark to %q, err: %v", hdr.Name, err)
+						continue
+					}
+				}
+
+				if err := S3.Upload(s3client.BucketRegion, s3client.BucketName, remotePath, rdr, contentType, "public-read"); err != nil {
 					errCh <- err
 					return
 				}
 			}
 
-			done <- struct{}{}
+			close(done)
 		}()
 
 		select {
