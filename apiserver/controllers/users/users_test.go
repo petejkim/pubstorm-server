@@ -147,13 +147,28 @@ var _ = Describe("Users", func() {
 				Expect(identifyCall.Arguments[0]).To(Equal(fmt.Sprintf("%d", u.ID)))
 				Expect(identifyCall.Arguments[1]).To(Equal("anonyid"))
 
-				t := identifyCall.Arguments[2]
-				traits, ok := t.(map[string]interface{})
+				i := identifyCall.Arguments[2]
+				traits, ok := i.(map[string]interface{})
 				Expect(ok).To(BeTrue())
 				Expect(traits["email"]).To(Equal(u.Email))
 
 				Expect(identifyCall.Arguments[3]).To(BeNil())
 				Expect(identifyCall.ReturnValues[0]).To(BeNil())
+
+				trackCall := fakeTracker.TrackCalls.NthCall(1)
+				Expect(trackCall).NotTo(BeNil())
+				Expect(trackCall.Arguments[0]).To(Equal(fmt.Sprintf("%d", u.ID)))
+				Expect(trackCall.Arguments[1]).To(Equal("User Signed Up"))
+				Expect(trackCall.Arguments[2]).To(Equal("anonyid"))
+
+				t := trackCall.Arguments[3]
+				props, ok := t.(map[string]interface{})
+				Expect(ok).To(BeTrue())
+				Expect(props["email"]).To(Equal(u.Email))
+				Expect(props["name"]).To(Equal(u.Name))
+
+				Expect(trackCall.Arguments[4]).To(BeNil())
+				Expect(trackCall.ReturnValues[0]).To(BeNil())
 			})
 
 		})
