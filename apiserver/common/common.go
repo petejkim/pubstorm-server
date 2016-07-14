@@ -8,11 +8,13 @@ import (
 )
 
 var (
-	MailerEmail = os.Getenv("MAILER_EMAIL")
-	AesKey      = os.Getenv("AES_KEY")
-	StatsToken  = os.Getenv("STATS_TOKEN")
-	AcmeURL     = os.Getenv("ACME_URL")
-	WebhookHost = os.Getenv("WEBHOOK_HOST")
+	MailerEmail    = os.Getenv("MAILER_EMAIL")
+	AesKey         = os.Getenv("AES_KEY")
+	StatsToken     = os.Getenv("STATS_TOKEN")
+	AcmeURL        = os.Getenv("ACME_URL")
+	GitHubAPIHost  = os.Getenv("GITHUB_API_HOST")
+	GitHubAPIToken = os.Getenv("GITHUB_API_TOKEN")
+	WebhookHost    = os.Getenv("WEBHOOK_HOST")
 )
 
 func init() {

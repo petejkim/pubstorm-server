@@ -6,6 +6,7 @@ import (
 	"github.com/nitrous-io/rise-server/apiserver/controllers/certs"
 	"github.com/nitrous-io/rise-server/apiserver/controllers/deployments"
 	"github.com/nitrous-io/rise-server/apiserver/controllers/domains"
+	"github.com/nitrous-io/rise-server/apiserver/controllers/hooks"
 	"github.com/nitrous-io/rise-server/apiserver/controllers/jsenvvars"
 	"github.com/nitrous-io/rise-server/apiserver/controllers/oauth"
 	"github.com/nitrous-io/rise-server/apiserver/controllers/ping"
@@ -37,6 +38,8 @@ func Draw(r *gin.Engine) {
 	r.GET("/admin/stats", stats.Index)
 
 	r.GET("/.well-known/acme-challenge/:token", acme.ChallengeResponse)
+
+	r.POST("/hooks/github/:path", hooks.GitHubPush)
 
 	{ // Routes that require a OAuth Token
 		authorized := r.Group("", middleware.RequireToken)

@@ -38,7 +38,7 @@ func Create(c *gin.Context) {
 		UserID:    u.ID,
 	}
 
-	// Get js environment variables from previous project
+	// Get js environment variables from previous deployment.
 	if proj.ActiveDeploymentID != nil {
 		var prevDepl deployment.Deployment
 		if err := db.Where("id = ?", proj.ActiveDeploymentID).First(&prevDepl).Error; err != nil {
