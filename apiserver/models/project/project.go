@@ -39,7 +39,7 @@ type Project struct {
 	DefaultDomainEnabled bool `sql:"default:true"`
 	ForceHTTPS           bool `sql:"column:force_https"`
 	SkipBuild            bool `sql:"default:true"`
-	Watermark            bool `sql:"default:false"`
+	Watermark            bool `sql:"default:true"`
 	MaxDeploysKept       uint
 	LastDigestSentAt     *time.Time
 

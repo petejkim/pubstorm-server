@@ -150,57 +150,63 @@ var _ = Describe("Deployer", func() {
 		}
 	}
 
-	It("fetches the optimized bundle from S3, uploads assets and meta data to S3, and publishes invalidation message to edges", func() {
-		// mock download
-		fakeS3.DownloadContent, err = ioutil.ReadFile("../../testhelper/fixtures/website.tar.gz")
-		Expect(err).To(BeNil())
+	Context("when project should not display a watermark", func() {
+		BeforeEach(func() {
+			proj.Watermark = false
+			Expect(db.Save(proj).Error).To(BeNil())
+		})
 
-		err = deployer.Work([]byte(fmt.Sprintf(`{
-			"deployment_id": %d
-		}`, depl.ID)))
-		Expect(err).To(BeNil())
-
-		// it should download optimized bundle from s3
-		Expect(fakeS3.DownloadCalls.Count()).To(Equal(1))
-		downloadCall := fakeS3.DownloadCalls.NthCall(1)
-		Expect(downloadCall).NotTo(BeNil())
-		Expect(downloadCall.Arguments[0]).To(Equal(s3client.BucketRegion))
-		Expect(downloadCall.Arguments[1]).To(Equal(s3client.BucketName))
-		Expect(downloadCall.Arguments[2]).To(Equal(fmt.Sprintf("deployments/%s/optimized-bundle.tar.gz", depl.PrefixID())))
-		Expect(downloadCall.ReturnValues[0]).To(BeNil())
-
-		// it should upload assets
-		Expect(fakeS3.UploadCalls.Count()).To(Equal(8)) // 5 asset files + 1 jsenv.js + 2 metadata files (2 domains)
-
-		uploads := []struct {
-			filename    string
-			contentType string
-		}{
-			{"images/rick-astley.jpg", "image/jpeg"},
-			{"images/astley.jpg", "image/jpeg"},
-			{"index.html", "text/html"},
-			{"js/app.js", "application/javascript"},
-			{"css/app.css", "text/css"},
-		}
-
-		for i, upload := range uploads {
-			data, err := ioutil.ReadFile("../../testhelper/fixtures/website/" + upload.filename)
+		It("fetches the optimized bundle from S3, uploads assets and meta data to S3, and publishes invalidation message to edges", func() {
+			// mock download
+			fakeS3.DownloadContent, err = ioutil.ReadFile("../../testhelper/fixtures/website.tar.gz")
 			Expect(err).To(BeNil())
 
-			assertUpload(
-				1+i,
-				"deployments/"+depl.PrefixID()+"/webroot/"+upload.filename,
-				upload.contentType,
-				data,
-			)
-		}
+			err = deployer.Work([]byte(fmt.Sprintf(`{
+				"deployment_id": %d
+			}`, depl.ID)))
+			Expect(err).To(BeNil())
 
-		// it should upload jsenv.js
-		assertUpload(
-			6,
-			"deployments/"+depl.PrefixID()+"/webroot/jsenv.js",
-			"application/javascript",
-			[]byte(`(function(global, env) {
+			// it should download optimized bundle from s3
+			Expect(fakeS3.DownloadCalls.Count()).To(Equal(1))
+			downloadCall := fakeS3.DownloadCalls.NthCall(1)
+			Expect(downloadCall).NotTo(BeNil())
+			Expect(downloadCall.Arguments[0]).To(Equal(s3client.BucketRegion))
+			Expect(downloadCall.Arguments[1]).To(Equal(s3client.BucketName))
+			Expect(downloadCall.Arguments[2]).To(Equal(fmt.Sprintf("deployments/%s/optimized-bundle.tar.gz", depl.PrefixID())))
+			Expect(downloadCall.ReturnValues[0]).To(BeNil())
+
+			// it should upload assets
+			Expect(fakeS3.UploadCalls.Count()).To(Equal(8)) // 5 asset files + 1 jsenv.js + 2 metadata files (2 domains)
+
+			uploads := []struct {
+				filename    string
+				contentType string
+			}{
+				{"images/rick-astley.jpg", "image/jpeg"},
+				{"images/astley.jpg", "image/jpeg"},
+				{"index.html", "text/html"},
+				{"js/app.js", "application/javascript"},
+				{"css/app.css", "text/css"},
+			}
+
+			for i, upload := range uploads {
+				data, err := ioutil.ReadFile("../../testhelper/fixtures/website/" + upload.filename)
+				Expect(err).To(BeNil())
+
+				assertUpload(
+					1+i,
+					"deployments/"+depl.PrefixID()+"/webroot/"+upload.filename,
+					upload.contentType,
+					data,
+				)
+			}
+
+			// it should upload jsenv.js
+			assertUpload(
+				6,
+				"deployments/"+depl.PrefixID()+"/webroot/jsenv.js",
+				"application/javascript",
+				[]byte(`(function(global, env) {
 	if (typeof module === "object" && typeof module.exports === "object") {
 		module.exports = env;
 	} else {
@@ -209,45 +215,46 @@ var _ = Describe("Deployer", func() {
 }(this, {"baz":"qux","foo":"bar"}));
 `))
 
-		// it should upload meta.json for each domain
-		for i, domain := range []string{
-			proj.DefaultDomainName(),
-			"www.foo-bar-express.com",
-		} {
-			assertUpload(
-				7+i,
-				"domains/"+domain+"/meta.json",
-				"application/json",
-				[]byte(fmt.Sprintf(`{
+			// it should upload meta.json for each domain
+			for i, domain := range []string{
+				proj.DefaultDomainName(),
+				"www.foo-bar-express.com",
+			} {
+				assertUpload(
+					7+i,
+					"domains/"+domain+"/meta.json",
+					"application/json",
+					[]byte(fmt.Sprintf(`{
 					"prefix": "%s"
 				}`, depl.PrefixID())),
-			)
-		}
+				)
+			}
 
-		// it should publish invalidation message
-		d := testhelper.ConsumeQueue(mq, qName)
-		Expect(d).NotTo(BeNil())
-		Expect(d.Body).To(MatchJSON(fmt.Sprintf(`{
+			// it should publish invalidation message
+			d := testhelper.ConsumeQueue(mq, qName)
+			Expect(d).NotTo(BeNil())
+			Expect(d.Body).To(MatchJSON(fmt.Sprintf(`{
 			"domains": [
 				"%s",
 				"www.foo-bar-express.com"
 			]
 		}`, proj.DefaultDomainName())))
 
-		// it should update deployment's state to deployed
-		err = db.First(depl, depl.ID).Error
-		Expect(err).To(BeNil())
+			// it should update deployment's state to deployed
+			err = db.First(depl, depl.ID).Error
+			Expect(err).To(BeNil())
 
-		Expect(depl.State).To(Equal(deployment.StateDeployed))
-		Expect(depl.DeployedAt).NotTo(BeNil())
-		Expect(depl.DeployedAt.Unix()).To(BeNumerically("~", time.Now().Unix(), 1))
+			Expect(depl.State).To(Equal(deployment.StateDeployed))
+			Expect(depl.DeployedAt).NotTo(BeNil())
+			Expect(depl.DeployedAt.Unix()).To(BeNumerically("~", time.Now().Unix(), 1))
 
-		// it should set project's active deployment to current deployment id
-		assertActiveDeploymentIDUpdate()
+			// it should set project's active deployment to current deployment id
+			assertActiveDeploymentIDUpdate()
 
-		// make sure it does not leave project as locked
-		Expect(db.First(proj, proj.ID).Error).To(BeNil())
-		Expect(proj.LockedAt).To(BeNil())
+			// make sure it does not leave project as locked
+			Expect(db.First(proj, proj.ID).Error).To(BeNil())
+			Expect(proj.LockedAt).To(BeNil())
+		})
 	})
 
 	It("tracks a 'Project Deployed' event", func() {
