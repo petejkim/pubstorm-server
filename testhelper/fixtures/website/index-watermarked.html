@@ -10,39 +10,18 @@
     <h1>Give You Up</h1>
     <iframe width="420" height="315" src="https://www.youtube.com/embed/dQw4w9WgXcQ" frameborder="0" allowfullscreen></iframe>
     <img src="images/rick-astley.jpg" title="I love you">
-  </body>
-<!-- PubStorm --><script type="text/javascript">
-(function(p,u,b,s,t,o,r,m) {
-  s = u.createElement('div');
-  s.style.position = 'fixed';
-  s.style.display = 'block';
-  s.style.bottom = '20px';
-  s.style.right = '20px';
-  s.style.opacity = 0.8;
-  s.style.backgroundColor = '#1e4ca1';
-  s.style.borderRadius = '10px';
-  s.innerHTML = '<a href="https://www.pubstorm.com/" style="' +
-    'display: block;' +
-    'padding: 8px 16px;' +
-    'text-decoration: none;' +
-    'color: #febe10;' +
-    'font-family: Helvetica,Arial,sans-serif;' +
-    'font-size: 16px;' +
-    '" target="_blank">Powered by PubStorm</a>';
-  u.body.appendChild(s);
-
-  o = s.style.opacity;
-  p.setTimeout(function() {
-    t = p.setInterval(function() {
-      if (o <= 0.05) {
-        clearInterval(t);
-        s.style.display = 'none';
-      }
-      s.style.opacity = o;
-      s.style.filter = 'alpha(opacity=' + o * 100 + ')';
-      o -= o * 0.05;
-    }, 100);
-  }, b*1000);
-}(window,document,30));
-</script><!-- END PubStorm -->
+  <!----><script type="text/javascript">(function(p,u,b,s,t,o,r,m) {
+  o=' !important;';
+  s=u.createElement('div');
+  s.innerHTML='<a style="'+
+  ('position:fixed|display:block|bottom:0|left:auto|right:20px;|opacity:1|visibility:visible|background:#fff|'+
+  'border-radius:3px 2px 0 0|transition:opacity .3s|margin:0|padding: 3px 5px|transform:none|float:none|z-index:999999|'+
+  'font-family:Helvetica,Arial,sans-serif|color:#000|font-size:10px|font-weight:normal|border:none|outline:none|'+
+  'box-shadow:0 1px 2px rgba(0,0,0,.3)|text-decoration:none|font-style:normal|line-height:1|vertical-align:middle').split('|').join(o)+
+  '" href="https://www.pubstorm.com/?utm_source=pubstorm&utm_medium=watermark&utm_campaign=watermark" target="_blank">'+
+  'Powered by <span style="font-weight:bold !important">PubStorm</span></a>';
+ u.body.appendChild(t=s.children[0]);
+ p.setTimeout(function(){t.style.opacity=0}, b*1000);
+}(window,document,30));</script>
+</script></body>
 </html>
