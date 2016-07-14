@@ -1,6 +1,9 @@
 package deployer_test
 
 import (
+	"archive/tar"
+	"bytes"
+	"compress/gzip"
 	"encoding/json"
 	"fmt"
 	"io/ioutil"
@@ -427,6 +430,130 @@ var _ = Describe("Deployer", func() {
 		})
 	})
 
+	Context("when project should display a watermark", func() {
+		BeforeEach(func() {
+			proj.Watermark = true
+			Expect(db.Save(proj).Error).To(BeNil())
+		})
+
+		It("modifies HTML pages to include content required for a watermark", func() {
+			// Create a fake gzipped tarball.
+			buf := new(bytes.Buffer)
+			gw := gzip.NewWriter(buf)
+			tw := tar.NewWriter(gw)
+
+			files := []struct {
+				Name, Body string
+			}{
+				{"index.html", indexHTML},
+				{"webcam.html", webcamHTML},
+				{"app.js", appJS},
+			}
+			for _, file := range files {
+				hdr := &tar.Header{
+					Name: file.Name,
+					Size: int64(len(file.Body)),
+				}
+				err := tw.WriteHeader(hdr)
+				Expect(err).To(BeNil())
+				_, err = tw.Write([]byte(file.Body))
+				Expect(err).To(BeNil())
+			}
+
+			err = tw.Close()
+			Expect(err).To(BeNil())
+			err = gw.Close()
+			Expect(err).To(BeNil())
+
+			// mock download
+			fakeS3.DownloadContent = buf.Bytes()
+
+			err = deployer.Work([]byte(fmt.Sprintf(`{ "deployment_id": %d }`, depl.ID)))
+			Expect(err).To(BeNil())
+
+			// index.html should have been modified to include code needed to display
+			// watermark.
+			assertUpload(
+				1,
+				"deployments/"+depl.PrefixID()+"/webroot/index.html",
+				"text/html",
+				[]byte(`<!DOCTYPE html>
+<html lang='en'>
+  <head>
+    <meta charset='utf-8'>
+    <script src="js/app.js"></script>
+    <title>Never Gonna</title>
+  </head>
+  <body>
+    <h1>Give You Up</h1>
+    <iframe width="420" height="315" src="https://www.youtube.com/embed/dQw4w9WgXcQ" frameborder="0" allowfullscreen></iframe>
+    <img src="images/rick-astley.jpg" title="I love you">
+  `+deployer.WatermarkScript+`</body>
+</html>
+`),
+			)
+
+			// If the file is missing the closing "</body>" tag, it is unchanged.
+			assertUpload(
+				2,
+				"deployments/"+depl.PrefixID()+"/webroot/webcam.html",
+				"text/html",
+				[]byte(webcamHTML),
+			)
+
+			// Non-HTML files shuold not be modified.
+			assertUpload(
+				3,
+				"deployments/"+depl.PrefixID()+"/webroot/app.js",
+				"application/javascript",
+				[]byte(appJS),
+			)
+		})
+
+		Context("when HTML page filesize is larger than MaxFileSizeToWatermark", func() {
+			BeforeEach(func() {
+				// Set max file size to less than the size of indexHTML.
+				deployer.MaxFileSizeToWatermark = int64(len([]byte(indexHTML)) - 1)
+			})
+
+			It("does not modify those pages", func() {
+				// Create a fake gzipped tarball.
+				buf := new(bytes.Buffer)
+				gw := gzip.NewWriter(buf)
+				tw := tar.NewWriter(gw)
+
+				hdr := &tar.Header{
+					Name: "index.html",
+					Size: int64(len(indexHTML)),
+				}
+				err := tw.WriteHeader(hdr)
+				Expect(err).To(BeNil())
+				_, err = tw.Write([]byte(indexHTML))
+				Expect(err).To(BeNil())
+
+				err = tw.Close()
+				Expect(err).To(BeNil())
+				err = gw.Close()
+				Expect(err).To(BeNil())
+
+				// mock download
+				fakeS3.DownloadContent = buf.Bytes()
+
+				err = deployer.Work([]byte(fmt.Sprintf(`{ "deployment_id": %d }`, depl.ID)))
+				Expect(err).To(BeNil())
+
+				// index.html should have been modified to include code needed to display
+				// watermark.
+				assertUpload(
+					1,
+					"deployments/"+depl.PrefixID()+"/webroot/index.html",
+					"text/html",
+					[]byte(indexHTML),
+				)
+			})
+		})
+	})
+
 	Context("when skip_webroot_upload is true", func() {
 		assertMetaDataUpload := func(doms []string) {
 			Expect(fakeS3.UploadCalls.Count()).To(Equal(len(doms)))
@@ -743,3 +870,25 @@ var _ = Describe("Deployer", func() {
 		})
 	})
 })
+
+var indexHTML = `<!DOCTYPE html>
+<html lang='en'>
+  <head>
+    <meta charset='utf-8'>
+    <script src="js/app.js"></script>
+    <title>Never Gonna</title>
+  </head>
+  <body>
+    <h1>Give You Up</h1>
+    <iframe width="420" height="315" src="https://www.youtube.com/embed/dQw4w9WgXcQ" frameborder="0" allowfullscreen></iframe>
+    <img src="images/rick-astley.jpg" title="I love you">
+  </body>
+</html>
+`
+
+var webcamHTML = `<h1>Live Webcam</h1>
+<img src="images/rick-astley.jpg" title="Risque photo">
+`
+
+var appJS = `var webcam = window.Camera;
+webcam.Stream();`
