@@ -40,7 +40,10 @@ func run() {
 		}
 	}()
 
-	queueName := queues.Deploy
+	queueName := os.Getenv("DEPLOY_QUEUE_NAME")
+	if queueName == "" {
+		queueName = queues.Deploy
+	}
 
 	q, err := ch.QueueDeclare(
 		queueName,
