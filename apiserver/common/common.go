@@ -12,6 +12,7 @@ var (
 	AesKey      = os.Getenv("AES_KEY")
 	StatsToken  = os.Getenv("STATS_TOKEN")
 	AcmeURL     = os.Getenv("ACME_URL")
+	WebhookHost = os.Getenv("WEBHOOK_HOST")
 )
 
 func init() {
