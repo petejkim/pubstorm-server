@@ -73,6 +73,7 @@ var _ = Describe("Stats", func() {
 				"project_id": {strconv.Itoa(int(proj.ID))},
 				"year":       {"2016"},
 				"month":      {"6"},
+				"day":        {"1"},
 				"token":      {common.StatsToken},
 			}
 		})
@@ -133,6 +134,14 @@ var _ = Describe("Stats", func() {
 					"month": "is required"
 				}
 			}`),
+			Entry("missing day", func() {
+				params.Del("day")
+			}, `{
+				"error": "invalid_params",
+				"errors": {
+					"day": "is required"
+				}
+			}`),
 			Entry("invalid project_id", func() {
 				params.Set("project_id", "invalidID")
 			}, `{
@@ -157,14 +166,22 @@ var _ = Describe("Stats", func() {
 					"month": "is invalid"
 				}
 			}`),
+			Entry("invalid day", func() {
+				params.Set("day", "-1")
+			}, `{
+				"error": "invalid_params",
+				"errors": {
+					"day": "is invalid"
+				}
+			}`),
 		)
 
 		Context("when all params are valid", func() {
 			It("returns stats", func() {
 				stat.GetDomainStat = func(index string, domain string, from time.Time, to time.Time) (*stat.DomainStat, error) {
 					return &stat.DomainStat{
-						From:            time.Date(2016, 6, 1, 0, 0, 0, 0, time.UTC),
-						To:              time.Date(2016, 7, 1, 0, 0, 0, 0, time.UTC).Add(-1 * time.Second),
+						From:            time.Date(2016, 6, 1, 0, 0, 0, 0, time.UTC).Add(-7 * 24 * time.Hour),
+						To:              time.Date(2016, 6, 1, 0, 0, 0, 0, time.UTC),
 						DomainName:      domain,
 						TotalBandwidth:  60000.0,
 						TotalRequests:   100.0,
@@ -187,8 +204,8 @@ var _ = Describe("Stats", func() {
 				Expect(res.StatusCode).To(Equal(http.StatusOK))
 				Expect(b.String()).To(MatchJSON(fmt.Sprintf(`{
 					"stats": [{
-								"from":"2016-06-01T00:00:00Z",
-								"to":"2016-06-30T23:59:59Z",
+								"from":"2016-05-25T00:00:00Z",
+								"to":"2016-06-01T00:00:00Z",
 								"domain_name":"%s",
 								"total_bandwidth": 60000,
 								"total_requests": 100,
