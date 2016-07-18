@@ -1,16 +1,23 @@
-package hooks
+package githubapi_test
 
 import (
 	"encoding/json"
+	"testing"
 
+	"github.com/nitrous-io/rise-server/pkg/githubapi"
 	. "github.com/onsi/ginkgo"
 	. "github.com/onsi/gomega"
 )
 
-var _ = Describe("GitHub", func() {
-	Describe("payload", func() {
+func Test(t *testing.T) {
+	RegisterFailHandler(Fail)
+	RunSpecs(t, "githubapi")
+}
+
+var _ = Describe("githubapi", func() {
+	Describe("PushPayload", func() {
 		It("can be used to unmarshal a GitHub webhook payload", func() {
-			var pl payload
+			var pl githubapi.PushPayload
 			err := json.Unmarshal(sampleGitHubPushPayload, &pl)
 			Expect(err).To(BeNil())
 
@@ -25,13 +32,13 @@ var _ = Describe("GitHub", func() {
 			Expect(pl.Pusher.Name).To(Equal("chuyeow"))
 		})
 
-		Describe("branch()", func() {
+		Describe("Branch()", func() {
 			It("returns the branch", func() {
-				var pl payload
+				var pl githubapi.PushPayload
 				err := json.Unmarshal(sampleGitHubPushPayload, &pl)
 				Expect(err).To(BeNil())
 
-				Expect(pl.branch()).To(Equal("master"))
+				Expect(pl.Branch()).To(Equal("master"))
 			})
 		})
 	})

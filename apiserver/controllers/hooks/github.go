@@ -18,6 +18,7 @@ import (
 	"github.com/nitrous-io/rise-server/apiserver/models/project"
 	"github.com/nitrous-io/rise-server/apiserver/models/push"
 	"github.com/nitrous-io/rise-server/apiserver/models/repo"
+	"github.com/nitrous-io/rise-server/pkg/githubapi"
 	"github.com/nitrous-io/rise-server/pkg/job"
 	"github.com/nitrous-io/rise-server/shared/messages"
 	"github.com/nitrous-io/rise-server/shared/queues"
@@ -34,7 +35,7 @@ func GitHubPush(c *gin.Context) {
 
 	// See https://developer.github.com/webhooks/#payloads for details of what
 	// GitHub POSTs to this endpoint.
-	var pl payload
+	var pl githubapi.PushPayload
 	if err := json.Unmarshal(body, &pl); err != nil {
 		log.Errorf("failed to unmarshal JSON payload from GitHub, err: %v", err)
 		c.String(http.StatusAccepted, "Payload is empty or is in an unexpected format.")
@@ -64,7 +65,7 @@ func GitHubPush(c *gin.Context) {
 	// We do not verify that git/ssh/clone url matches the saved repo.URI in the
 	// db, instead relying on the webhook path + secret to "authenticate".
 
-	if rp.Branch != pl.branch() {
+	if rp.Branch != pl.Branch() {
 		c.String(http.StatusAccepted, "Payload is not for the %q branch, aborting.", rp.Branch)
 		return
 	}

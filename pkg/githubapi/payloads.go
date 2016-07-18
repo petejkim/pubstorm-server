@@ -1,8 +1,8 @@
-package hooks
+package githubapi
 
 import "strings"
 
-type payload struct {
+type PushPayload struct {
 	Ref        string `json:"ref"`
 	After      string `json:"after"`
 	Forced     bool   `json:"forced"`
@@ -16,6 +16,6 @@ type payload struct {
 	} `json:"pusher"`
 }
 
-func (p *payload) branch() string {
+func (p *PushPayload) Branch() string {
 	return strings.TrimPrefix(p.Ref, "refs/heads/")
 }
