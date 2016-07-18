@@ -8,7 +8,6 @@ import (
 	"fmt"
 	"io"
 	"io/ioutil"
-	"log"
 	"net/http"
 	"net/url"
 	"os"
@@ -17,6 +16,7 @@ import (
 	"strings"
 	"time"
 
+	log "github.com/Sirupsen/logrus"
 	"github.com/nitrous-io/rise-server/apiserver/common"
 	"github.com/nitrous-io/rise-server/apiserver/dbconn"
 	"github.com/nitrous-io/rise-server/apiserver/models/deployment"
@@ -206,7 +206,7 @@ func fetchAndUnpackArchive(url, dst, subdir string) error {
 	}
 	res, err := cl.Do(req)
 	if err != nil {
-		log.Printf("error downloading archive of repo from GitHub, err: %v", err)
+		log.Errorf("error downloading archive of repo from GitHub, err: %v", err)
 		return ErrGitHubArchiveProblem
 	}
 	defer res.Body.Close()
@@ -236,6 +236,16 @@ func fetchAndUnpackArchive(url, dst, subdir string) error {
 		}
 
 		fileName := path.Clean(hdr.Name)
+
+		// Strip away top-level directory.
+		// GitHub archives the actual repo contents in a top-level directory, e.g.
+		//   - chuyeow-chuyeow.github.io-56cead1/index.html
+		//   - chuyeow-chuyeow.github.io-56cead1/pubstorm.json
+		splits := strings.SplitN(fileName, string(os.PathSeparator), 2)
+		if len(splits) < 2 {
+			continue // For some reason there's a "pax_global_header" file.
+		}
+		fileName = splits[1]
 
 		relPath, err := filepath.Rel(subdir, fileName)
 		if err != nil {
