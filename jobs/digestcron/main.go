@@ -17,7 +17,7 @@ const jobName = "digest-sender"
 
 var (
 	fields           = log.Fields{"job": jobName}
-	monthsAgo        = 1
+	daysAgo          = 0
 	apiServer        = os.Getenv("APISERVER_URL")
 	statsToken       = os.Getenv("STATS_TOKEN")
 	sendgridUsername = os.Getenv("SENDGRID_USERNAME")
@@ -44,11 +44,11 @@ func init() {
 		log.Fatalln("SENDGRID_USERNAME or SENDGRID_PASSWORD are not defined")
 	}
 
-	// It should be always 1, but this is useful for debugging
-	if os.Getenv("MONTHS_AGO") != "" {
-		m, err := strconv.Atoi(os.Getenv("MONTHS_AGO"))
+	// It should be always 0, but this is useful for debugging.
+	if os.Getenv("DAYS_AGO") != "" {
+		m, err := strconv.Atoi(os.Getenv("DAYS_AGO"))
 		if err == nil {
-			monthsAgo = m
+			daysAgo = m
 		}
 	}
 }
@@ -61,20 +61,24 @@ func main() {
 	}
 	sendgrid = mailer.NewSendGridMailer(sendgridUsername, sendgridPassword)
 
-	digestDate := time.Now().AddDate(0, -monthsAgo, 0)
-	digestYear, digestMonth, _ := digestDate.Date()
-	currentLocation := digestDate.Location()
-	firstOfMonth := time.Date(digestYear, digestMonth, 1, 0, 0, 0, 0, currentLocation)
+	digestDate := time.Now().AddDate(0, 0, -daysAgo)
+	digestYear, digestMonth, digestDay := digestDate.Date()
+
+	// Only resend the digest is the date of the last digest is older than 6 days
+	// Note: We are only comparing days without hours because the worker for that project
+	// could have ben run on a different hour.
+	limitDate := digestDate.AddDate(0, 0, -6)
 
 	projects := []*project.Project{}
-	if r := db.Where("last_digest_sent_at is null or last_digest_sent_at < ?", firstOfMonth).Find(&projects); r.Error != nil {
+	sqlQuery := "last_digest_sent_at is null or date_trunc('day', last_digest_sent_at) < date_trunc('day', ?::timestamp)"
+	if r := db.Where(sqlQuery, limitDate).Find(&projects); r.Error != nil {
 		log.Fatalln("Impossible to get project list")
 	}
 
 	var wg sync.WaitGroup
 	projectsCh := make(chan *project.Project)
 	for i := 0; i < nWorkers; i++ {
-		go worker(&wg, projectsCh, firstOfMonth.Year(), int(firstOfMonth.Month()))
+		go worker(&wg, projectsCh, digestYear, int(digestMonth), digestDay)
 	}
 
 	for _, project := range projects {
@@ -85,9 +89,9 @@ func main() {
 	wg.Wait()
 }
 
-func worker(wg *sync.WaitGroup, ch chan *project.Project, year, month int) {
+func worker(wg *sync.WaitGroup, ch chan *project.Project, year, month, day int) {
 	for p := range ch {
-		err := doJob(p, year, month)
+		err := doJob(p, year, month, day)
 		if err != nil {
 			log.Errorln(err)
 		}
