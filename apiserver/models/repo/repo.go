@@ -24,15 +24,17 @@ type Repo struct {
 
 func (r *Repo) AsJSON() interface{} {
 	return struct {
-		ProjectID  uint   `json:"project_id"`
-		URI        string `json:"uri"`
-		Branch     string `json:"branch"`
-		WebhookURL string `json:"webhook_url"`
+		ProjectID     uint   `json:"project_id"`
+		URI           string `json:"uri"`
+		Branch        string `json:"branch"`
+		WebhookURL    string `json:"webhook_url"`
+		WebhookSecret string `json:"webhook_secret"`
 	}{
 		r.ProjectID,
 		r.URI,
 		r.Branch,
 		r.WebhookURL(),
+		r.WebhookSecret,
 	}
 }
 

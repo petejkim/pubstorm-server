@@ -102,9 +102,10 @@ var _ = Describe("Repos", func() {
 					"project_id": %d,
 					"uri": "git@github.com:golang/talks.git",
 					"branch": "release",
-					"webhook_url": "%s"
+					"webhook_url": "%s",
+					"webhook_secret": "%s"
 				}
-			}`, proj.ID, fmt.Sprintf("%s/hooks/github/%s", common.WebhookHost, rp.WebhookPath))))
+			}`, proj.ID, fmt.Sprintf("%s/hooks/github/%s", common.WebhookHost, rp.WebhookPath), rp.WebhookSecret)))
 		})
 
 		Context("when project is not linked to a repository", func() {
@@ -207,9 +208,10 @@ var _ = Describe("Repos", func() {
 					"project_id": %d,
 					"uri": "git@github.com:golang/talks.git",
 					"branch": "release",
-					"webhook_url": "%s"
+					"webhook_url": "%s",
+					"webhook_secret": "%s"
 				}
-			}`, proj.ID, fmt.Sprintf("%s/hooks/github/%s", common.WebhookHost, rp.WebhookPath))))
+			}`, proj.ID, fmt.Sprintf("%s/hooks/github/%s", common.WebhookHost, rp.WebhookPath), rp.WebhookSecret)))
 		})
 
 		Context("when repo branch is not specified", func() {
@@ -252,7 +254,8 @@ var _ = Describe("Repos", func() {
 						"project_id": %d,
 						"uri": "git@github.com:golang/talks.git",
 						"branch": "release",
-						"webhook_url": "%s"
+						"webhook_url": "%s",
+						"webhook_secret": "my little secret pony"
 					}
 			}`, proj.ID, fmt.Sprintf("%s/hooks/github/%s", common.WebhookHost, rp.WebhookPath))))
 			})
