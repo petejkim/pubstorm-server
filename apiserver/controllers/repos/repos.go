@@ -10,6 +10,29 @@ import (
 	"github.com/nitrous-io/rise-server/apiserver/models/repo"
 )
 
+func Show(c *gin.Context) {
+	proj := controllers.CurrentProject(c)
+
+	db, err := dbconn.DB()
+	if err != nil {
+		controllers.InternalServerError(c, err)
+		return
+	}
+
+	var rp repo.Repo
+	if err := db.Where("project_id = ?", proj.ID).First(&rp).Error; err != nil {
+		c.JSON(http.StatusNotFound, gin.H{
+			"error":             "not_found",
+			"error_description": "project not linked to any repository",
+		})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"repo": rp.AsJSON(),
+	})
+}
+
 func Link(c *gin.Context) {
 	u := controllers.CurrentUser(c)
 	proj := controllers.CurrentProject(c)

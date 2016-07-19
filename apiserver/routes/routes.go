@@ -55,6 +55,7 @@ func Draw(r *gin.Engine) {
 			projCollab.GET("", projects.Get)
 			projCollab.GET("/deployments/:id", deployments.Show)
 			projCollab.GET("/deployments", deployments.Index)
+			projCollab.GET("repos", repos.Show)
 			projCollab.POST("/repos", repos.Link)
 			projCollab.DELETE("/repos", repos.Unlink)
 			projCollab.GET("/domains", domains.Index)

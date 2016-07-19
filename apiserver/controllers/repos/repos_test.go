@@ -51,7 +51,105 @@ var _ = Describe("Repos", func() {
 		s.Close()
 	})
 
-	Describe("POST /repos", func() {
+	Describe("GET /projects/:project_name/repos", func() {
+		var (
+			headers http.Header
+
+			u    *user.User
+			t    *oauthtoken.OauthToken
+			proj *project.Project
+			rp   *repo.Repo
+		)
+
+		BeforeEach(func() {
+			u, _, t = factories.AuthTrio(db)
+
+			proj = &project.Project{
+				Name:   "foo-bar-express",
+				UserID: u.ID,
+			}
+			Expect(db.Create(proj).Error).To(BeNil())
+
+			rp = &repo.Repo{
+				ProjectID:   proj.ID,
+				UserID:      u.ID,
+				URI:         "git@github.com:golang/talks.git",
+				Branch:      "release",
+				WebhookPath: "ABCDE4242",
+			}
+			Expect(db.Create(rp).Error).To(BeNil())
+
+			headers = http.Header{
+				"Authorization": {"Bearer " + t.Token},
+			}
+		})
+
+		doRequest := func() {
+			s = httptest.NewServer(server.New())
+			res, err = testhelper.MakeRequest("GET", s.URL+"/projects/"+proj.Name+"/repos", nil, headers, nil)
+			Expect(err).To(BeNil())
+		}
+
+		It("responds with HTTP OK and the repository information", func() {
+			doRequest()
+
+			b := &bytes.Buffer{}
+			_, err = b.ReadFrom(res.Body)
+
+			Expect(res.StatusCode).To(Equal(http.StatusOK))
+			Expect(b.String()).To(MatchJSON(fmt.Sprintf(`{
+				"repo": {
+					"project_id": %d,
+					"uri": "git@github.com:golang/talks.git",
+					"branch": "release",
+					"webhook_url": "%s"
+				}
+			}`, proj.ID, fmt.Sprintf("%s/hooks/github/%s", common.WebhookHost, rp.WebhookPath))))
+		})
+
+		Context("when project is not linked to a repository", func() {
+			BeforeEach(func() {
+				err := db.Delete(rp).Error
+				Expect(err).To(BeNil())
+			})
+
+			It("responds with HTTP 404 Not Found", func() {
+				doRequest()
+
+				b := &bytes.Buffer{}
+				_, err = b.ReadFrom(res.Body)
+
+				Expect(res.StatusCode).To(Equal(http.StatusNotFound))
+				Expect(b.String()).To(MatchJSON(`{
+					"error": "not_found",
+					"error_description": "project not linked to any repository"
+				}`))
+			})
+		})
+
+		sharedexamples.ItRequiresAuthentication(func() (*gorm.DB, *user.User, *http.Header) {
+			return db, u, &headers
+		}, func() *http.Response {
+			doRequest()
+			return res
+		}, nil)
+
+		sharedexamples.ItRequiresProject(func() (*gorm.DB, *project.Project) {
+			return db, proj
+		}, func() *http.Response {
+			doRequest()
+			return res
+		}, nil)
+
+		sharedexamples.ItRequiresProjectCollab(func() (*gorm.DB, *user.User, *project.Project) {
+			return db, u, proj
+		}, func() *http.Response {
+			doRequest()
+			return res
+		}, nil)
+	})
+
+	Describe("POST /projects/:project_name/repos", func() {
 		var (
 			headers http.Header
 			params  url.Values
@@ -228,7 +326,7 @@ var _ = Describe("Repos", func() {
 		}, nil)
 	})
 
-	Describe("POST /repos/unlink", func() {
+	Describe("DELETE /projects/:project_name/repos", func() {
 		var (
 			headers http.Header
 
