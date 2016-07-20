@@ -131,6 +131,7 @@ build apiserver
 build edged
 build deployer
 build builder
+build pushd
 
 build_jobs
 
@@ -141,6 +142,7 @@ bundle_binary apiserver migrate migrations/*
 bundle_binary edged
 bundle_binary deployer
 bundle_binary builder
+bundle_binary pushd
 
 bundle_binary acmerenewal
 bundle_binary digestcron

@@ -11,6 +11,10 @@ type BuildJobData struct {
 	DeploymentID uint `json:"deployment_id"`
 }
 
+type PushJobData struct {
+	PushID uint `json:"push_id"`
+}
+
 type V1InvalidationMessageData struct {
 	Domains []string `json:"domains"`
 }

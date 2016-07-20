@@ -22,7 +22,7 @@ func Index(c *gin.Context) {
 	}
 
 	filters := map[string]int64{}
-	requiredParams := []string{"project_id", "year", "month"}
+	requiredParams := []string{"project_id", "year", "month", "day"}
 	for _, requiredParam := range requiredParams {
 		queryParam := c.Query(requiredParam)
 		if queryParam == "" {
@@ -51,6 +51,7 @@ func Index(c *gin.Context) {
 
 	year := int(filters["year"])
 	month := time.Month(filters["month"])
+	day := int(filters["day"])
 
 	if year < 0 {
 		c.JSON(422, gin.H{
@@ -72,8 +73,18 @@ func Index(c *gin.Context) {
 		return
 	}
 
-	from := time.Date(year, month, 1, 0, 0, 0, 0, time.UTC)
-	to := time.Date(year, month+1, 1, 0, 0, 0, 0, time.UTC).Add(-1 * time.Second)
+	if day < 1 || day > 31 {
+		c.JSON(422, gin.H{
+			"error": "invalid_params",
+			"errors": map[string]string{
+				"day": "is invalid",
+			},
+		})
+		return
+	}
+
+	from := time.Date(year, month, day, 0, 0, 0, 0, time.UTC).Add(-7 * 24 * time.Hour)
+	to := time.Date(year, month, day, 0, 0, 0, 0, time.UTC)
 
 	stats, err := stat.GetProjectStat(filters["project_id"], from, to)
 	if err != nil {

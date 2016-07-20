@@ -41,7 +41,7 @@ func getStats(url string) (*Stats, error) {
 	return domainStat, nil
 }
 
-func doJob(p *project.Project, year int, month int) error {
+func doJob(p *project.Project, year int, month int, day int) error {
 	// We are requesting the content via HTTP instead of using directly ES because in the future this can be cached
 	var Url *url.URL
 	Url, err := url.Parse(apiServer)
@@ -54,6 +54,7 @@ func doJob(p *project.Project, year int, month int) error {
 	parameters.Add("project_id", strconv.FormatUint(uint64(p.ID), 10))
 	parameters.Add("year", strconv.FormatInt(int64(year), 10))
 	parameters.Add("month", strconv.FormatInt(int64(month), 10))
+	parameters.Add("day", strconv.FormatInt(int64(day), 10))
 	Url.RawQuery = parameters.Encode()
 
 	projectStats, err := getStats(Url.String())
