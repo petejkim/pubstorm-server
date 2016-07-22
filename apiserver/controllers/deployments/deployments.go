@@ -38,7 +38,7 @@ func Create(c *gin.Context) {
 		UserID:    u.ID,
 	}
 
-	// Get js environment variables from previous project
+	// Get js environment variables from previous deployment.
 	if proj.ActiveDeploymentID != nil {
 		var prevDepl deployment.Deployment
 		if err := db.Where("id = ?", proj.ActiveDeploymentID).First(&prevDepl).Error; err != nil {
@@ -101,7 +101,7 @@ func Create(c *gin.Context) {
 				}
 
 				hashReader := hasher.NewReader(part)
-				uploadKey := fmt.Sprintf("deployments/%s-%d/raw-bundle.tar.gz", depl.Prefix, depl.ID)
+				uploadKey := fmt.Sprintf("deployments/%s/raw-bundle.tar.gz", depl.PrefixID())
 				if err := s3client.Upload(uploadKey, hashReader, "", "private"); err != nil {
 					controllers.InternalServerError(c, err)
 					return

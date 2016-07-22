@@ -43,5 +43,7 @@ build_jobs() {
 build apiserver
 build edged
 build deployer
+build builder
+build pushd
 
 build_jobs
