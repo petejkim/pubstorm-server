@@ -70,7 +70,7 @@ func main() {
 	limitDate := digestDate.AddDate(0, 0, -6)
 
 	projects := []*project.Project{}
-	sqlQuery := "last_digest_sent_at is null or date_trunc('day', last_digest_sent_at) < date_trunc('day', ?)"
+	sqlQuery := "last_digest_sent_at is null or date_trunc('day', last_digest_sent_at) < date_trunc('day', ?::timestamp)"
 	if r := db.Where(sqlQuery, limitDate).Find(&projects); r.Error != nil {
 		log.Fatalln("Impossible to get project list")
 	}
