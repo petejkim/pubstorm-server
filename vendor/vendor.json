@@ -128,10 +128,10 @@
 			"revisionTime": "2016-03-04T22:42:15-08:00"
 		},
 		{
-			"checksumSHA1": "5eU+KEOVzkDaf4F+zr8xhpfANWM=",
+			"checksumSHA1": "eM16huJaZ/y0igyHSgPvppFoLTA=",
 			"path": "github.com/ericchiang/letsencrypt",
-			"revision": "00224ab4ce9f98ee50882ecc397b0001449d1782",
-			"revisionTime": "2016-05-25T15:20:46Z"
+			"revision": "5ace6db5897773984136b31f10894d0a75001b9d",
+			"revisionTime": "2016-07-19T15:49:55Z"
 		},
 		{
 			"checksumSHA1": "JIWwmDUD3bB/Jdq1bHe3YDX6Iuo=",
