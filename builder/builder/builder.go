@@ -173,6 +173,8 @@ func Work(data []byte) error {
 		if _, err := io.Copy(entry, tr); err != nil {
 			return err
 		}
+
+		entry.Close()
 	}
 
 	optimizedBundleTarball, err := ioutil.TempFile("", "optimized-bundle.tar.gz")
