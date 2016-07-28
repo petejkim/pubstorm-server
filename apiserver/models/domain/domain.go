@@ -6,6 +6,7 @@ import (
 
 	"github.com/jinzhu/gorm"
 	"github.com/nitrous-io/rise-server/shared"
+	"golang.org/x/net/publicsuffix"
 )
 
 var domainLabelRe = regexp.MustCompile(`\A([a-z0-9]|([a-z0-9][a-z0-9\-]*[a-z0-9]))\z`)
@@ -18,12 +19,19 @@ type Domain struct {
 }
 
 // Sanitizes domain, e.g. Prepends www if an apex domain is given
-func (d *Domain) Sanitize() {
+// i.e. Prepends www to "abc.com", "abc.au", "abc.com.au", "abc.co.au"
+func (d *Domain) Sanitize() error {
 	d.Name = strings.TrimSpace(d.Name)
-	labels := strings.Split(d.Name, ".")
-	if len(labels) == 2 {
+	apexDomain, err := publicsuffix.EffectiveTLDPlusOne(d.Name)
+	if err != nil {
+		return err
+	}
+
+	if d.Name == apexDomain {
 		d.Name = "www." + d.Name
 	}
+
+	return nil
 }
 
 // Validates Domain, if there are invalid fields, it returns a map of
