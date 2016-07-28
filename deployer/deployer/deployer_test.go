@@ -876,6 +876,31 @@ var _ = Describe("Deployer", func() {
 			Expect(depl.ErrorMessage).NotTo(BeNil())
 		})
 	})
+
+	Context("when bundle contains files that have invalid character", func() {
+		It("only uploads files with valid character to S3", func() {
+			//malformed-website.tar.gz has 6 asset files include învæłįd.html
+			fakeS3.DownloadContent, err = ioutil.ReadFile("../../testhelper/fixtures/malformed-website.tar.gz")
+			Expect(err).To(BeNil())
+
+			err = deployer.Work([]byte(fmt.Sprintf(`{
+				"deployment_id": %d
+			}`, depl.ID)))
+			Expect(err).To(BeNil())
+
+			// it should download malformed bundle from s3
+			Expect(fakeS3.DownloadCalls.Count()).To(Equal(1))
+			downloadCall := fakeS3.DownloadCalls.NthCall(1)
+			Expect(downloadCall).NotTo(BeNil())
+			Expect(downloadCall.Arguments[0]).To(Equal(s3client.BucketRegion))
+			Expect(downloadCall.Arguments[1]).To(Equal(s3client.BucketName))
+			Expect(downloadCall.Arguments[2]).To(Equal(fmt.Sprintf("deployments/%s/optimized-bundle.tar.gz", depl.PrefixID())))
+			Expect(downloadCall.ReturnValues[0]).To(BeNil())
+
+			// it should upload assets exclude învæłįd.html
+			Expect(fakeS3.UploadCalls.Count()).To(Equal(8)) // 5 asset files + 1 jsenv.js + 2 metadata files (2 domains)
+		})
+	})
 })
 
 var indexHTML = `<!DOCTYPE html>

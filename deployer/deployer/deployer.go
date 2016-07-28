@@ -14,6 +14,7 @@ import (
 	"os"
 	"path"
 	"path/filepath"
+	"regexp"
 	"strconv"
 	"strings"
 	"time"
@@ -156,6 +157,8 @@ func Work(data []byte) error {
 		// webroot is a publicly readable directory on S3.
 		webroot := "deployments/" + prefixID + "/webroot"
 
+		// From http://docs.aws.amazon.com/AmazonS3/latest/dev/UsingMetadata.html#object-keys
+		r := regexp.MustCompile("[^0-9A-Za-z,!_'()\\.\\*\\-]+")
 		done := make(chan struct{})
 		errCh := make(chan error)
 		go func() {
@@ -175,6 +178,21 @@ func Work(data []byte) error {
 
 				fileName := path.Clean(hdr.Name)
 				remotePath := webroot + "/" + fileName
+
+				// Skip file with invalid filename
+				pathElements := strings.Split(fileName, string(filepath.Separator))
+				isValidFileName := true
+				for _, pathElement := range pathElements {
+					if r.MatchString(pathElement) {
+						isValidFileName = false
+						break
+					}
+				}
+
+				if !isValidFileName {
+					log.Printf("filename contains invalid character: %q", fileName)
+					continue
+				}
 
 				contentType := mime.TypeByExtension(filepath.Ext(fileName))
 				if i := strings.Index(contentType, ";"); i != -1 {
