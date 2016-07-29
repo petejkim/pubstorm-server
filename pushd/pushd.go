@@ -85,7 +85,8 @@ func run() {
 				switch err {
 				case pushd.ErrUnexpectedDeploymentState,
 					pushd.ErrProjectConfigNotFound,
-					pushd.ErrProjectConfigInvalidFormat:
+					pushd.ErrProjectConfigInvalidFormat,
+					pushd.ErrRecordNotFound:
 					// Acknowledge message so that we don't retry.
 					if err := d.Ack(false); err != nil {
 						log.WithFields(log.Fields{"queue": queueName}).Warnln("Failed to Ack message:", err)

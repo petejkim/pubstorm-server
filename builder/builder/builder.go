@@ -16,6 +16,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/jinzhu/gorm"
 	"github.com/nitrous-io/rise-server/apiserver/dbconn"
 	"github.com/nitrous-io/rise-server/apiserver/models/deployment"
 	"github.com/nitrous-io/rise-server/apiserver/models/project"
@@ -53,6 +54,7 @@ var (
 	errUnexpectedState  = errors.New("deployment is in unexpected state")
 	ErrProjectLocked    = errors.New("project is locked")
 	ErrOptimizerTimeout = errors.New("Timed out on optimizing assets. This might happen due to too large asset files. We will continue without optimizing your assets.")
+	ErrRecordNotFound   = errors.New("project or deployment is deleted")
 
 	OptimizerCmd = func(containerName string, srcDir string, domainNames []string) *exec.Cmd {
 		return exec.Command("docker", "run", "--name", containerName, "-v", srcDir+":"+OptimizePath, "-e", "DOMAIN_NAMES_WITH_PROTOCOL="+strings.Join(domainNames, ","), "--rm", OptimizerDockerImage)
@@ -74,11 +76,17 @@ func Work(data []byte) error {
 
 	depl := &deployment.Deployment{}
 	if err := db.First(depl, d.DeploymentID).Error; err != nil {
+		if err == gorm.RecordNotFound {
+			return ErrRecordNotFound
+		}
 		return err
 	}
 
 	proj := &project.Project{}
 	if err := db.Where("id = ?", depl.ProjectID).First(proj).Error; err != nil {
+		if err == gorm.RecordNotFound {
+			return ErrRecordNotFound
+		}
 		return err
 	}
 

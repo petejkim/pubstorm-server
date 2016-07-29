@@ -86,8 +86,9 @@ func run() {
 				// failure
 				log.Warnln("Work failed", err, string(d.Body))
 
-				// It does not retry for timeout error because it could retry for long time.
-				if err == deployer.ErrTimeout {
+				// It does not retry for timeout or record not found error
+				// because it could retry for long time.
+				if err == deployer.ErrTimeout || err == deployer.ErrRecordNotFound {
 					if err := d.Ack(false); err != nil {
 						log.WithFields(log.Fields{"queue": queueName}).Warnln("Failed to Ack message:", err)
 					}
