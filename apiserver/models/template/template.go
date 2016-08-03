@@ -16,12 +16,14 @@ type Template struct {
 
 func (t *Template) AsJSON() interface{} {
 	return struct {
+		ID              uint   `json:"id"`
 		Name            string `json:"name"`
 		Rank            int    `json:"rank"`
 		DownloadURL     string `json:"download_url"`
 		PreviewURL      string `json:"preview_url"`
 		PreviewImageURL string `json:"preview_image_url"`
 	}{
+		ID:              t.ID,
 		Name:            t.Name,
 		Rank:            t.Rank,
 		DownloadURL:     t.DownloadURL,
