@@ -15,6 +15,7 @@ import (
 	"github.com/nitrous-io/rise-server/apiserver/controllers/repos"
 	"github.com/nitrous-io/rise-server/apiserver/controllers/root"
 	"github.com/nitrous-io/rise-server/apiserver/controllers/stats"
+	"github.com/nitrous-io/rise-server/apiserver/controllers/templates"
 	"github.com/nitrous-io/rise-server/apiserver/controllers/users"
 	"github.com/nitrous-io/rise-server/apiserver/middleware"
 )
@@ -48,6 +49,7 @@ func Draw(r *gin.Engine) {
 		authorized.GET("/projects", projects.Index)
 		authorized.GET("/user", users.Show)
 		authorized.PUT("/user", users.Update)
+		authorized.GET("/templates", templates.Index)
 
 		{ // Routes that either project owners or collaborators can access
 			projCollab := authorized.Group("/projects/:project_name", middleware.RequireProjectCollab)
