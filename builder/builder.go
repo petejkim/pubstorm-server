@@ -83,13 +83,19 @@ func run() {
 				// failure
 				log.Warnln("Work failed", err, string(d.Body))
 
-				go func() {
-					// nack after a delay to prevent thrashing
-					time.Sleep(1 * time.Second)
-					if err := d.Nack(false, true); err != nil {
-						log.WithFields(log.Fields{"queue": queueName}).Warnln("Failed to Nack message:", err)
+				if err == builder.ErrRecordNotFound {
+					if err := d.Ack(false); err != nil {
+						log.WithFields(log.Fields{"queue": queueName}).Warnln("Failed to Ack message:", err)
 					}
-				}()
+				} else {
+					go func() {
+						// nack after a delay to prevent thrashing
+						time.Sleep(1 * time.Second)
+						if err := d.Nack(false, true); err != nil {
+							log.WithFields(log.Fields{"queue": queueName}).Warnln("Failed to Nack message:", err)
+						}
+					}()
+				}
 			} else {
 				// success
 				if err := d.Ack(false); err != nil {

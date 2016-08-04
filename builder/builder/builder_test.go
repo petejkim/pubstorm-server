@@ -432,4 +432,18 @@ var _ = Describe("Builder", func() {
 			Expect(proj.LockedAt).NotTo(BeNil())
 		})
 	})
+
+	Context("when the project is deleted", func() {
+		BeforeEach(func() {
+			Expect(proj.Destroy(db)).To(BeNil())
+		})
+
+		It("returns ErrRecordNotFound so it can start next job", func() {
+			err = builder.Work([]byte(fmt.Sprintf(`{
+				"deployment_id": %d
+			}`, depl.ID)))
+
+			Expect(err).To(Equal(builder.ErrRecordNotFound))
+		})
+	})
 })

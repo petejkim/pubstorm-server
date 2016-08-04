@@ -193,6 +193,20 @@ var _ = Describe("Pushd", func() {
 		}`, depl.ID)))
 	})
 
+	Context("when the project is deleted", func() {
+		BeforeEach(func() {
+			Expect(proj.Destroy(db)).To(BeNil())
+		})
+
+		It("returns ErrRecordNotFound so it can start next job", func() {
+			err = pushd.Work([]byte(fmt.Sprintf(`{
+				"push_id": %d
+			}`, pu.ID)))
+
+			Expect(err).To(Equal(pushd.ErrRecordNotFound))
+		})
+	})
+
 	Context("when project's skip_build column is true", func() {
 		BeforeEach(func() {
 			proj.SkipBuild = true
