@@ -40,6 +40,7 @@ type Deployment struct {
 	ProjectID   uint
 	UserID      uint
 	RawBundleID *uint
+	TemplateID  *uint
 
 	JsEnvVars []byte `sql:"default:{}"`
 
