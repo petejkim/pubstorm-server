@@ -7,8 +7,11 @@ import (
 type Template struct {
 	gorm.Model
 
-	Name            string
-	Rank            int
+	Name string
+	Rank int
+
+	// DownloadURL is the path to this template on S3.
+	// Templates should be gzipped tarballs, for now.
 	DownloadURL     string `sql:"column:download_url"`
 	PreviewURL      string `sql:"column:preview_url"`
 	PreviewImageURL string `sql:"column:preview_image_url"`

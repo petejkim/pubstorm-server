@@ -23,7 +23,7 @@ func Template(db *gorm.DB, rank int, name ...string) *template.Template {
 	tmpl := &template.Template{
 		Name:            tName,
 		Rank:            rank,
-		DownloadURL:     fmt.Sprintf("https://example.com/download/template-%s.tar.gz", tName),
+		DownloadURL:     fmt.Sprintf("/templates/template-%s.tar.gz", tName),
 		PreviewURL:      fmt.Sprintf("https://example.com/preview/template-%s", tName),
 		PreviewImageURL: fmt.Sprintf("https://example.com/preview/template-%s.png", tName),
 	}

@@ -23,6 +23,7 @@ import (
 	"github.com/nitrous-io/rise-server/apiserver/models/deployment"
 	"github.com/nitrous-io/rise-server/apiserver/models/project"
 	"github.com/nitrous-io/rise-server/apiserver/models/rawbundle"
+	"github.com/nitrous-io/rise-server/apiserver/models/template"
 	"github.com/nitrous-io/rise-server/apiserver/models/user"
 	"github.com/nitrous-io/rise-server/pkg/filetransfer"
 	"github.com/nitrous-io/rise-server/pkg/pubsub"
@@ -122,8 +123,13 @@ func Work(data []byte) error {
 
 		bundlePath := "deployments/" + prefixID + "/optimized-bundle.tar.gz"
 		if d.UseRawBundle {
-			// If this deployment uses a raw bundle from a previous deploy, use that.
-			if depl.RawBundleID != nil {
+			if depl.TemplateID != nil {
+				tmpl := &template.Template{}
+				if err := db.First(tmpl, *depl.TemplateID).Error; err == nil {
+					bundlePath = tmpl.DownloadURL
+				}
+			} else if depl.RawBundleID != nil {
+				// If this deployment uses a raw bundle from a previous deploy, use that.
 				bun := &rawbundle.RawBundle{}
 				if err := db.First(bun, *depl.RawBundleID).Error; err == nil {
 					bundlePath = bun.UploadedPath

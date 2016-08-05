@@ -19,6 +19,7 @@ import (
 	"github.com/nitrous-io/rise-server/apiserver/models/deployment"
 	"github.com/nitrous-io/rise-server/apiserver/models/project"
 	"github.com/nitrous-io/rise-server/apiserver/models/rawbundle"
+	"github.com/nitrous-io/rise-server/apiserver/models/template"
 	"github.com/nitrous-io/rise-server/apiserver/models/user"
 	"github.com/nitrous-io/rise-server/builder/builder"
 	"github.com/nitrous-io/rise-server/pkg/filetransfer"
@@ -238,9 +239,8 @@ var _ = Describe("Builder", func() {
 			fakeS3.DownloadContent, err = ioutil.ReadFile("../../testhelper/fixtures/website.tar.gz")
 			Expect(err).To(BeNil())
 
-			err = builder.Work([]byte(fmt.Sprintf(`{
-				"deployment_id": %d
-			}`, depl2.ID)))
+			err = builder.Work([]byte(fmt.Sprintf(`{ "deployment_id": %d }`,
+				depl2.ID)))
 			Expect(err).To(BeNil())
 
 			// it should download raw bundle from s3
@@ -281,8 +281,39 @@ var _ = Describe("Builder", func() {
 		})
 	})
 
-	Context("when the deployment is in an expected state", func() {
-		It("returns an error if the deployment is not in `pending_build` state", func() {
+	Context("when deployment uses a template", func() {
+		var tmpl *template.Template
+
+		BeforeEach(func() {
+			tmpl = factories.Template(db, 1)
+
+			depl = factories.DeploymentWithAttrs(db, proj, u, deployment.Deployment{
+				State:      deployment.StatePendingBuild,
+				TemplateID: &tmpl.ID,
+			})
+		})
+
+		It("fetches and uses the template", func() {
+			fakeS3.DownloadContent, err = ioutil.ReadFile("../../testhelper/fixtures/website.tar.gz")
+			Expect(err).To(BeNil())
+
+			err = builder.Work([]byte(fmt.Sprintf(`{ "deployment_id": %d }`,
+				depl.ID)))
+			Expect(err).To(BeNil())
+
+			// it should download template from s3
+			Expect(fakeS3.DownloadCalls.Count()).To(Equal(1))
+			downloadCall := fakeS3.DownloadCalls.NthCall(1)
+			Expect(downloadCall).NotTo(BeNil())
+			Expect(downloadCall.Arguments[0]).To(Equal(s3client.BucketRegion))
+			Expect(downloadCall.Arguments[1]).To(Equal(s3client.BucketName))
+			Expect(downloadCall.Arguments[2]).To(Equal(tmpl.DownloadURL))
+			Expect(downloadCall.ReturnValues[0]).To(BeNil())
+		})
+	})
+
+	Context("when the deployment is not in the `pending_build` state", func() {
+		It("returns an error", func() {
 			depl.State = deployment.StateUploaded
 			Expect(db.Save(depl).Error).To(BeNil())
 
