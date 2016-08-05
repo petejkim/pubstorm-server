@@ -22,6 +22,7 @@ import (
 	"github.com/nitrous-io/rise-server/apiserver/models/deployment"
 	"github.com/nitrous-io/rise-server/apiserver/models/project"
 	"github.com/nitrous-io/rise-server/apiserver/models/rawbundle"
+	"github.com/nitrous-io/rise-server/apiserver/models/template"
 	"github.com/nitrous-io/rise-server/pkg/filetransfer"
 	"github.com/nitrous-io/rise-server/pkg/job"
 	"github.com/nitrous-io/rise-server/shared/messages"
@@ -111,25 +112,38 @@ func Work(data []byte) error {
 		return errUnexpectedState
 	}
 
-	var rawBundlePath string
+	// There are 3 possible sources for the bundle (i.e. the files to be
+	// deployed):
+	//   1. A template.
+	//   2. A raw bundle from a previous deployment.
+	//   3. A raw bundle that was uploaded for this deployment.
+	var bundlePath string
 	archiveFormat := d.ArchiveFormat
 	if archiveFormat == "" {
 		archiveFormat = "tar.gz"
+	}
+
+	// If deployment is for a template, we download it and use it.
+	if depl.TemplateID != nil {
+		tmpl := &template.Template{}
+		if err := db.First(tmpl, *depl.TemplateID).Error; err == nil {
+			bundlePath = tmpl.DownloadURL
+		}
 	}
 
 	// If this deployment uses a raw bundle from a previous deploy, use that.
 	if depl.RawBundleID != nil {
 		bun := &rawbundle.RawBundle{}
 		if err := db.First(bun, *depl.RawBundleID).Error; err == nil {
-			rawBundlePath = bun.UploadedPath
+			bundlePath = bun.UploadedPath
 		}
 	}
 
 	// At this point, if we still don't know the raw bundle's path, it must have
 	// been uploaded to the deployment's prefix directory.
 	prefixID := depl.PrefixID()
-	if rawBundlePath == "" {
-		rawBundlePath = "deployments/" + prefixID + "/raw-bundle." + archiveFormat
+	if bundlePath == "" {
+		bundlePath = "deployments/" + prefixID + "/raw-bundle." + archiveFormat
 	}
 
 	f, err := ioutil.TempFile("", prefixID+"-raw-bundle."+archiveFormat)
@@ -147,7 +161,7 @@ func Work(data []byte) error {
 	}
 	defer os.RemoveAll(dirName)
 
-	if err := S3.Download(s3client.BucketRegion, s3client.BucketName, rawBundlePath, f); err != nil {
+	if err := S3.Download(s3client.BucketRegion, s3client.BucketName, bundlePath, f); err != nil {
 		return err
 	}
 

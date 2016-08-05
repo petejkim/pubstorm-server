@@ -23,6 +23,7 @@ import (
 	"github.com/nitrous-io/rise-server/apiserver/models/oauthtoken"
 	"github.com/nitrous-io/rise-server/apiserver/models/project"
 	"github.com/nitrous-io/rise-server/apiserver/models/rawbundle"
+	"github.com/nitrous-io/rise-server/apiserver/models/template"
 	"github.com/nitrous-io/rise-server/apiserver/models/user"
 	"github.com/nitrous-io/rise-server/apiserver/server"
 	"github.com/nitrous-io/rise-server/pkg/filetransfer"
@@ -157,13 +158,14 @@ var _ = Describe("Deployments", func() {
 			Expect(err).To(BeNil())
 		}
 
-		doRequestWithBundleChecksum := func(checksum string) {
+		doRequestWithForm := func(params url.Values) {
 			s = httptest.NewServer(server.New())
-			params := url.Values{
-				"bundle_checksum": {checksum},
-			}
 			res, err = testhelper.MakeRequest("POST", s.URL+"/projects/foo-bar-express/deployments", params, headers, nil)
 			Expect(err).To(BeNil())
+		}
+
+		doRequestWithBundleChecksum := func(checksum string) {
+			doRequestWithForm(url.Values{"bundle_checksum": {checksum}})
 		}
 
 		doRequest := func() {
@@ -480,28 +482,8 @@ var _ = Describe("Deployments", func() {
 				})
 			})
 
-			Context("when request is not multipart", func() {
-				Context("when raw_bundle is not specified", func() {
-					BeforeEach(func() {
-						doRequestWithBundleChecksum("")
-					})
-
-					It("returns 422 with invalid request", func() {
-						b := &bytes.Buffer{}
-						_, err = b.ReadFrom(res.Body)
-						Expect(err).To(BeNil())
-
-						Expect(res.StatusCode).To(Equal(422))
-						Expect(b.String()).To(MatchJSON(`{
-							"error": "invalid_params",
-							"errors": {
-								"bundle_checksum": "is required"
-							}
-						}`))
-					})
-				})
-
-				Context("when bundle_checksum is specified and the raw bundle exists", func() {
+			Context("when bundle_checksum is specified", func() {
+				Context("when raw bundle exists", func() {
 					var (
 						depl              *deployment.Deployment
 						existingRawBundle *rawbundle.RawBundle
@@ -604,7 +586,7 @@ var _ = Describe("Deployments", func() {
 					})
 				})
 
-				Context("when bundle checksum is specified and the bundle does not exist", func() {
+				Context("when the bundle does not exist", func() {
 					BeforeEach(func() {
 						doRequestWithBundleChecksum("db39e098913eee20e5371139022e4431ffe7b01baa524bd87e08f2763de3ea55")
 					})
@@ -624,7 +606,7 @@ var _ = Describe("Deployments", func() {
 					})
 				})
 
-				Context("when bundle checksum is specified but the bundle has been deleted", func() {
+				Context("when the bundle has been deleted", func() {
 					var existingRawBundle *rawbundle.RawBundle
 
 					BeforeEach(func() {
@@ -649,6 +631,135 @@ var _ = Describe("Deployments", func() {
 							"error": "invalid_params",
 							"errors": {
 								"bundle_checksum": "the bundle could not be found"
+							}
+						}`))
+					})
+				})
+			})
+
+			Context("when template_id is specified", func() {
+				Context("when template exists", func() {
+					var tmpl *template.Template
+
+					BeforeEach(func() {
+						tmpl = &template.Template{
+							Name:            "Blog",
+							Rank:            1,
+							DownloadURL:     "",
+							PreviewURL:      "",
+							PreviewImageURL: "",
+						}
+						Expect(db.Create(tmpl).Error).To(BeNil())
+					})
+
+					It("returns 202 accepted", func() {
+						doRequestWithForm(url.Values{
+							"template_id": {strconv.Itoa(int(tmpl.ID))},
+						})
+
+						Expect(res.StatusCode).To(Equal(http.StatusAccepted))
+
+						depl := &deployment.Deployment{}
+						db.Last(depl)
+
+						b := &bytes.Buffer{}
+						_, err = b.ReadFrom(res.Body)
+
+						j := map[string]interface{}{
+							"deployment": map[string]interface{}{
+								"id":      depl.ID,
+								"state":   deployment.StatePendingBuild,
+								"version": 1,
+							},
+						}
+						expectedJSON, err := json.Marshal(j)
+						Expect(err).To(BeNil())
+						Expect(b.String()).To(MatchJSON(expectedJSON))
+					})
+
+					It("creates a deployment record", func() {
+						doRequestWithForm(url.Values{
+							"template_id": {strconv.Itoa(int(tmpl.ID))},
+						})
+
+						depl := &deployment.Deployment{}
+						db.Last(depl)
+
+						Expect(depl).NotTo(BeNil())
+						Expect(depl.ProjectID).To(Equal(proj.ID))
+						Expect(depl.UserID).To(Equal(u.ID))
+						Expect(depl.State).To(Equal(deployment.StatePendingBuild))
+						Expect(depl.Prefix).NotTo(HaveLen(0))
+						Expect(depl.Version).To(Equal(int64(1)))
+						Expect(depl.RawBundleID).To(BeNil())
+
+						Expect(*depl.TemplateID).To(Equal(tmpl.ID))
+					})
+
+					It("does not upload bundle to s3", func() {
+						doRequestWithForm(url.Values{
+							"template_id": {strconv.Itoa(int(tmpl.ID))},
+						})
+
+						Expect(fakeS3.UploadCalls.Count()).To(Equal(0))
+					})
+
+					It("enqueues a build job", func() {
+						doRequestWithForm(url.Values{
+							"template_id": {strconv.Itoa(int(tmpl.ID))},
+						})
+
+						depl := &deployment.Deployment{}
+						db.Last(depl)
+
+						m := testhelper.ConsumeQueue(mq, queues.Build)
+						Expect(m).NotTo(BeNil())
+						Expect(m.Body).To(MatchJSON(fmt.Sprintf(`
+							{
+								"deployment_id": %d
+							}
+						`, depl.ID)))
+					})
+				})
+
+				Context("when template_id is not a valid integer", func() {
+					It("returns 422", func() {
+						doRequestWithForm(url.Values{
+							"template_id": {"not-an-integer"},
+						})
+
+						b := &bytes.Buffer{}
+						_, err = b.ReadFrom(res.Body)
+						Expect(err).To(BeNil())
+
+						_, err = b.ReadFrom(res.Body)
+						Expect(err).To(BeNil())
+
+						Expect(res.StatusCode).To(Equal(422))
+						Expect(b.String()).To(MatchJSON(`{
+							"error": "invalid_params",
+							"errors": {
+								"template_id": "is invalid"
+							}
+						}`))
+					})
+				})
+
+				Context("when template does not exist", func() {
+					It("returns 422", func() {
+						doRequestWithForm(url.Values{
+							"template_id": {"999"},
+						})
+
+						b := &bytes.Buffer{}
+						_, err = b.ReadFrom(res.Body)
+						Expect(err).To(BeNil())
+
+						Expect(res.StatusCode).To(Equal(422))
+						Expect(b.String()).To(MatchJSON(`{
+							"error": "invalid_params",
+							"errors": {
+								"template_id": "is not that of a known template"
 							}
 						}`))
 					})

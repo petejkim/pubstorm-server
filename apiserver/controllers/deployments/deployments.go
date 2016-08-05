@@ -16,11 +16,19 @@ import (
 	"github.com/nitrous-io/rise-server/apiserver/dbconn"
 	"github.com/nitrous-io/rise-server/apiserver/models/deployment"
 	"github.com/nitrous-io/rise-server/apiserver/models/rawbundle"
+	"github.com/nitrous-io/rise-server/apiserver/models/template"
 	"github.com/nitrous-io/rise-server/pkg/hasher"
 	"github.com/nitrous-io/rise-server/pkg/job"
 	"github.com/nitrous-io/rise-server/shared/messages"
 	"github.com/nitrous-io/rise-server/shared/queues"
 	"github.com/nitrous-io/rise-server/shared/s3client"
+)
+
+const (
+	viaUnknown = iota
+	viaPayload
+	viaCachedBundle
+	viaTemplate
 )
 
 // Create deploys a project.
@@ -50,8 +58,21 @@ func Create(c *gin.Context) {
 		depl.JsEnvVars = prevDepl.JsEnvVars
 	}
 
-	var archiveFormat string
+	var (
+		archiveFormat string
+		strategy      = viaUnknown
+	)
+
 	if strings.HasPrefix(c.Request.Header.Get("Content-Type"), "multipart/form-data; boundary=") {
+		strategy = viaPayload
+	} else if c.PostForm("bundle_checksum") != "" {
+		strategy = viaCachedBundle
+	} else if c.PostForm("template_id") != "" {
+		strategy = viaTemplate
+	}
+
+	switch strategy {
+	case viaPayload:
 		reader, err := c.Request.MultipartReader()
 		if err != nil {
 			c.JSON(http.StatusBadRequest, gin.H{
@@ -144,7 +165,8 @@ func Create(c *gin.Context) {
 				break
 			}
 		}
-	} else {
+
+	case viaCachedBundle:
 		ver, err := proj.NextVersion(db)
 		if err != nil {
 			controllers.InternalServerError(c, err)
@@ -186,6 +208,49 @@ func Create(c *gin.Context) {
 
 		// Currently bundle from CLI is always tar.gz
 		archiveFormat = "tar.gz"
+
+	case viaTemplate:
+		templateID, err := strconv.ParseInt(c.PostForm("template_id"), 10, 64)
+		if err != nil {
+			c.JSON(422, gin.H{
+				"error": "invalid_params",
+				"errors": map[string]string{
+					"template_id": "is invalid",
+				},
+			})
+			return
+		}
+
+		tmpl := &template.Template{}
+		if err := db.First(tmpl, templateID).Error; err != nil {
+			c.JSON(422, gin.H{
+				"error": "invalid_params",
+				"errors": map[string]string{
+					"template_id": "is not that of a known template",
+				},
+			})
+			return
+		}
+
+		ver, err := proj.NextVersion(db)
+		if err != nil {
+			controllers.InternalServerError(c, err)
+			return
+		}
+
+		depl.TemplateID = &tmpl.ID
+		depl.Version = ver
+		if err := db.Create(depl).Error; err != nil {
+			controllers.InternalServerError(c, err)
+			return
+		}
+
+	default:
+		c.JSON(http.StatusBadRequest, gin.H{
+			"error":             "invalid_request",
+			"error_description": "could not understand your request",
+		})
+		return
 	}
 
 	if err := depl.UpdateState(db, deployment.StateUploaded); err != nil {
