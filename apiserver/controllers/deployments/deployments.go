@@ -1,6 +1,7 @@
 package deployments
 
 import (
+	"bufio"
 	"fmt"
 	"io"
 	"net/http"
@@ -49,6 +50,7 @@ func Create(c *gin.Context) {
 		depl.JsEnvVars = prevDepl.JsEnvVars
 	}
 
+	var archiveFormat string
 	if strings.HasPrefix(c.Request.Header.Get("Content-Type"), "multipart/form-data; boundary=") {
 		reader, err := c.Request.MultipartReader()
 		if err != nil {
@@ -100,8 +102,30 @@ func Create(c *gin.Context) {
 					return
 				}
 
-				hashReader := hasher.NewReader(part)
-				uploadKey := fmt.Sprintf("deployments/%s/raw-bundle.tar.gz", depl.PrefixID())
+				br := bufio.NewReader(part)
+				partHead, err := br.Peek(512)
+				if err != nil {
+					controllers.InternalServerError(c, err)
+					return
+				}
+				fileType := http.DetectContentType(partHead)
+
+				var uploadKey string
+				if fileType == "application/zip" {
+					uploadKey = fmt.Sprintf("deployments/%s/raw-bundle.zip", depl.PrefixID())
+					archiveFormat = "zip"
+				} else if fileType == "application/x-gzip" {
+					uploadKey = fmt.Sprintf("deployments/%s/raw-bundle.tar.gz", depl.PrefixID())
+					archiveFormat = "tar.gz"
+				} else {
+					c.JSON(http.StatusBadRequest, gin.H{
+						"error":             "invalid_request",
+						"error_description": "payload has invalid file",
+					})
+					return
+				}
+
+				hashReader := hasher.NewReader(br)
 				if err := s3client.Upload(uploadKey, hashReader, "", "private"); err != nil {
 					controllers.InternalServerError(c, err)
 					return
@@ -159,6 +183,9 @@ func Create(c *gin.Context) {
 			return
 		}
 		depl.RawBundleID = &bun.ID
+
+		// Currently bundle from CLI is always tar.gz
+		archiveFormat = "tar.gz"
 	}
 
 	if err := depl.UpdateState(db, deployment.StateUploaded); err != nil {
@@ -169,12 +196,14 @@ func Create(c *gin.Context) {
 	var j *job.Job
 	if proj.SkipBuild {
 		j, err = job.NewWithJSON(queues.Deploy, &messages.DeployJobData{
-			DeploymentID: depl.ID,
-			UseRawBundle: true,
+			DeploymentID:  depl.ID,
+			UseRawBundle:  true,
+			ArchiveFormat: archiveFormat,
 		})
 	} else {
 		j, err = job.NewWithJSON(queues.Build, &messages.BuildJobData{
-			DeploymentID: depl.ID,
+			DeploymentID:  depl.ID,
+			ArchiveFormat: archiveFormat,
 		})
 	}
 

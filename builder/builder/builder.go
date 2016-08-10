@@ -2,6 +2,7 @@ package builder
 
 import (
 	"archive/tar"
+	"archive/zip"
 	"compress/gzip"
 	"encoding/json"
 	"errors"
@@ -55,6 +56,7 @@ var (
 	ErrProjectLocked    = errors.New("project is locked")
 	ErrOptimizerTimeout = errors.New("Timed out on optimizing assets. This might happen due to too large asset files. We will continue without optimizing your assets.")
 	ErrRecordNotFound   = errors.New("project or deployment is deleted")
+	ErrUnarchiveFailed  = errors.New("Failed to unarchive file")
 
 	OptimizerCmd = func(containerName string, srcDir string, domainNames []string) *exec.Cmd {
 		return exec.Command("docker", "run", "--name", containerName, "-v", srcDir+":"+OptimizePath, "-e", "DOMAIN_NAMES_WITH_PROTOCOL="+strings.Join(domainNames, ","), "--rm", OptimizerDockerImage)
@@ -110,6 +112,10 @@ func Work(data []byte) error {
 	}
 
 	var rawBundlePath string
+	archiveFormat := d.ArchiveFormat
+	if archiveFormat == "" {
+		archiveFormat = "tar.gz"
+	}
 
 	// If this deployment uses a raw bundle from a previous deploy, use that.
 	if depl.RawBundleID != nil {
@@ -123,10 +129,10 @@ func Work(data []byte) error {
 	// been uploaded to the deployment's prefix directory.
 	prefixID := depl.PrefixID()
 	if rawBundlePath == "" {
-		rawBundlePath = "deployments/" + prefixID + "/raw-bundle.tar.gz"
+		rawBundlePath = "deployments/" + prefixID + "/raw-bundle." + archiveFormat
 	}
 
-	f, err := ioutil.TempFile("", prefixID+"-raw-bundle.tar.gz")
+	f, err := ioutil.TempFile("", prefixID+"-raw-bundle."+archiveFormat)
 	if err != nil {
 		return err
 	}
@@ -145,54 +151,94 @@ func Work(data []byte) error {
 		return err
 	}
 
-	gr, err := gzip.NewReader(f)
-	if err != nil {
-		return err
-	}
-	defer gr.Close()
-
-	tr := tar.NewReader(gr)
-	for {
-		hdr, err := tr.Next()
+	if archiveFormat == "tar.gz" {
+		gr, err := gzip.NewReader(f)
 		if err != nil {
-			if err == io.EOF {
-				break
+			return ErrUnarchiveFailed
+		}
+		defer gr.Close()
+
+		tr := tar.NewReader(gr)
+		for {
+			hdr, err := tr.Next()
+			if err != nil {
+				if err == io.EOF {
+					break
+				}
+				return err
 			}
-			return err
-		}
 
-		if hdr.FileInfo().IsDir() {
-			continue
-		}
+			if hdr.FileInfo().IsDir() {
+				continue
+			}
 
-		folderPath := path.Dir(hdr.Name)
-		if err := os.MkdirAll(filepath.Join(dirName, folderPath), 0755); err != nil {
-			return err
-		}
+			folderPath := path.Dir(hdr.Name)
+			if err := os.MkdirAll(filepath.Join(dirName, folderPath), 0755); err != nil {
+				return err
+			}
 
-		fileName := path.Clean(hdr.Name)
-		targetFileName := filepath.Join(dirName, fileName)
-		entry, err := os.Create(targetFileName)
+			fileName := path.Clean(hdr.Name)
+			targetFileName := filepath.Join(dirName, fileName)
+			entry, err := os.Create(targetFileName)
+			if err != nil {
+				return err
+			}
+			defer entry.Close()
+
+			if _, err := io.Copy(entry, tr); err != nil {
+				return err
+			}
+
+			entry.Close()
+		}
+	} else if archiveFormat == "zip" {
+		r, err := zip.OpenReader(f.Name())
 		if err != nil {
-			return err
+			return ErrUnarchiveFailed
 		}
-		defer entry.Close()
+		defer r.Close()
 
-		if _, err := io.Copy(entry, tr); err != nil {
-			return err
+		for _, file := range r.File {
+			rc, err := file.Open()
+			if err != nil {
+				return err
+			}
+			defer rc.Close()
+
+			if file.FileInfo().IsDir() {
+				continue
+			}
+
+			folderPath := path.Dir(file.Name)
+			if err := os.MkdirAll(filepath.Join(dirName, folderPath), 0755); err != nil {
+				return err
+			}
+
+			fileName := path.Clean(file.Name)
+			targetFileName := filepath.Join(dirName, fileName)
+			entry, err := os.Create(targetFileName)
+			if err != nil {
+				return err
+			}
+			defer entry.Close()
+
+			if _, err := io.Copy(entry, rc); err != nil {
+				return err
+			}
+
+			entry.Close()
 		}
-
-		entry.Close()
 	}
 
-	optimizedBundleTarball, err := ioutil.TempFile("", "optimized-bundle.tar.gz")
+	optimizedBundleArchive, err := ioutil.TempFile("", "optimized-bundle."+archiveFormat)
 	if err != nil {
 		return err
 	}
-	defer os.Remove(optimizedBundleTarball.Name())
+	defer os.Remove(optimizedBundleArchive.Name())
 
 	deployJobMsg := messages.DeployJobData{
-		DeploymentID: depl.ID,
+		DeploymentID:  depl.ID,
+		ArchiveFormat: archiveFormat,
 	}
 
 	nextState := deployment.StateBuilt
@@ -219,11 +265,11 @@ func Work(data []byte) error {
 			log.Printf("error on optimizing: %v", errorMessage)
 		}
 
-		if err := pack(optimizedBundleTarball, dirName); err != nil {
+		if err := pack(optimizedBundleArchive, dirName, archiveFormat); err != nil {
 			return err
 		}
 
-		if err := S3.Upload(s3client.BucketRegion, s3client.BucketName, "deployments/"+prefixID+"/optimized-bundle.tar.gz", optimizedBundleTarball, "", "private"); err != nil {
+		if err := S3.Upload(s3client.BucketRegion, s3client.BucketName, "deployments/"+prefixID+"/optimized-bundle."+archiveFormat, optimizedBundleArchive, "", "private"); err != nil {
 			return err
 		}
 
@@ -260,62 +306,114 @@ func Work(data []byte) error {
 	return nil
 }
 
-func pack(writer io.Writer, dirName string) error {
-	gw := gzip.NewWriter(writer)
-	defer func() {
-		gw.Flush()
-		gw.Close()
-	}()
+func pack(writer io.Writer, dirName, archiveFormat string) error {
+	if archiveFormat == "tar.gz" {
+		gw := gzip.NewWriter(writer)
+		defer func() {
+			gw.Flush()
+			gw.Close()
+		}()
 
-	tw := tar.NewWriter(gw)
-	defer func() {
-		tw.Flush()
-		tw.Close()
-	}()
+		tw := tar.NewWriter(gw)
+		defer func() {
+			tw.Flush()
+			tw.Close()
+		}()
 
-	walk := func(absPath string, fi os.FileInfo, err error) error {
-		if err != nil {
-			return err
-		}
+		walk := func(absPath string, fi os.FileInfo, err error) error {
+			if err != nil {
+				return err
+			}
 
-		if fi.IsDir() {
+			if fi.IsDir() {
+				return nil
+			}
+
+			relPath, err := filepath.Rel(dirName, absPath)
+			if err != nil {
+				return err
+			}
+
+			hdr, err := tar.FileInfoHeader(fi, relPath)
+			if err != nil {
+				return err
+			}
+			hdr.Name = relPath
+
+			if err := tw.WriteHeader(hdr); err != nil {
+				return err
+			}
+
+			ff, err := os.Open(absPath)
+			if err != nil {
+				return err
+			}
+			defer ff.Close()
+
+			if _, err = io.Copy(tw, ff); err != nil {
+				return err
+			}
+
 			return nil
 		}
 
-		relPath, err := filepath.Rel(dirName, absPath)
+		err := filepath.Walk(dirName, walk)
 		if err != nil {
-			return err
-		}
-
-		hdr, err := tar.FileInfoHeader(fi, relPath)
-		if err != nil {
-			return err
-		}
-		hdr.Name = relPath
-
-		if err := tw.WriteHeader(hdr); err != nil {
-			return err
-		}
-
-		ff, err := os.Open(absPath)
-		if err != nil {
-			return err
-		}
-		defer ff.Close()
-
-		if _, err = io.Copy(tw, ff); err != nil {
 			return err
 		}
 
 		return nil
-	}
+	} else if archiveFormat == "zip" {
+		w := zip.NewWriter(writer)
+		defer w.Close()
 
-	err := filepath.Walk(dirName, walk)
-	if err != nil {
-		return err
-	}
+		walk := func(absPath string, fi os.FileInfo, err error) error {
+			if err != nil {
+				return err
+			}
 
-	return nil
+			if fi.IsDir() {
+				return nil
+			}
+
+			relPath, err := filepath.Rel(dirName, absPath)
+			if err != nil {
+				return err
+			}
+
+			hdr, err := zip.FileInfoHeader(fi)
+			if err != nil {
+				return err
+			}
+			hdr.Name = relPath
+
+			wt, err := w.CreateHeader(hdr)
+			if err != nil {
+				return err
+			}
+
+			ff, err := os.Open(absPath)
+			if err != nil {
+				return err
+			}
+			defer ff.Close()
+
+			if _, err = io.Copy(wt, ff); err != nil {
+				return err
+			}
+
+			return nil
+		}
+
+		err := filepath.Walk(dirName, walk)
+		if err != nil {
+			return err
+		}
+
+		return nil
+	} else {
+		return errors.New("unknown archive format")
+	}
 }
 
 func runOptimizer(containerName, srcDir string, domainNames []string) (output string, err error) {

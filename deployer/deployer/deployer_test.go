@@ -915,6 +915,113 @@ var _ = Describe("Deployer", func() {
 			Expect(fakeS3.UploadCalls.Count()).To(Equal(8)) // 5 asset files + 1 jsenv.js + 2 metadata files (2 domains)
 		})
 	})
+
+	Context("when archive_format is zip", func() {
+		BeforeEach(func() {
+			proj.Watermark = false
+			Expect(db.Save(proj).Error).To(BeNil())
+		})
+
+		It("fetches the zip bundle from S3, uploads assets and meta data to S3, and publishes invalidation message to edges", func() {
+			// mock download
+			fakeS3.DownloadContent, err = ioutil.ReadFile("../../testhelper/fixtures/website.zip")
+			Expect(err).To(BeNil())
+
+			err = deployer.Work([]byte(fmt.Sprintf(`{
+				"deployment_id": %d,
+				"archive_format": "zip"
+			}`, depl.ID)))
+			Expect(err).To(BeNil())
+
+			// it should download zip bundle from s3
+			Expect(fakeS3.DownloadCalls.Count()).To(Equal(1))
+			downloadCall := fakeS3.DownloadCalls.NthCall(1)
+			Expect(downloadCall).NotTo(BeNil())
+			Expect(downloadCall.Arguments[0]).To(Equal(s3client.BucketRegion))
+			Expect(downloadCall.Arguments[1]).To(Equal(s3client.BucketName))
+			Expect(downloadCall.Arguments[2]).To(Equal(fmt.Sprintf("deployments/%s/optimized-bundle.zip", depl.PrefixID())))
+			Expect(downloadCall.ReturnValues[0]).To(BeNil())
+
+			// it should upload assets
+			Expect(fakeS3.UploadCalls.Count()).To(Equal(8)) // 5 asset files + 1 jsenv.js + 2 metadata files (2 domains)
+
+			uploads := []struct {
+				filename    string
+				contentType string
+			}{
+				{"css/app.css", "text/css"},
+				{"images/rick-astley.jpg", "image/jpeg"},
+				{"images/astley.jpg", "image/jpeg"},
+				{"index.html", "text/html"},
+				{"js/app.js", "application/javascript"},
+			}
+
+			for i, upload := range uploads {
+				data, err := ioutil.ReadFile("../../testhelper/fixtures/website/" + upload.filename)
+				Expect(err).To(BeNil())
+
+				assertUpload(
+					1+i,
+					"deployments/"+depl.PrefixID()+"/webroot/"+upload.filename,
+					upload.contentType,
+					data,
+				)
+			}
+
+			// it should upload jsenv.js
+			assertUpload(
+				6,
+				"deployments/"+depl.PrefixID()+"/webroot/jsenv.js",
+				"application/javascript",
+				[]byte(`(function(global, env) {
+	if (typeof module === "object" && typeof module.exports === "object") {
+		module.exports = env;
+	} else {
+		global.JSENV = env;
+	}
+}(this, {"baz":"qux","foo":"bar"}));
+`))
+
+			// it should upload meta.json for each domain
+			for i, domain := range []string{
+				proj.DefaultDomainName(),
+				"www.foo-bar-express.com",
+			} {
+				assertUpload(
+					7+i,
+					"domains/"+domain+"/meta.json",
+					"application/json",
+					[]byte(fmt.Sprintf(`{
+					"prefix": "%s"
+				}`, depl.PrefixID())),
+				)
+			}
+
+			// it should publish invalidation message
+			d := testhelper.ConsumeQueue(mq, qName)
+			Expect(d).NotTo(BeNil())
+			Expect(d.Body).To(MatchJSON(fmt.Sprintf(`{
+				"domains": [
+					"%s",
+					"www.foo-bar-express.com"
+				]
+			}`, proj.DefaultDomainName())))
+
+			// it should update deployment's state to deployed
+			err = db.First(depl, depl.ID).Error
+			Expect(err).To(BeNil())
+
+			Expect(depl.State).To(Equal(deployment.StateDeployed))
+			Expect(depl.DeployedAt).NotTo(BeNil())
+
+			// it should set project's active deployment to current deployment id
+			assertActiveDeploymentIDUpdate()
+
+			// make sure it does not leave project as locked
+			Expect(db.First(proj, proj.ID).Error).To(BeNil())
+			Expect(proj.LockedAt).To(BeNil())
+		})
+	})
 })
 
 var indexHTML = `<!DOCTYPE html>

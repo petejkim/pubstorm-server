@@ -4,10 +4,13 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
+	"io"
+	"io/ioutil"
 	"mime/multipart"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"os"
 	"strconv"
 	"testing"
 	"time"
@@ -121,16 +124,19 @@ var _ = Describe("Deployments", func() {
 			s3client.S3 = origS3
 		})
 
-		doRequestWithMultipart := func(partName string) {
+		doRequestWithMultipart := func(partName, filename string) {
 			s = httptest.NewServer(server.New())
 
 			body := &bytes.Buffer{}
 			writer := multipart.NewWriter(body)
 
-			part, err := writer.CreateFormFile(partName, "/tmp/rise/foo.tar.gz")
+			f, err := os.Open(filename)
 			Expect(err).To(BeNil())
 
-			_, err = part.Write([]byte("hello\nworld!"))
+			part, err := writer.CreateFormFile(partName, filename)
+			Expect(err).To(BeNil())
+
+			_, err = io.Copy(part, f)
 			Expect(err).To(BeNil())
 
 			Expect(writer.Close()).To(BeNil())
@@ -161,11 +167,15 @@ var _ = Describe("Deployments", func() {
 		}
 
 		doRequest := func() {
-			doRequestWithMultipart("payload")
+			doRequestWithMultipart("payload", "../../../testhelper/fixtures/website.tar.gz")
+		}
+
+		doRequestWithZipFile := func() {
+			doRequestWithMultipart("payload", "../../../testhelper/fixtures/website.zip")
 		}
 
 		doRequestWithWrongPart := func() {
-			doRequestWithMultipart("upload")
+			doRequestWithMultipart("upload", "../../../testhelper/fixtures/website.tar.gz")
 		}
 
 		sharedexamples.ItRequiresAuthentication(func() (*gorm.DB, *user.User, *http.Header) {
@@ -274,6 +284,26 @@ var _ = Describe("Deployments", func() {
 					Expect(b.String()).To(MatchJSON(expectedJSON))
 				})
 
+				It("uploads zip bundle", func() {
+					doRequestWithZipFile()
+
+					depl = &deployment.Deployment{}
+					db.Last(depl)
+
+					Expect(fakeS3.UploadCalls.Count()).To(Equal(1))
+					call := fakeS3.UploadCalls.NthCall(1)
+					Expect(call).NotTo(BeNil())
+					Expect(call.Arguments[0]).To(Equal(s3client.BucketRegion))
+					Expect(call.Arguments[1]).To(Equal(s3client.BucketName))
+					Expect(call.Arguments[2]).To(Equal(fmt.Sprintf("deployments/%s-%d/raw-bundle.zip", depl.Prefix, depl.ID)))
+					Expect(call.Arguments[4]).To(Equal(""))
+					Expect(call.Arguments[5]).To(Equal("private"))
+
+					b, err := ioutil.ReadFile("../../../testhelper/fixtures/website.zip")
+					Expect(err).To(BeNil())
+					Expect(call.SideEffects["uploaded_content"]).To(Equal(b))
+				})
+
 				It("creates a deployment record", func() {
 					doRequest()
 
@@ -306,7 +336,7 @@ var _ = Describe("Deployments", func() {
 					Expect(bun).NotTo(BeNil())
 					Expect(bun.ProjectID).To(Equal(proj.ID))
 					Expect(bun.UploadedPath).To(Equal(fmt.Sprintf("deployments/%s-%d/raw-bundle.tar.gz", depl.Prefix, depl.ID)))
-					Expect(bun.Checksum).To(Equal("db39e098913eee20e5371139022e4431ffe7b01baa524bd87e08f2763de3ea55"))
+					Expect(bun.Checksum).To(Equal("d177de8d751c4bc0cad763ed53523bc10a88d0ef0c8b8814a9170d69ccc76945"))
 				})
 
 				It("does not bundle to s3", func() {
@@ -323,7 +353,10 @@ var _ = Describe("Deployments", func() {
 					Expect(call.Arguments[2]).To(Equal(fmt.Sprintf("deployments/%s-%d/raw-bundle.tar.gz", depl.Prefix, depl.ID)))
 					Expect(call.Arguments[4]).To(Equal(""))
 					Expect(call.Arguments[5]).To(Equal("private"))
-					Expect(call.SideEffects["uploaded_content"]).To(Equal([]byte("hello\nworld!")))
+
+					b, err := ioutil.ReadFile("../../../testhelper/fixtures/website.tar.gz")
+					Expect(err).To(BeNil())
+					Expect(call.SideEffects["uploaded_content"]).To(Equal(b))
 				})
 
 				It("enqueues a build job", func() {
@@ -336,7 +369,8 @@ var _ = Describe("Deployments", func() {
 					Expect(d).NotTo(BeNil())
 					Expect(d.Body).To(MatchJSON(fmt.Sprintf(`
 						{
-							"deployment_id": %d
+							"deployment_id": %d,
+							"archive_format": "tar.gz"
 						}
 					`, depl.ID)))
 				})
@@ -406,7 +440,8 @@ var _ = Describe("Deployments", func() {
 					Expect(d).NotTo(BeNil())
 					Expect(d.Body).To(MatchJSON(fmt.Sprintf(`
 						{
-							"deployment_id": %d
+							"deployment_id": %d,
+							"archive_format": "tar.gz"
 						}
 					`, depl.ID)))
 				})
@@ -429,7 +464,8 @@ var _ = Describe("Deployments", func() {
 								"deployment_id": %d,
 								"skip_webroot_upload": false,
 								"skip_invalidation": false,
-								"use_raw_bundle": true
+								"use_raw_bundle": true,
+								"archive_format": "tar.gz"
 							}
 						`, depl.ID)))
 					})
@@ -444,7 +480,7 @@ var _ = Describe("Deployments", func() {
 				})
 			})
 
-			Context("when request is not multpart", func() {
+			Context("when request is not multipart", func() {
 				Context("when raw_bundle is not specified", func() {
 					BeforeEach(func() {
 						doRequestWithBundleChecksum("")
@@ -535,7 +571,8 @@ var _ = Describe("Deployments", func() {
 						Expect(m).NotTo(BeNil())
 						Expect(m.Body).To(MatchJSON(fmt.Sprintf(`
 							{
-								"deployment_id": %d
+								"deployment_id": %d,
+								"archive_format": "tar.gz"
 							}
 						`, depl.ID)))
 					})

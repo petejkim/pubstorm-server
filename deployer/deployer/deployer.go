@@ -2,6 +2,7 @@ package deployer
 
 import (
 	"archive/tar"
+	"archive/zip"
 	"bytes"
 	"compress/gzip"
 	"encoding/json"
@@ -35,9 +36,10 @@ import (
 )
 
 var (
-	ErrProjectLocked  = errors.New("project is locked")
-	ErrRecordNotFound = errors.New("project or deployment is deleted")
-	ErrTimeout        = errors.New("failed to upload files due to timeout on uploading to s3")
+	ErrProjectLocked   = errors.New("project is locked")
+	ErrRecordNotFound  = errors.New("project or deployment is deleted")
+	ErrTimeout         = errors.New("failed to upload files due to timeout on uploading to s3")
+	ErrUnarchiveFailed = errors.New("Failed to unarchive file")
 
 	MaxFileSizeToWatermark int64 = 5 * 1000 * 1000 // in bytes
 	UploadTimeout                = 3 * time.Minute
@@ -129,7 +131,12 @@ func Work(data []byte) error {
 			return errUnexpectedState
 		}
 
-		bundlePath := "deployments/" + prefixID + "/optimized-bundle.tar.gz"
+		archiveFormat := d.ArchiveFormat
+		if archiveFormat == "" {
+			archiveFormat = "tar.gz"
+		}
+
+		bundlePath := "deployments/" + prefixID + "/optimized-bundle." + archiveFormat
 		if d.UseRawBundle {
 			// If this deployment uses a raw bundle from a previous deploy, use that.
 			if depl.RawBundleID != nil {
@@ -138,11 +145,11 @@ func Work(data []byte) error {
 					bundlePath = bun.UploadedPath
 				}
 			} else {
-				bundlePath = "deployments/" + prefixID + "/raw-bundle.tar.gz"
+				bundlePath = "deployments/" + prefixID + "/raw-bundle." + archiveFormat
 			}
 		}
 
-		f, err := ioutil.TempFile("", prefixID+"-optimized-bundle.tar.gz")
+		f, err := ioutil.TempFile("", prefixID+"-optimized-bundle."+archiveFormat)
 		if err != nil {
 			return err
 		}
@@ -155,13 +162,6 @@ func Work(data []byte) error {
 			return err
 		}
 
-		gr, err := gzip.NewReader(f)
-		if err != nil {
-			return err
-		}
-		defer gr.Close()
-		tr := tar.NewReader(gr)
-
 		// webroot is a publicly readable directory on S3.
 		webroot := "deployments/" + prefixID + "/webroot"
 
@@ -170,70 +170,132 @@ func Work(data []byte) error {
 		r := regexp.MustCompile("[^0-9A-Za-z,!_'()\\.\\*\\-@]+")
 		done := make(chan struct{})
 		errCh := make(chan error)
-		go func() {
-			for {
-				hdr, err := tr.Next()
+		if archiveFormat == "tar.gz" {
+			go func() {
+				gr, err := gzip.NewReader(f)
 				if err != nil {
-					if err == io.EOF {
-						break
-					}
-					errCh <- err
+					errCh <- ErrUnarchiveFailed
 					return
 				}
+				defer gr.Close()
+				tr := tar.NewReader(gr)
 
-				if hdr.FileInfo().IsDir() {
-					continue
-				}
-
-				fileName := path.Clean(hdr.Name)
-				remotePath := webroot + "/" + fileName
-
-				// Skip file with invalid filename
-				pathElements := strings.Split(fileName, string(filepath.Separator))
-				isValidFileName := true
-				for _, pathElement := range pathElements {
-					if r.MatchString(pathElement) {
-						isValidFileName = false
-						break
-					}
-				}
-
-				if !isValidFileName {
-					log.Printf("filename contains invalid character: %q", fileName)
-					continue
-				}
-
-				contentType := mime.TypeByExtension(filepath.Ext(fileName))
-				if i := strings.Index(contentType, ";"); i != -1 {
-					contentType = contentType[:i]
-				}
-
-				var rdr io.Reader = tr
-
-				// Inject "watermark" that links to PubStorm website for HTML pages.
-				// TODO We should do the watermarking and uploading in several worker
-				// goroutines.
-				if proj.Watermark &&
-					contentType == "text/html" &&
-					hdr.Size <= MaxFileSizeToWatermark {
-
-					var err error
-					rdr, err = injectWatermark(rdr)
+				for {
+					hdr, err := tr.Next()
 					if err != nil {
-						// Log and skip this file.
-						log.Printf("failed to inject watermark to %q, err: %v", hdr.Name, err)
+						if err == io.EOF {
+							break
+						}
+						errCh <- err
+						return
+					}
+
+					if hdr.FileInfo().IsDir() {
 						continue
 					}
+
+					fileName := path.Clean(hdr.Name)
+					remotePath := webroot + "/" + fileName
+
+					// Skip file with invalid filename
+					pathElements := strings.Split(fileName, string(filepath.Separator))
+					isValidFileName := true
+					for _, pathElement := range pathElements {
+						if r.MatchString(pathElement) {
+							isValidFileName = false
+							break
+						}
+					}
+
+					if !isValidFileName {
+						log.Printf("filename contains invalid character: %q", fileName)
+						continue
+					}
+
+					contentType := mime.TypeByExtension(filepath.Ext(fileName))
+					if i := strings.Index(contentType, ";"); i != -1 {
+						contentType = contentType[:i]
+					}
+
+					var rdr io.Reader = tr
+
+					// Inject "watermark" that links to PubStorm website for HTML pages.
+					// TODO We should do the watermarking and uploading in several worker
+					// goroutines.
+					if proj.Watermark &&
+						contentType == "text/html" &&
+						hdr.Size <= MaxFileSizeToWatermark {
+
+						var err error
+						rdr, err = injectWatermark(rdr)
+						if err != nil {
+							// Log and skip this file.
+							log.Printf("failed to inject watermark to %q, err: %v", hdr.Name, err)
+							continue
+						}
+					}
+
+					if err := S3.Upload(s3client.BucketRegion, s3client.BucketName, remotePath, rdr, contentType, "public-read"); err != nil {
+						errCh <- err
+						return
+					}
 				}
 
-				if err := S3.Upload(s3client.BucketRegion, s3client.BucketName, remotePath, rdr, contentType, "public-read"); err != nil {
-					errCh <- err
+				close(done)
+			}()
+		} else if archiveFormat == "zip" {
+			go func() {
+				r, err := zip.OpenReader(f.Name())
+				if err != nil {
+					errCh <- ErrUnarchiveFailed
 					return
 				}
-			}
+				defer r.Close()
 
-			close(done)
-		}()
+				for _, file := range r.File {
+					rc, err := file.Open()
+					if err != nil {
+						errCh <- err
+						return
+					}
+					defer rc.Close()
+
+					if file.FileInfo().IsDir() {
+						continue
+					}
+					remotePath := webroot + "/" + file.Name
+
+					contentType := mime.TypeByExtension(filepath.Ext(file.Name))
+					if i := strings.Index(contentType, ";"); i != -1 {
+						contentType = contentType[:i]
+					}
+
+					var rdr io.Reader = rc
+
+					// Inject "watermark" that links to PubStorm website for HTML pages.
+					// TODO We should do the watermarking and uploading in several worker
+					// goroutines.
+					if proj.Watermark &&
+						contentType == "text/html" &&
+						file.FileInfo().Size() <= MaxFileSizeToWatermark {
+
+						var err error
+						rdr, err = injectWatermark(rdr)
+						if err != nil {
+							// Log and skip this file.
+							log.Printf("failed to inject watermark to %q, err: %v", file.Name, err)
+							continue
+						}
+					}
+
+					if err := S3.Upload(s3client.BucketRegion, s3client.BucketName, remotePath, rdr, contentType, "public-read"); err != nil {
+						errCh <- err
+						return
+					}
+				}
+				close(done)
+			}()
+		}
 
 		select {
 		case <-done:
