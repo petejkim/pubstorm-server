@@ -31,3 +31,10 @@ func (t *SegmentTracker) Track(userID, event, anonymousID string, props, context
 		Context:     context,
 	})
 }
+
+func (t *SegmentTracker) Alias(userID, previousID string) error {
+	return t.Client.Alias(&analytics.Alias{
+		UserId:     userID,
+		PreviousId: previousID,
+	})
+}
