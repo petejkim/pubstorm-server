@@ -102,9 +102,9 @@ func Create(c *gin.Context) {
 				u.ID, anonymousID, err)
 		}
 
-		// Sleep 1 second to avoid race condition of identify/track and alias
+		// Sleep 5 second to avoid race condition of identify/track and alias
 		// Read more at: https://segment.com/docs/integrations/mixpanel/#aliasing-server-side
-		time.Sleep(1 * time.Second)
+		time.Sleep(5 * time.Second)
 
 		if err := common.Identify(strconv.Itoa(int(u.ID)), anonymousID, traits, context); err != nil {
 			log.Errorf("failed to track new user ID %d, err: %v", u.ID, err)
