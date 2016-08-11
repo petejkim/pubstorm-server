@@ -17,6 +17,7 @@ import (
 	"time"
 
 	log "github.com/Sirupsen/logrus"
+	"github.com/jinzhu/gorm"
 	"github.com/nitrous-io/rise-server/apiserver/common"
 	"github.com/nitrous-io/rise-server/apiserver/dbconn"
 	"github.com/nitrous-io/rise-server/apiserver/models/deployment"
@@ -38,6 +39,7 @@ var (
 	ErrProjectConfigNotFound      = errors.New("GitHub Contents API response not HTTP 200")
 	ErrProjectConfigInvalidFormat = errors.New("pubstorm.json file invalid")
 	ErrGitHubArchiveProblem       = errors.New("could not download archive of repository from GitHub")
+	ErrRecordNotFound             = errors.New("project or deployment is deleted")
 )
 
 func Work(data []byte) error {
@@ -63,6 +65,9 @@ func Work(data []byte) error {
 
 	depl := &deployment.Deployment{}
 	if err := db.First(depl, pu.DeploymentID).Error; err != nil {
+		if err == gorm.RecordNotFound {
+			return ErrRecordNotFound
+		}
 		return err
 	}
 
@@ -72,6 +77,9 @@ func Work(data []byte) error {
 
 	proj := &project.Project{}
 	if err := db.Where("id = ?", depl.ProjectID).First(proj).Error; err != nil {
+		if err == gorm.RecordNotFound {
+			return ErrRecordNotFound
+		}
 		return err
 	}
 

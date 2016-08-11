@@ -11,6 +11,7 @@ import (
 
 	"github.com/lib/pq"
 	"github.com/nitrous-io/rise-server/apiserver/models/collab"
+	"github.com/nitrous-io/rise-server/apiserver/models/deployment"
 	"github.com/nitrous-io/rise-server/apiserver/models/domain"
 	"github.com/nitrous-io/rise-server/apiserver/models/rawbundle"
 	"github.com/nitrous-io/rise-server/apiserver/models/user"
@@ -245,6 +246,10 @@ func (p *Project) Destroy(db *gorm.DB) error {
 	}
 
 	if err := db.Delete(domain.Domain{}, "project_id = ?", p.ID).Error; err != nil {
+		return err
+	}
+
+	if err := db.Delete(deployment.Deployment{}, "project_id = ?", p.ID).Error; err != nil {
 		return err
 	}
 

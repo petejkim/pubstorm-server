@@ -150,6 +150,20 @@ var _ = Describe("Deployer", func() {
 		}
 	}
 
+	Context("when project is deleted", func() {
+		BeforeEach(func() {
+			Expect(proj.Destroy(db)).To(BeNil())
+		})
+
+		It("returns ErrRecordNotFound so it can start next job", func() {
+			err = deployer.Work([]byte(fmt.Sprintf(`{
+				"deployment_id": %d
+			}`, depl.ID)))
+
+			Expect(err).To(Equal(deployer.ErrRecordNotFound))
+		})
+	})
+
 	Context("when project should not display a watermark", func() {
 		BeforeEach(func() {
 			proj.Watermark = false

@@ -15,3 +15,7 @@ func Identify(userID, anonymousID string, traits, context map[string]interface{}
 func Track(userID, event, anonymousID string, props, context map[string]interface{}) error {
 	return Tracker.Track(userID, event, anonymousID, props, context)
 }
+
+func Alias(userID, previousID string) error {
+	return Tracker.Alias(userID, previousID)
+}

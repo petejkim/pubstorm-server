@@ -12,6 +12,7 @@ import (
 	"github.com/nitrous-io/rise-server/apiserver/models/acmecert"
 	"github.com/nitrous-io/rise-server/apiserver/models/cert"
 	"github.com/nitrous-io/rise-server/apiserver/models/collab"
+	"github.com/nitrous-io/rise-server/apiserver/models/deployment"
 	"github.com/nitrous-io/rise-server/apiserver/models/domain"
 	"github.com/nitrous-io/rise-server/apiserver/models/project"
 	"github.com/nitrous-io/rise-server/apiserver/models/rawbundle"
@@ -402,7 +403,7 @@ var _ = Describe("Project", func() {
 			proj2 = factories.Project(db, u)
 		})
 
-		It("deletes associated domains and certs", func() {
+		It("deletes project", func() {
 			Expect(proj.Destroy(db)).To(BeNil())
 
 			var count int
@@ -410,7 +411,7 @@ var _ = Describe("Project", func() {
 			Expect(count).To(Equal(0))
 		})
 
-		Context("when a project has domains and certs", func() {
+		Context("when a project has domains, certs and deployments", func() {
 			var (
 				dm1  *domain.Domain
 				dm2  *domain.Domain
@@ -419,6 +420,11 @@ var _ = Describe("Project", func() {
 				dm3  *domain.Domain
 				ct3  *cert.Cert
 				bun2 *rawbundle.RawBundle
+
+				d1 *deployment.Deployment
+				d2 *deployment.Deployment
+				d3 *deployment.Deployment
+				d4 *deployment.Deployment
 			)
 
 			BeforeEach(func() {
@@ -458,9 +464,14 @@ var _ = Describe("Project", func() {
 
 				bun1 = factories.RawBundle(db, proj)
 				bun2 = factories.RawBundle(db, proj2)
+
+				d1 = factories.Deployment(db, proj, u, deployment.StateDeployed)
+				d2 = factories.Deployment(db, proj, u, deployment.StatePendingDeploy)
+				d3 = factories.Deployment(db, proj, u, deployment.StateDeployed)
+				d4 = factories.Deployment(db, proj2, u, deployment.StateDeployed)
 			})
 
-			It("deletes associated domains, certs and raw bundles", func() {
+			It("deletes associated domains, certs, deployments and raw bundles", func() {
 				Expect(proj.Destroy(db)).To(BeNil())
 
 				var count int
@@ -476,7 +487,10 @@ var _ = Describe("Project", func() {
 				Expect(db.Model(acmecert.AcmeCert{}).Where("domain_id IN (?,?)", dm1.ID, dm2.ID).Count(&count).Error).To(BeNil())
 				Expect(count).To(Equal(0))
 
-				// Make sure it does not delete other project's domains and certs
+				Expect(db.Model(deployment.Deployment{}).Where("project_id = ?", proj.ID).Count(&count).Error).To(BeNil())
+				Expect(count).To(Equal(0))
+
+				// Make sure it does not delete other project's domains, certs and deployments
 				Expect(db.Model(domain.Domain{}).Where("id = ?", dm3.ID).Count(&count).Error).To(BeNil())
 				Expect(count).To(Equal(1))
 
@@ -484,6 +498,9 @@ var _ = Describe("Project", func() {
 				Expect(count).To(Equal(1))
 
 				Expect(db.Model(cert.Cert{}).Where("id = ?", ct3.ID).Count(&count).Error).To(BeNil())
+				Expect(count).To(Equal(1))
+
+				Expect(db.Model(deployment.Deployment{}).Where("id = ?", d4.ID).Count(&count).Error).To(BeNil())
 				Expect(count).To(Equal(1))
 			})
 		})

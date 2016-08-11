@@ -41,6 +41,76 @@ var _ = Describe("Domain", func() {
 		proj = factories.Project(db, u)
 	})
 
+	Describe("Sanitize()", func() {
+		var dom *domain.Domain
+
+		BeforeEach(func() {
+			dom = &domain.Domain{
+				ProjectID: proj.ID,
+				Name:      "",
+			}
+		})
+
+		DescribeTable("sanitizes name",
+			func(name, sanitizedName string) {
+				dom.Name = name
+				dom.Sanitize()
+				Expect(dom.Name).To(Equal(sanitizedName))
+			},
+
+			Entry(
+				"add www to name with generic .com tld",
+				"abc.com",
+				"www.abc.com",
+			),
+			Entry(
+				"add www to name with country code .au tld",
+				"abc.au",
+				"www.abc.au",
+			),
+			Entry(
+				"add www to name with country code .com.au tld",
+				"abc.com.au",
+				"www.abc.com.au",
+			),
+			Entry(
+				"add www to name with generic .co and country code .au tld",
+				"abc.co.id",
+				"www.abc.co.id",
+			),
+			Entry(
+				"does not add www to generic non-apex domain",
+				"www.abc.com",
+				"www.abc.com",
+			),
+			Entry(
+				"does not add www to generic .co non-apex domain",
+				"www.abc.co",
+				"www.abc.co",
+			),
+			Entry(
+				"does not add www to country code non-apex domain",
+				"www.abc.com.au",
+				"www.abc.com.au",
+			),
+			Entry(
+				"does not add www to generic and country code non-apex domain",
+				"www.abc.co.id",
+				"www.abc.co.id",
+			),
+			Entry(
+				"does not add www to subdomain with generic non-apex domain",
+				"blog.abc.co",
+				"blog.abc.co",
+			),
+			Entry(
+				"does not add www to subdomain with generic and country code non-apex domain",
+				"blog.abc.co.id",
+				"blog.abc.co.id",
+			),
+		)
+	})
+
 	Describe("Validate()", func() {
 		var dom *domain.Domain
 

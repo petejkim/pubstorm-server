@@ -52,7 +52,10 @@ func Create(c *gin.Context) {
 		ProjectID: proj.ID,
 	}
 
-	dom.Sanitize()
+	if err := dom.Sanitize(); err != nil {
+		controllers.InternalServerError(c, err)
+		return
+	}
 
 	if errs := dom.Validate(); errs != nil {
 		c.JSON(422, gin.H{

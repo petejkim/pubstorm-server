@@ -18,6 +18,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/jinzhu/gorm"
 	"github.com/nitrous-io/rise-server/apiserver/common"
 	"github.com/nitrous-io/rise-server/apiserver/dbconn"
 	"github.com/nitrous-io/rise-server/apiserver/models/deployment"
@@ -33,8 +34,9 @@ import (
 )
 
 var (
-	ErrProjectLocked = errors.New("project is locked")
-	ErrTimeout       = errors.New("failed to upload files due to timeout on uploading to s3")
+	ErrProjectLocked  = errors.New("project is locked")
+	ErrRecordNotFound = errors.New("project or deployment is deleted")
+	ErrTimeout        = errors.New("failed to upload files due to timeout on uploading to s3")
 
 	MaxFileSizeToWatermark int64 = 5 * 1000 * 1000 // in bytes
 	UploadTimeout                = 3 * time.Minute
@@ -84,11 +86,17 @@ func Work(data []byte) error {
 
 	depl := &deployment.Deployment{}
 	if err := db.First(depl, d.DeploymentID).Error; err != nil {
+		if err == gorm.RecordNotFound {
+			return ErrRecordNotFound
+		}
 		return err
 	}
 
 	proj := &project.Project{}
 	if err := db.Where("id = ?", depl.ProjectID).First(proj).Error; err != nil {
+		if err == gorm.RecordNotFound {
+			return ErrRecordNotFound
+		}
 		return err
 	}
 
