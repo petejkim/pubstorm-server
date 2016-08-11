@@ -4,6 +4,7 @@ import (
 	"net/http"
 	"strconv"
 	"strings"
+	"time"
 
 	log "github.com/Sirupsen/logrus"
 	"github.com/gin-gonic/gin"
@@ -81,35 +82,39 @@ func Create(c *gin.Context) {
 		return
 	}
 
-	{
-		var (
-			anonymousID = c.PostForm("anonymous_id")
-			event       = "User Signed Up"
-			props       = map[string]interface{}{
-				"email": u.Email,
-				"name":  u.Name,
-			}
-			context map[string]interface{}
-		)
-		if err := common.Track(strconv.Itoa(int(u.ID)), event, anonymousID, props, context); err != nil {
-			log.Errorf("failed to track %q event for user ID %d, err: %v",
-				event, u.ID, err)
-		}
-	}
-
-	{
+	go func() {
 		var (
 			anonymousID = c.PostForm("anonymous_id")
 			traits      = map[string]interface{}{
 				"email": u.Email,
 				"name":  u.Name,
 			}
+			event = "User Signed Up"
+			props = map[string]interface{}{
+				"email": u.Email,
+				"name":  u.Name,
+			}
 			context map[string]interface{}
 		)
+
+		if err := common.Alias(strconv.Itoa(int(u.ID)), anonymousID); err != nil {
+			log.Errorf("failed to alias new user ID %d to anonymous ID %s, err: %v",
+				u.ID, anonymousID, err)
+		}
+
+		// Sleep 1 second to avoid race condition of identify/track and alias
+		// Read more at: https://segment.com/docs/integrations/mixpanel/#aliasing-server-side
+		time.Sleep(1 * time.Second)
+
 		if err := common.Identify(strconv.Itoa(int(u.ID)), anonymousID, traits, context); err != nil {
 			log.Errorf("failed to track new user ID %d, err: %v", u.ID, err)
 		}
-	}
+
+		if err := common.Track(strconv.Itoa(int(u.ID)), event, anonymousID, props, context); err != nil {
+			log.Errorf("failed to track %q event for user ID %d, err: %v",
+				event, u.ID, err)
+		}
+	}()
 
 	c.JSON(http.StatusCreated, gin.H{
 		"user": u.AsJSON(),
@@ -163,13 +168,13 @@ func Confirm(c *gin.Context) {
 				}
 				props, context map[string]interface{}
 			)
+			if err := common.Identify(strconv.Itoa(int(u.ID)), anonymousID, traits, context); err != nil {
+				log.Errorf("failed to update user identity for user ID %d, err: %v", u.ID, err)
+			}
+
 			if err := common.Track(strconv.Itoa(int(u.ID)), event, anonymousID, props, context); err != nil {
 				log.Errorf("failed to track %q event for user ID %d, err: %v",
 					event, u.ID, err)
-			}
-
-			if err := common.Identify(strconv.Itoa(int(u.ID)), anonymousID, traits, context); err != nil {
-				log.Errorf("failed to update user identity for user ID %d, err: %v", u.ID, err)
 			}
 		}
 	}
