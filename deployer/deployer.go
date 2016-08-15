@@ -40,6 +40,17 @@ func run() {
 		}
 	}()
 
+	err = ch.Qos(
+		1,     // prefetch count
+		0,     // prefetch size
+		false, // global
+	)
+
+	if err != nil {
+		log.Errorln("Failed to set qos to channel:", err)
+		return
+	}
+
 	queueName := os.Getenv("DEPLOY_QUEUE_NAME")
 	if queueName == "" {
 		queueName = queues.Deploy
