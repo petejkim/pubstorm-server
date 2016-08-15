@@ -39,9 +39,7 @@ func (d *Domain) Sanitize() error {
 func (d *Domain) Validate() map[string]string {
 	errors := map[string]string{}
 
-	if d.Name == "" {
-		errors["name"] = "is required"
-	} else if len(d.Name) < 3 {
+	if len(d.Name) < 3 {
 		errors["name"] = "is too short (min. 3 characters)"
 	} else if len(d.Name) > 255 {
 		errors["name"] = "is too long (max. 255 characters)"

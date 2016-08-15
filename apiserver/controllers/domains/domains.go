@@ -47,6 +47,16 @@ func Create(c *gin.Context) {
 	proj := controllers.CurrentProject(c)
 
 	domName := strings.ToLower(c.PostForm("name"))
+	if domName == "" {
+		c.JSON(422, gin.H{
+			"error": "invalid_params",
+			"errors": map[string]interface{}{
+				"name": "is required",
+			},
+		})
+		return
+	}
+
 	dom := &domain.Domain{
 		Name:      domName,
 		ProjectID: proj.ID,
