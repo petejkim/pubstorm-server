@@ -14,8 +14,8 @@ o=' !important;';s=u.createElement('div');s.innerHTML='<a style="'+
  'box-shadow:0 1px 2px rgba(0,0,0,.3)|text-decoration:none|font-style:normal|line-height:1|vertical-align:middle').split('|').join(o)+
  '" href="https://www.pubstorm.com/?utm_source=pubstorm&utm_medium=watermark&utm_campaign=watermark" target="_blank">'+
  'Powered by <span style="font-weight:bold !important">PubStorm</span></a>';
-u.body.appendChild(t=s.children[0]);p.setTimeout(function(){t.style.opacity=0}, b*1000);
-}(window,document,30));
+u.body.appendChild(t=s.children[0]);
+}(window,document));
 </script>`
 
 // TODO We should not read in the entire body of the io.Reader - it could be a
