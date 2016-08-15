@@ -16,6 +16,8 @@ import (
 	"github.com/nitrous-io/rise-server/apiserver/models/user"
 )
 
+var TrackInterval = 5 * time.Second
+
 func Create(c *gin.Context) {
 	u := &user.User{
 		Email:    strings.ToLower(c.PostForm("email")),
@@ -104,7 +106,7 @@ func Create(c *gin.Context) {
 
 		// Sleep 5 second to avoid race condition of identify/track and alias
 		// Read more at: https://segment.com/docs/integrations/mixpanel/#aliasing-server-side
-		time.Sleep(5 * time.Second)
+		time.Sleep(TrackInterval)
 
 		if err := common.Identify(strconv.Itoa(int(u.ID)), anonymousID, traits, context); err != nil {
 			log.Errorf("failed to track new user ID %d, err: %v", u.ID, err)
