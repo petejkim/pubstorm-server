@@ -8,9 +8,11 @@ import (
 	"net/http/httptest"
 	"net/url"
 	"testing"
+	"time"
 
 	"github.com/jinzhu/gorm"
 	"github.com/nitrous-io/rise-server/apiserver/common"
+	"github.com/nitrous-io/rise-server/apiserver/controllers/users"
 	"github.com/nitrous-io/rise-server/apiserver/dbconn"
 	"github.com/nitrous-io/rise-server/apiserver/models/oauthclient"
 	"github.com/nitrous-io/rise-server/apiserver/models/oauthtoken"
@@ -63,6 +65,8 @@ var _ = Describe("Users", func() {
 
 			fakeTracker *fake.Tracker
 			origTracker tracker.Trackable
+
+			origTrackInterval time.Duration
 		)
 
 		BeforeEach(func() {
@@ -74,6 +78,9 @@ var _ = Describe("Users", func() {
 			fakeTracker = &fake.Tracker{}
 			common.Tracker = fakeTracker
 
+			origTrackInterval = users.TrackInterval
+			users.TrackInterval = 0 * time.Second
+
 			params = url.Values{
 				"email":        {"foo@example.com"},
 				"password":     {"foobar"},
@@ -84,6 +91,7 @@ var _ = Describe("Users", func() {
 		AfterEach(func() {
 			common.Mailer = origMailer
 			common.Tracker = origTracker
+			users.TrackInterval = origTrackInterval
 		})
 
 		doRequest := func() {
@@ -168,6 +176,13 @@ var _ = Describe("Users", func() {
 				Expect(props["name"]).To(Equal(u.Name))
 
 				Expect(trackCall.Arguments[4]).To(BeNil())
+				Expect(trackCall.ReturnValues[0]).To(BeNil())
+
+				aliasCall := fakeTracker.AliasCalls.NthCall(1)
+				Expect(aliasCall).NotTo(BeNil())
+				Expect(aliasCall.Arguments[0]).To(Equal(fmt.Sprintf("%d", u.ID)))
+				Expect(aliasCall.Arguments[1]).To(Equal("anonyid"))
+
 				Expect(trackCall.ReturnValues[0]).To(BeNil())
 			})
 
