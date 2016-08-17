@@ -645,7 +645,7 @@ var _ = Describe("Deployments", func() {
 						tmpl = &template.Template{
 							Name:            "Blog",
 							Rank:            1,
-							DownloadURL:     "",
+							DownloadURL:     "/templates/blog.zip",
 							PreviewURL:      "",
 							PreviewImageURL: "",
 						}
@@ -677,7 +677,7 @@ var _ = Describe("Deployments", func() {
 						Expect(b.String()).To(MatchJSON(expectedJSON))
 					})
 
-					It("creates a deployment record", func() {
+					It("creates a deployment record and a raw_bundle record", func() {
 						doRequestWithForm(url.Values{
 							"template_id": {strconv.Itoa(int(tmpl.ID))},
 						})
@@ -691,17 +691,41 @@ var _ = Describe("Deployments", func() {
 						Expect(depl.State).To(Equal(deployment.StatePendingBuild))
 						Expect(depl.Prefix).NotTo(HaveLen(0))
 						Expect(depl.Version).To(Equal(int64(1)))
-						Expect(depl.RawBundleID).To(BeNil())
+						Expect(depl.RawBundleID).NotTo(BeNil())
 
 						Expect(*depl.TemplateID).To(Equal(tmpl.ID))
+
+						bun := &rawbundle.RawBundle{}
+						db.First(bun, *depl.RawBundleID)
+
+						Expect(bun).NotTo(BeNil())
+						Expect(bun.UploadedPath).To(Equal("deployments/" + depl.PrefixID() + "/raw-bundle.zip"))
 					})
 
-					It("does not upload bundle to s3", func() {
+					It("does not upload bundle to S3", func() {
 						doRequestWithForm(url.Values{
 							"template_id": {strconv.Itoa(int(tmpl.ID))},
 						})
 
 						Expect(fakeS3.UploadCalls.Count()).To(Equal(0))
+					})
+
+					It("makes a copy of the template on S3", func() {
+						doRequestWithForm(url.Values{
+							"template_id": {strconv.Itoa(int(tmpl.ID))},
+						})
+
+						Expect(fakeS3.CopyCalls.Count()).To(Equal(1))
+						call := fakeS3.CopyCalls.NthCall(1)
+						Expect(call).NotTo(BeNil())
+						Expect(call.Arguments[0]).To(Equal(s3client.BucketRegion))
+						Expect(call.Arguments[1]).To(Equal(s3client.BucketName))
+						Expect(call.Arguments[2]).To(Equal(tmpl.DownloadURL))
+
+						depl := &deployment.Deployment{}
+						db.Last(depl)
+
+						Expect(call.Arguments[3]).To(Equal("deployments/" + depl.PrefixID() + "/raw-bundle.zip"))
 					})
 
 					It("enqueues a build job", func() {
@@ -716,7 +740,8 @@ var _ = Describe("Deployments", func() {
 						Expect(m).NotTo(BeNil())
 						Expect(m.Body).To(MatchJSON(fmt.Sprintf(`
 							{
-								"deployment_id": %d
+								"deployment_id": %d,
+								"archive_format": "zip"
 							}
 						`, depl.ID)))
 					})

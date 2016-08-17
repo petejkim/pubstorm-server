@@ -7,4 +7,5 @@ type FileTransfer interface {
 	Download(region, bucket, key string, out io.WriterAt) error
 	Delete(region, bucket string, keys ...string) error
 	DeleteAll(region, bucket, prefix string) error
+	Copy(region, bucket, srcKey, destKey string) error
 }

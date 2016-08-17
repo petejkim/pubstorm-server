@@ -11,11 +11,13 @@ type S3 struct {
 	DownloadCalls  Calls
 	DeleteCalls    Calls
 	DeleteAllCalls Calls
+	CopyCalls      Calls
 
 	UploadError    error
 	DownloadError  error
 	DeleteError    error
 	DeleteAllError error
+	CopyError      error
 
 	UploadTimeout time.Duration
 
@@ -78,5 +80,13 @@ func (s *S3) DeleteAll(region, bucket, prefix string) error {
 	argList := List{region, bucket, prefix}
 
 	s.DeleteAllCalls.Add(argList, List{err}, nil)
+	return err
+}
+
+func (s *S3) Copy(region, bucket, srcKey, destKey string) error {
+	err := s.CopyError
+	argList := List{region, bucket, srcKey, destKey}
+
+	s.CopyCalls.Add(argList, List{err}, nil)
 	return err
 }

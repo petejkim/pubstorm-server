@@ -30,14 +30,18 @@ func init() {
 	}
 }
 
-func Upload(path string, body io.Reader, contentType, acl string) (err error) {
+func Upload(path string, body io.Reader, contentType, acl string) error {
 	return S3.Upload(BucketRegion, BucketName, path, body, contentType, acl)
 }
 
-func Download(path string, out io.WriterAt) (err error) {
+func Download(path string, out io.WriterAt) error {
 	return S3.Download(BucketRegion, BucketName, path, out)
 }
 
-func Delete(path ...string) (err error) {
+func Delete(path ...string) error {
 	return S3.Delete(BucketRegion, BucketName, path...)
+}
+
+func Copy(src, dest string) error {
+	return S3.Copy(BucketRegion, BucketName, src, dest)
 }

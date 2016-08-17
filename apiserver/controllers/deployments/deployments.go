@@ -129,33 +129,35 @@ func Create(c *gin.Context) {
 					controllers.InternalServerError(c, err)
 					return
 				}
-				fileType := http.DetectContentType(partHead)
 
+				mimeType := http.DetectContentType(partHead)
 				var uploadKey string
-				if fileType == "application/zip" {
+				switch mimeType {
+				case "application/zip":
 					uploadKey = fmt.Sprintf("deployments/%s/raw-bundle.zip", depl.PrefixID())
 					archiveFormat = "zip"
-				} else if fileType == "application/x-gzip" {
+				case "application/x-gzip":
 					uploadKey = fmt.Sprintf("deployments/%s/raw-bundle.tar.gz", depl.PrefixID())
 					archiveFormat = "tar.gz"
-				} else {
+				default:
 					c.JSON(http.StatusBadRequest, gin.H{
 						"error":             "invalid_request",
-						"error_description": "payload has invalid file",
+						"error_description": "payload is in an unsupported format",
 					})
 					return
 				}
 
-				hashReader := hasher.NewReader(br)
-				if err := s3client.Upload(uploadKey, hashReader, "", "private"); err != nil {
+				hr := hasher.NewReader(br)
+				if err := s3client.Upload(uploadKey, hr, "", "private"); err != nil {
 					controllers.InternalServerError(c, err)
 					return
 				}
 
-				bun := &rawbundle.RawBundle{}
-				bun.ProjectID = proj.ID
-				bun.Checksum = hashReader.Checksum()
-				bun.UploadedPath = uploadKey
+				bun := &rawbundle.RawBundle{
+					ProjectID:    proj.ID,
+					Checksum:     hr.Checksum(),
+					UploadedPath: uploadKey,
+				}
 				if err := db.Create(bun).Error; err != nil {
 					controllers.InternalServerError(c, err)
 					return
@@ -232,6 +234,20 @@ func Create(c *gin.Context) {
 			return
 		}
 
+		if strings.HasSuffix(tmpl.DownloadURL, ".tar.gz") {
+			archiveFormat = "tar.gz"
+		} else if strings.HasSuffix(tmpl.DownloadURL, ".zip") {
+			archiveFormat = "zip"
+		} else {
+			c.JSON(422, gin.H{
+				"error": "invalid_params",
+				"errors": map[string]string{
+					"template_id": "is no longer valid",
+				},
+			})
+			return
+		}
+
 		ver, err := proj.NextVersion(db)
 		if err != nil {
 			controllers.InternalServerError(c, err)
@@ -244,6 +260,24 @@ func Create(c *gin.Context) {
 			controllers.InternalServerError(c, err)
 			return
 		}
+
+		bundlePath := "deployments/" + depl.PrefixID() + "/raw-bundle." + archiveFormat
+		if err := s3client.Copy(tmpl.DownloadURL, bundlePath); err != nil {
+			log.Printf("failed to make a copy of template %q to %q in S3, err: %v", tmpl.DownloadURL, bundlePath, err)
+			controllers.InternalServerError(c, err)
+			return
+		}
+
+		bun := &rawbundle.RawBundle{
+			ProjectID:    proj.ID,
+			UploadedPath: bundlePath,
+		}
+		if err := db.Create(bun).Error; err != nil {
+			controllers.InternalServerError(c, err)
+			return
+		}
+
+		depl.RawBundleID = &bun.ID
 
 	default:
 		c.JSON(http.StatusBadRequest, gin.H{
