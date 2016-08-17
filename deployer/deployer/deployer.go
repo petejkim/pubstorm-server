@@ -166,7 +166,8 @@ func Work(data []byte) error {
 		webroot := "deployments/" + prefixID + "/webroot"
 
 		// From http://docs.aws.amazon.com/AmazonS3/latest/dev/UsingMetadata.html#object-keys
-		r := regexp.MustCompile("[^0-9A-Za-z,!_'()\\.\\*\\-]+")
+		// Add @ as an exceptional
+		r := regexp.MustCompile("[^0-9A-Za-z,!_'()\\.\\*\\-@]+")
 		done := make(chan struct{})
 		errCh := make(chan error)
 		go func() {
