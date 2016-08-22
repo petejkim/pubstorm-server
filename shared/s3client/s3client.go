@@ -4,6 +4,7 @@ import (
 	"io"
 	"math"
 	"os"
+	"time"
 
 	"github.com/nitrous-io/rise-server/pkg/filetransfer"
 )
@@ -44,4 +45,12 @@ func Delete(path ...string) error {
 
 func Copy(src, dest string) error {
 	return S3.Copy(BucketRegion, BucketName, src, dest)
+}
+
+func Exists(path string) (bool, error) {
+	return S3.Exists(BucketRegion, BucketName, path)
+}
+
+func PresignedURL(key string, expireTime time.Duration) (string, error) {
+	return S3.PresignedURL(BucketRegion, BucketName, key, expireTime)
 }

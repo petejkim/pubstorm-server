@@ -7,17 +7,24 @@ import (
 )
 
 type S3 struct {
-	UploadCalls    Calls
-	DownloadCalls  Calls
-	DeleteCalls    Calls
-	DeleteAllCalls Calls
-	CopyCalls      Calls
+	UploadCalls       Calls
+	DownloadCalls     Calls
+	DeleteCalls       Calls
+	DeleteAllCalls    Calls
+	CopyCalls         Calls
+	ExistsCalls       Calls
+	PresignedURLCalls Calls
 
-	UploadError    error
-	DownloadError  error
-	DeleteError    error
-	DeleteAllError error
-	CopyError      error
+	UploadError       error
+	DownloadError     error
+	DeleteError       error
+	DeleteAllError    error
+	CopyError         error
+	ExistsError       error
+	PresignedURLError error
+
+	ExistsReturn       bool
+	PresignedURLReturn string
 
 	UploadTimeout time.Duration
 
@@ -89,4 +96,20 @@ func (s *S3) Copy(region, bucket, srcKey, destKey string) error {
 
 	s.CopyCalls.Add(argList, List{err}, nil)
 	return err
+}
+
+func (s *S3) PresignedURL(region, bucket, key string, expireTime time.Duration) (string, error) {
+	err := s.PresignedURLError
+	argList := List{region, bucket, key, expireTime}
+
+	s.PresignedURLCalls.Add(argList, List{s.PresignedURLReturn, err}, nil)
+	return s.PresignedURLReturn, err
+}
+
+func (s *S3) Exists(region, bucket, key string) (bool, error) {
+	err := s.ExistsError
+	argList := List{region, bucket, key}
+
+	s.ExistsCalls.Add(argList, List{s.ExistsReturn, err}, nil)
+	return s.ExistsReturn, err
 }
