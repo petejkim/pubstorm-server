@@ -3,6 +3,7 @@ package deployments_test
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"io/ioutil"
@@ -935,6 +936,226 @@ var _ = Describe("Deployments", func() {
 					"error": "not_found",
 					"error_description": "deployment could not be found"
 				}`))
+			})
+		})
+	})
+
+	Describe("GET /projects/:project_name/deployments/:id/download", func() {
+		var (
+			err error
+
+			fakeS3 *fake.S3
+			origS3 filetransfer.FileTransfer
+
+			u *user.User
+			t *oauthtoken.OauthToken
+
+			headers http.Header
+			proj    *project.Project
+			depl    *deployment.Deployment
+			bun     *rawbundle.RawBundle
+		)
+
+		BeforeEach(func() {
+			origS3 = s3client.S3
+			fakeS3 = &fake.S3{}
+			s3client.S3 = fakeS3
+
+			u, _, t = factories.AuthTrio(db)
+
+			headers = http.Header{
+				"Authorization": {"Bearer " + t.Token},
+			}
+
+			proj = &project.Project{
+				Name:   "foo-bar-express",
+				UserID: u.ID,
+			}
+			Expect(db.Create(proj).Error).To(BeNil())
+
+			bun = factories.RawBundle(db, proj)
+
+			depl = factories.DeploymentWithAttrs(db, proj, u, deployment.Deployment{
+				Prefix:      "a1b2c3",
+				State:       deployment.StateDeployed,
+				DeployedAt:  timeAgo(-1 * time.Hour),
+				RawBundleID: &bun.ID,
+			})
+		})
+
+		AfterEach(func() {
+			s3client.S3 = origS3
+		})
+
+		doRequest := func() {
+			s = httptest.NewServer(server.New())
+			uri := fmt.Sprintf("%s/projects/foo-bar-express/deployments/%d/download", s.URL, depl.ID)
+
+			req, err := http.NewRequest("GET", uri, nil)
+			Expect(err).To(BeNil())
+
+			if headers != nil {
+				for k, v := range headers {
+					for _, h := range v {
+						req.Header.Add(k, h)
+					}
+				}
+			}
+
+			// Hack so that we don't follow redirects.
+			// In Go 1.7, we can use http.ErrUseLastResponse (see https://github.com/golang/go/commit/8f13080267d0ddbb50da9029339796841224116a).
+			redirectErr := errors.New("redirect received")
+			client := &http.Client{
+				CheckRedirect: func(req *http.Request, via []*http.Request) error {
+					if len(via) > 0 {
+						return redirectErr
+					}
+					return nil
+				},
+			}
+
+			res, err = client.Do(req)
+			if err != nil {
+				if e, ok := err.(*url.Error); ok {
+					Expect(e.Err).To(Equal(redirectErr))
+					return
+				}
+			}
+
+			Expect(err).To(BeNil())
+		}
+
+		sharedexamples.ItRequiresAuthentication(func() (*gorm.DB, *user.User, *http.Header) {
+			return db, u, &headers
+		}, func() *http.Response {
+			doRequest()
+			return res
+		}, nil)
+
+		sharedexamples.ItRequiresProjectCollab(func() (*gorm.DB, *user.User, *project.Project) {
+			return db, u, proj
+		}, func() *http.Response {
+			doRequest()
+			return res
+		}, nil)
+
+		Context("when the deployment does not exist", func() {
+			BeforeEach(func() {
+				Expect(db.Delete(depl).Error).To(BeNil())
+			})
+
+			It("responds with 404 Not Found", func() {
+				doRequest()
+
+				b := &bytes.Buffer{}
+				_, err = b.ReadFrom(res.Body)
+
+				Expect(res.StatusCode).To(Equal(http.StatusNotFound))
+				Expect(b.String()).To(MatchJSON(`{
+					"error": "not_found",
+					"error_description": "deployment could not be found"
+				}`))
+			})
+		})
+
+		Context("when the deployment id is not a number", func() {
+			BeforeEach(func() {
+				s = httptest.NewServer(server.New())
+				url := fmt.Sprintf("%s/projects/foo-bar-express/deployments/cafebabe", s.URL)
+				res, err = testhelper.MakeRequest("GET", url, nil, headers, nil)
+				Expect(err).To(BeNil())
+			})
+
+			It("responds with 404 Not Found", func() {
+				b := &bytes.Buffer{}
+				_, err = b.ReadFrom(res.Body)
+
+				Expect(res.StatusCode).To(Equal(http.StatusNotFound))
+				Expect(b.String()).To(MatchJSON(`{
+					"error": "not_found",
+					"error_description": "deployment could not be found"
+				}`))
+			})
+		})
+
+		Context("when the deployment does not have an associated RawBundle", func() {
+			BeforeEach(func() {
+				depl.RawBundleID = nil
+				Expect(db.Save(depl).Error).To(BeNil())
+			})
+
+			It("responds with 404 Not Found", func() {
+				doRequest()
+
+				b := &bytes.Buffer{}
+				_, err = b.ReadFrom(res.Body)
+
+				Expect(res.StatusCode).To(Equal(http.StatusNotFound))
+				Expect(b.String()).To(MatchJSON(`{
+					"error": "not_found",
+					"error_description": "deployment cannot be downloaded"
+				}`))
+			})
+		})
+
+		Context("when the deployment's associated RawBundle does not exist", func() {
+			BeforeEach(func() {
+				Expect(db.Delete(bun).Error).To(BeNil())
+			})
+
+			It("responds with 410 Gone", func() {
+				doRequest()
+
+				b := &bytes.Buffer{}
+				_, err = b.ReadFrom(res.Body)
+
+				Expect(res.StatusCode).To(Equal(http.StatusGone))
+				Expect(b.String()).To(MatchJSON(`{
+					"error": "gone",
+					"error_description": "deployment can no longer be downloaded"
+				}`))
+			})
+		})
+
+		Context("when raw bundle does not exist on S3", func() {
+			BeforeEach(func() {
+				fakeS3.ExistsReturn = false
+			})
+
+			It("responds with 410 Gone", func() {
+				doRequest()
+
+				b := &bytes.Buffer{}
+				_, err = b.ReadFrom(res.Body)
+
+				Expect(res.StatusCode).To(Equal(http.StatusGone))
+				Expect(b.String()).To(MatchJSON(`{
+					"error": "gone",
+					"error_description": "deployment can no longer be downloaded"
+				}`))
+
+				Expect(fakeS3.ExistsCalls.Count()).To(Equal(1))
+			})
+		})
+
+		Context("when raw bundle exists on S3", func() {
+			BeforeEach(func() {
+				fakeS3.ExistsReturn = true
+				fakeS3.PresignedURLReturn = "https://s3-us-west-2.amazonaws.com/deployments/abcd/raw-bundle.zip?abc=123"
+			})
+
+			It("redirects to a pre-signed download URL of the raw bundle in S3", func() {
+				doRequest()
+
+				Expect(fakeS3.PresignedURLCalls.Count()).To(Equal(1))
+				call := fakeS3.PresignedURLCalls.NthCall(1)
+				Expect(call).NotTo(BeNil())
+				Expect(call.Arguments[0]).To(Equal(s3client.BucketRegion))
+				Expect(call.Arguments[1]).To(Equal(s3client.BucketName))
+				Expect(call.Arguments[2]).To(Equal(bun.UploadedPath))
+
+				Expect(res.StatusCode).To(Equal(http.StatusFound))
+				Expect(res.Header.Get("Location")).To(Equal(fakeS3.PresignedURLReturn))
 			})
 		})
 	})

@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"strconv"
 	"strings"
+	"time"
 
 	log "github.com/Sirupsen/logrus"
 	"github.com/gin-gonic/gin"
@@ -30,6 +31,8 @@ const (
 	viaCachedBundle
 	viaTemplate
 )
+
+const presignExpiryDuration = 1 * time.Minute
 
 // Create deploys a project.
 func Create(c *gin.Context) {
@@ -382,6 +385,83 @@ func Show(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{
 		"deployment": depl.AsJSON(),
 	})
+}
+
+// Download allows users to download an (unoptimized) tarball of the files of a
+// deployment.
+func Download(c *gin.Context) {
+	deploymentID, err := strconv.ParseInt(c.Param("id"), 10, 64)
+	if err != nil {
+		c.JSON(http.StatusNotFound, gin.H{
+			"error":             "not_found",
+			"error_description": "deployment could not be found",
+		})
+		return
+	}
+
+	db, err := dbconn.DB()
+	if err != nil {
+		controllers.InternalServerError(c, err)
+		return
+	}
+
+	depl := &deployment.Deployment{}
+	if err := db.First(depl, deploymentID).Error; err != nil {
+		if err == gorm.RecordNotFound {
+			c.JSON(http.StatusNotFound, gin.H{
+				"error":             "not_found",
+				"error_description": "deployment could not be found",
+			})
+			return
+		}
+		controllers.InternalServerError(c, err)
+		return
+	}
+
+	if depl.RawBundleID == nil {
+		c.JSON(http.StatusNotFound, gin.H{
+			"error":             "not_found",
+			"error_description": "deployment cannot be downloaded",
+		})
+		return
+	}
+
+	bun := &rawbundle.RawBundle{}
+	if err := db.First(bun, *depl.RawBundleID).Error; err != nil {
+		if err == gorm.RecordNotFound {
+			c.JSON(http.StatusGone, gin.H{
+				"error":             "gone",
+				"error_description": "deployment can no longer be downloaded",
+			})
+			return
+		}
+		controllers.InternalServerError(c, err)
+		return
+	}
+
+	exists, err := s3client.Exists(bun.UploadedPath)
+	if err != nil {
+		log.Warnf("failed to check existence of %q on S3, err: %v", bun.UploadedPath, err)
+		controllers.InternalServerError(c, err)
+		return
+	}
+	if !exists {
+		log.Warnf("deployment raw bundle %q does not exist in S3", bun.UploadedPath)
+		c.JSON(http.StatusGone, gin.H{
+			"error":             "gone",
+			"error_description": "deployment can no longer be downloaded",
+		})
+		return
+	}
+
+	url, err := s3client.PresignedURL(bun.UploadedPath, presignExpiryDuration)
+	if err != nil {
+		log.Printf("error generating presigned URL to %q, err: %v", bun.UploadedPath, err)
+		controllers.InternalServerError(c, err)
+		return
+	}
+
+	c.Redirect(http.StatusFound, url)
 }
 
 // Rollback either rolls back a project to the previous deployment, or to a

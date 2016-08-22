@@ -55,6 +55,7 @@ func Draw(r *gin.Engine) {
 			projCollab := authorized.Group("/projects/:project_name", middleware.RequireProjectCollab)
 
 			projCollab.GET("", projects.Get)
+			projCollab.GET("/deployments/:id/download", deployments.Download)
 			projCollab.GET("/deployments/:id", deployments.Show)
 			projCollab.GET("/deployments", deployments.Index)
 			projCollab.GET("repos", repos.Show)
