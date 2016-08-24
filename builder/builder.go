@@ -94,7 +94,7 @@ func run() {
 				// failure
 				log.Warnln("Work failed", err, string(d.Body))
 
-				if err == builder.ErrRecordNotFound {
+				if err == builder.ErrRecordNotFound || err == builder.ErrUnarchiveFailed {
 					if err := d.Ack(false); err != nil {
 						log.WithFields(log.Fields{"queue": queueName}).Warnln("Failed to Ack message:", err)
 					}
