@@ -248,7 +248,12 @@ var _ = Describe("Project collaborators", func() {
 				Expect(props["projectName"]).To(Equal("panda-express"))
 				Expect(props["collabEmail"]).To(Equal(anotherU.Email))
 
-				Expect(trackCall.Arguments[4]).To(BeNil())
+				c := trackCall.Arguments[4]
+				context, ok := c.(map[string]interface{})
+				Expect(ok).To(BeTrue())
+				Expect(context["ip"]).ToNot(BeNil())
+				Expect(context["user_agent"]).ToNot(BeNil())
+
 				Expect(trackCall.ReturnValues[0]).To(BeNil())
 			})
 		})
@@ -357,7 +362,12 @@ var _ = Describe("Project collaborators", func() {
 				Expect(props["projectName"]).To(Equal("panda-express"))
 				Expect(props["collabEmail"]).To(Equal(u2.Email))
 
-				Expect(trackCall.Arguments[4]).To(BeNil())
+				c := trackCall.Arguments[4]
+				context, ok := c.(map[string]interface{})
+				Expect(ok).To(BeTrue())
+				Expect(context["ip"]).ToNot(BeNil())
+				Expect(context["user_agent"]).ToNot(BeNil())
+
 				Expect(trackCall.ReturnValues[0]).To(BeNil())
 			})
 		})

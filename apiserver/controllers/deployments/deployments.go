@@ -236,7 +236,10 @@ func Create(c *gin.Context) {
 				"deploymentPrefix":  depl.Prefix,
 				"deploymentVersion": depl.Version,
 			}
-			context map[string]interface{}
+			context = map[string]interface{}{
+				"ip":         common.GetIP(c.Request),
+				"user_agent": c.Request.UserAgent(),
+			}
 		)
 		if err := common.Track(strconv.Itoa(int(u.ID)), event, "", props, context); err != nil {
 			log.Errorf("failed to track %q event for user ID %d, err: %v",
@@ -388,7 +391,10 @@ func Rollback(c *gin.Context) {
 				"deployedVersion": currentDepl.Version,
 				"targetVersion":   depl.Version,
 			}
-			context map[string]interface{}
+			context = map[string]interface{}{
+				"ip":         common.GetIP(c.Request),
+				"user_agent": c.Request.UserAgent(),
+			}
 		)
 		if err := common.Track(strconv.Itoa(int(u.ID)), event, "", props, context); err != nil {
 			log.Errorf("failed to track %q event for user ID %d, err: %v",

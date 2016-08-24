@@ -395,7 +395,12 @@ var _ = Describe("Deployments", func() {
 					Expect(props["deploymentPrefix"]).To(Equal(depl.Prefix))
 					Expect(props["deploymentVersion"]).To(Equal(depl.Version))
 
-					Expect(trackCall.Arguments[4]).To(BeNil())
+					c := trackCall.Arguments[4]
+					context, ok := c.(map[string]interface{})
+					Expect(ok).To(BeTrue())
+					Expect(context["ip"]).ToNot(BeNil())
+					Expect(context["user_agent"]).ToNot(BeNil())
+
 					Expect(trackCall.ReturnValues[0]).To(BeNil())
 				})
 
@@ -969,7 +974,12 @@ var _ = Describe("Deployments", func() {
 				Expect(props["deployedVersion"]).To(Equal(depl3.Version))
 				Expect(props["targetVersion"]).To(Equal(depl1.Version))
 
-				Expect(trackCall.Arguments[4]).To(BeNil())
+				c := trackCall.Arguments[4]
+				context, ok := c.(map[string]interface{})
+				Expect(ok).To(BeTrue())
+				Expect(context["ip"]).ToNot(BeNil())
+				Expect(context["user_agent"]).ToNot(BeNil())
+
 				Expect(trackCall.ReturnValues[0]).To(BeNil())
 			})
 		})
@@ -1055,7 +1065,12 @@ var _ = Describe("Deployments", func() {
 				Expect(props["deployedVersion"]).To(Equal(depl3.Version))
 				Expect(props["targetVersion"]).To(Equal(depl4.Version))
 
-				Expect(trackCall.Arguments[4]).To(BeNil())
+				c := trackCall.Arguments[4]
+				context, ok := c.(map[string]interface{})
+				Expect(ok).To(BeTrue())
+				Expect(context["ip"]).ToNot(BeNil())
+				Expect(context["user_agent"]).ToNot(BeNil())
+
 				Expect(trackCall.ReturnValues[0]).To(BeNil())
 			})
 

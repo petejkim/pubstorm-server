@@ -96,7 +96,10 @@ func Create(c *gin.Context) {
 				"email": u.Email,
 				"name":  u.Name,
 			}
-			context map[string]interface{}
+			context = map[string]interface{}{
+				"ip":         common.GetIP(c.Request),
+				"user_agent": c.Request.UserAgent(),
+			}
 		)
 
 		if err := common.Alias(strconv.Itoa(int(u.ID)), anonymousID); err != nil {
@@ -168,7 +171,11 @@ func Confirm(c *gin.Context) {
 					"name":        u.Name,
 					"confirmedAt": u.ConfirmedAt,
 				}
-				props, context map[string]interface{}
+				props   map[string]interface{}
+				context = map[string]interface{}{
+					"ip":         common.GetIP(c.Request),
+					"user_agent": c.Request.UserAgent(),
+				}
 			)
 			if err := common.Identify(strconv.Itoa(int(u.ID)), anonymousID, traits, context); err != nil {
 				log.Errorf("failed to update user identity for user ID %d, err: %v", u.ID, err)

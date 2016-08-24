@@ -115,7 +115,10 @@ func CreateToken(c *gin.Context) {
 				"oauthClientId":   client.ID,
 				"oauthClientName": client.Name,
 			}
-			context map[string]interface{}
+			context = map[string]interface{}{
+				"ip":         common.GetIP(c.Request),
+				"user_agent": c.Request.UserAgent(),
+			}
 		)
 		if err := common.Track(strconv.Itoa(int(u.ID)), event, "", props, context); err != nil {
 			log.Errorf("failed to track %q event for user ID %d, err: %v",
@@ -153,8 +156,12 @@ func DestroyToken(c *gin.Context) {
 		u := controllers.CurrentUser(c)
 
 		var (
-			event          = "User Logged Out"
-			props, context map[string]interface{}
+			event   = "User Logged Out"
+			props   map[string]interface{}
+			context = map[string]interface{}{
+				"ip":         common.GetIP(c.Request),
+				"user_agent": c.Request.UserAgent(),
+			}
 		)
 		if err := common.Track(strconv.Itoa(int(u.ID)), event, "", props, context); err != nil {
 			log.Errorf("failed to track %q event for user ID %d, err: %v",
