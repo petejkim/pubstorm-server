@@ -400,8 +400,8 @@ var _ = Describe("Builder", func() {
 		})
 	})
 
-	Context("when the deployment is in an expected state", func() {
-		It("returns an error if the deployment is not in `pending_build` state", func() {
+	Context("when the deployment is not in the `pending_build` state", func() {
+		It("returns an error", func() {
 			depl.State = deployment.StateUploaded
 			Expect(db.Save(depl).Error).To(BeNil())
 

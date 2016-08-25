@@ -136,8 +136,10 @@ func Work(data []byte) error {
 			archiveFormat = "tar.gz"
 		}
 
-		bundlePath := "deployments/" + prefixID + "/optimized-bundle." + archiveFormat
-		if d.UseRawBundle {
+		var bundlePath string
+		if !d.UseRawBundle {
+			bundlePath = "deployments/" + prefixID + "/optimized-bundle." + archiveFormat
+		} else {
 			// If this deployment uses a raw bundle from a previous deploy, use that.
 			if depl.RawBundleID != nil {
 				bun := &rawbundle.RawBundle{}

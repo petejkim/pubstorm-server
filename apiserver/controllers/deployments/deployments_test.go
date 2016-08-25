@@ -3,6 +3,7 @@ package deployments_test
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"io/ioutil"
@@ -23,6 +24,7 @@ import (
 	"github.com/nitrous-io/rise-server/apiserver/models/oauthtoken"
 	"github.com/nitrous-io/rise-server/apiserver/models/project"
 	"github.com/nitrous-io/rise-server/apiserver/models/rawbundle"
+	"github.com/nitrous-io/rise-server/apiserver/models/template"
 	"github.com/nitrous-io/rise-server/apiserver/models/user"
 	"github.com/nitrous-io/rise-server/apiserver/server"
 	"github.com/nitrous-io/rise-server/pkg/filetransfer"
@@ -157,13 +159,14 @@ var _ = Describe("Deployments", func() {
 			Expect(err).To(BeNil())
 		}
 
-		doRequestWithBundleChecksum := func(checksum string) {
+		doRequestWithForm := func(params url.Values) {
 			s = httptest.NewServer(server.New())
-			params := url.Values{
-				"bundle_checksum": {checksum},
-			}
 			res, err = testhelper.MakeRequest("POST", s.URL+"/projects/foo-bar-express/deployments", params, headers, nil)
 			Expect(err).To(BeNil())
+		}
+
+		doRequestWithBundleChecksum := func(checksum string) {
+			doRequestWithForm(url.Values{"bundle_checksum": {checksum}})
 		}
 
 		doRequest := func() {
@@ -485,28 +488,8 @@ var _ = Describe("Deployments", func() {
 				})
 			})
 
-			Context("when request is not multipart", func() {
-				Context("when raw_bundle is not specified", func() {
-					BeforeEach(func() {
-						doRequestWithBundleChecksum("")
-					})
-
-					It("returns 422 with invalid request", func() {
-						b := &bytes.Buffer{}
-						_, err = b.ReadFrom(res.Body)
-						Expect(err).To(BeNil())
-
-						Expect(res.StatusCode).To(Equal(422))
-						Expect(b.String()).To(MatchJSON(`{
-							"error": "invalid_params",
-							"errors": {
-								"bundle_checksum": "is required"
-							}
-						}`))
-					})
-				})
-
-				Context("when bundle_checksum is specified and the raw bundle exists", func() {
+			Context("when bundle_checksum is specified", func() {
+				Context("when raw bundle exists", func() {
 					var (
 						depl              *deployment.Deployment
 						existingRawBundle *rawbundle.RawBundle
@@ -609,7 +592,7 @@ var _ = Describe("Deployments", func() {
 					})
 				})
 
-				Context("when bundle checksum is specified and the bundle does not exist", func() {
+				Context("when the bundle does not exist", func() {
 					BeforeEach(func() {
 						doRequestWithBundleChecksum("db39e098913eee20e5371139022e4431ffe7b01baa524bd87e08f2763de3ea55")
 					})
@@ -629,7 +612,7 @@ var _ = Describe("Deployments", func() {
 					})
 				})
 
-				Context("when bundle checksum is specified but the bundle has been deleted", func() {
+				Context("when the bundle has been deleted", func() {
 					var existingRawBundle *rawbundle.RawBundle
 
 					BeforeEach(func() {
@@ -654,6 +637,160 @@ var _ = Describe("Deployments", func() {
 							"error": "invalid_params",
 							"errors": {
 								"bundle_checksum": "the bundle could not be found"
+							}
+						}`))
+					})
+				})
+			})
+
+			Context("when template_id is specified", func() {
+				Context("when template exists", func() {
+					var tmpl *template.Template
+
+					BeforeEach(func() {
+						tmpl = &template.Template{
+							Name:            "Blog",
+							Rank:            1,
+							DownloadURL:     "/templates/blog.zip",
+							PreviewURL:      "",
+							PreviewImageURL: "",
+						}
+						Expect(db.Create(tmpl).Error).To(BeNil())
+					})
+
+					It("returns 202 accepted", func() {
+						doRequestWithForm(url.Values{
+							"template_id": {strconv.Itoa(int(tmpl.ID))},
+						})
+
+						Expect(res.StatusCode).To(Equal(http.StatusAccepted))
+
+						depl := &deployment.Deployment{}
+						db.Last(depl)
+
+						b := &bytes.Buffer{}
+						_, err = b.ReadFrom(res.Body)
+
+						j := map[string]interface{}{
+							"deployment": map[string]interface{}{
+								"id":      depl.ID,
+								"state":   deployment.StatePendingBuild,
+								"version": 1,
+							},
+						}
+						expectedJSON, err := json.Marshal(j)
+						Expect(err).To(BeNil())
+						Expect(b.String()).To(MatchJSON(expectedJSON))
+					})
+
+					It("creates a deployment record and a raw_bundle record", func() {
+						doRequestWithForm(url.Values{
+							"template_id": {strconv.Itoa(int(tmpl.ID))},
+						})
+
+						depl := &deployment.Deployment{}
+						db.Last(depl)
+
+						Expect(depl).NotTo(BeNil())
+						Expect(depl.ProjectID).To(Equal(proj.ID))
+						Expect(depl.UserID).To(Equal(u.ID))
+						Expect(depl.State).To(Equal(deployment.StatePendingBuild))
+						Expect(depl.Prefix).NotTo(HaveLen(0))
+						Expect(depl.Version).To(Equal(int64(1)))
+						Expect(depl.RawBundleID).NotTo(BeNil())
+
+						Expect(*depl.TemplateID).To(Equal(tmpl.ID))
+
+						bun := &rawbundle.RawBundle{}
+						db.First(bun, *depl.RawBundleID)
+
+						Expect(bun).NotTo(BeNil())
+						Expect(bun.UploadedPath).To(Equal("deployments/" + depl.PrefixID() + "/raw-bundle.zip"))
+					})
+
+					It("does not upload bundle to S3", func() {
+						doRequestWithForm(url.Values{
+							"template_id": {strconv.Itoa(int(tmpl.ID))},
+						})
+
+						Expect(fakeS3.UploadCalls.Count()).To(Equal(0))
+					})
+
+					It("makes a copy of the template on S3", func() {
+						doRequestWithForm(url.Values{
+							"template_id": {strconv.Itoa(int(tmpl.ID))},
+						})
+
+						Expect(fakeS3.CopyCalls.Count()).To(Equal(1))
+						call := fakeS3.CopyCalls.NthCall(1)
+						Expect(call).NotTo(BeNil())
+						Expect(call.Arguments[0]).To(Equal(s3client.BucketRegion))
+						Expect(call.Arguments[1]).To(Equal(s3client.BucketName))
+						Expect(call.Arguments[2]).To(Equal(tmpl.DownloadURL))
+
+						depl := &deployment.Deployment{}
+						db.Last(depl)
+
+						Expect(call.Arguments[3]).To(Equal("deployments/" + depl.PrefixID() + "/raw-bundle.zip"))
+					})
+
+					It("enqueues a build job", func() {
+						doRequestWithForm(url.Values{
+							"template_id": {strconv.Itoa(int(tmpl.ID))},
+						})
+
+						depl := &deployment.Deployment{}
+						db.Last(depl)
+
+						m := testhelper.ConsumeQueue(mq, queues.Build)
+						Expect(m).NotTo(BeNil())
+						Expect(m.Body).To(MatchJSON(fmt.Sprintf(`
+							{
+								"deployment_id": %d,
+								"archive_format": "zip"
+							}
+						`, depl.ID)))
+					})
+				})
+
+				Context("when template_id is not a valid integer", func() {
+					It("returns 422", func() {
+						doRequestWithForm(url.Values{
+							"template_id": {"not-an-integer"},
+						})
+
+						b := &bytes.Buffer{}
+						_, err = b.ReadFrom(res.Body)
+						Expect(err).To(BeNil())
+
+						_, err = b.ReadFrom(res.Body)
+						Expect(err).To(BeNil())
+
+						Expect(res.StatusCode).To(Equal(422))
+						Expect(b.String()).To(MatchJSON(`{
+							"error": "invalid_params",
+							"errors": {
+								"template_id": "is invalid"
+							}
+						}`))
+					})
+				})
+
+				Context("when template does not exist", func() {
+					It("returns 422", func() {
+						doRequestWithForm(url.Values{
+							"template_id": {"999"},
+						})
+
+						b := &bytes.Buffer{}
+						_, err = b.ReadFrom(res.Body)
+						Expect(err).To(BeNil())
+
+						Expect(res.StatusCode).To(Equal(422))
+						Expect(b.String()).To(MatchJSON(`{
+							"error": "invalid_params",
+							"errors": {
+								"template_id": "is not that of a known template"
 							}
 						}`))
 					})
@@ -804,6 +941,226 @@ var _ = Describe("Deployments", func() {
 					"error": "not_found",
 					"error_description": "deployment could not be found"
 				}`))
+			})
+		})
+	})
+
+	Describe("GET /projects/:project_name/deployments/:id/download", func() {
+		var (
+			err error
+
+			fakeS3 *fake.S3
+			origS3 filetransfer.FileTransfer
+
+			u *user.User
+			t *oauthtoken.OauthToken
+
+			headers http.Header
+			proj    *project.Project
+			depl    *deployment.Deployment
+			bun     *rawbundle.RawBundle
+		)
+
+		BeforeEach(func() {
+			origS3 = s3client.S3
+			fakeS3 = &fake.S3{}
+			s3client.S3 = fakeS3
+
+			u, _, t = factories.AuthTrio(db)
+
+			headers = http.Header{
+				"Authorization": {"Bearer " + t.Token},
+			}
+
+			proj = &project.Project{
+				Name:   "foo-bar-express",
+				UserID: u.ID,
+			}
+			Expect(db.Create(proj).Error).To(BeNil())
+
+			bun = factories.RawBundle(db, proj)
+
+			depl = factories.DeploymentWithAttrs(db, proj, u, deployment.Deployment{
+				Prefix:      "a1b2c3",
+				State:       deployment.StateDeployed,
+				DeployedAt:  timeAgo(-1 * time.Hour),
+				RawBundleID: &bun.ID,
+			})
+		})
+
+		AfterEach(func() {
+			s3client.S3 = origS3
+		})
+
+		doRequest := func() {
+			s = httptest.NewServer(server.New())
+			uri := fmt.Sprintf("%s/projects/foo-bar-express/deployments/%d/download", s.URL, depl.ID)
+
+			req, err := http.NewRequest("GET", uri, nil)
+			Expect(err).To(BeNil())
+
+			if headers != nil {
+				for k, v := range headers {
+					for _, h := range v {
+						req.Header.Add(k, h)
+					}
+				}
+			}
+
+			// Hack so that we don't follow redirects.
+			// In Go 1.7, we can use http.ErrUseLastResponse (see https://github.com/golang/go/commit/8f13080267d0ddbb50da9029339796841224116a).
+			redirectErr := errors.New("redirect received")
+			client := &http.Client{
+				CheckRedirect: func(req *http.Request, via []*http.Request) error {
+					if len(via) > 0 {
+						return redirectErr
+					}
+					return nil
+				},
+			}
+
+			res, err = client.Do(req)
+			if err != nil {
+				if e, ok := err.(*url.Error); ok {
+					Expect(e.Err).To(Equal(redirectErr))
+					return
+				}
+			}
+
+			Expect(err).To(BeNil())
+		}
+
+		sharedexamples.ItRequiresAuthentication(func() (*gorm.DB, *user.User, *http.Header) {
+			return db, u, &headers
+		}, func() *http.Response {
+			doRequest()
+			return res
+		}, nil)
+
+		sharedexamples.ItRequiresProjectCollab(func() (*gorm.DB, *user.User, *project.Project) {
+			return db, u, proj
+		}, func() *http.Response {
+			doRequest()
+			return res
+		}, nil)
+
+		Context("when the deployment does not exist", func() {
+			BeforeEach(func() {
+				Expect(db.Delete(depl).Error).To(BeNil())
+			})
+
+			It("responds with 404 Not Found", func() {
+				doRequest()
+
+				b := &bytes.Buffer{}
+				_, err = b.ReadFrom(res.Body)
+
+				Expect(res.StatusCode).To(Equal(http.StatusNotFound))
+				Expect(b.String()).To(MatchJSON(`{
+					"error": "not_found",
+					"error_description": "deployment could not be found"
+				}`))
+			})
+		})
+
+		Context("when the deployment id is not a number", func() {
+			BeforeEach(func() {
+				s = httptest.NewServer(server.New())
+				url := fmt.Sprintf("%s/projects/foo-bar-express/deployments/cafebabe", s.URL)
+				res, err = testhelper.MakeRequest("GET", url, nil, headers, nil)
+				Expect(err).To(BeNil())
+			})
+
+			It("responds with 404 Not Found", func() {
+				b := &bytes.Buffer{}
+				_, err = b.ReadFrom(res.Body)
+
+				Expect(res.StatusCode).To(Equal(http.StatusNotFound))
+				Expect(b.String()).To(MatchJSON(`{
+					"error": "not_found",
+					"error_description": "deployment could not be found"
+				}`))
+			})
+		})
+
+		Context("when the deployment does not have an associated RawBundle", func() {
+			BeforeEach(func() {
+				depl.RawBundleID = nil
+				Expect(db.Save(depl).Error).To(BeNil())
+			})
+
+			It("responds with 404 Not Found", func() {
+				doRequest()
+
+				b := &bytes.Buffer{}
+				_, err = b.ReadFrom(res.Body)
+
+				Expect(res.StatusCode).To(Equal(http.StatusNotFound))
+				Expect(b.String()).To(MatchJSON(`{
+					"error": "not_found",
+					"error_description": "deployment cannot be downloaded"
+				}`))
+			})
+		})
+
+		Context("when the deployment's associated RawBundle does not exist", func() {
+			BeforeEach(func() {
+				Expect(db.Delete(bun).Error).To(BeNil())
+			})
+
+			It("responds with 410 Gone", func() {
+				doRequest()
+
+				b := &bytes.Buffer{}
+				_, err = b.ReadFrom(res.Body)
+
+				Expect(res.StatusCode).To(Equal(http.StatusGone))
+				Expect(b.String()).To(MatchJSON(`{
+					"error": "gone",
+					"error_description": "deployment can no longer be downloaded"
+				}`))
+			})
+		})
+
+		Context("when raw bundle does not exist on S3", func() {
+			BeforeEach(func() {
+				fakeS3.ExistsReturn = false
+			})
+
+			It("responds with 410 Gone", func() {
+				doRequest()
+
+				b := &bytes.Buffer{}
+				_, err = b.ReadFrom(res.Body)
+
+				Expect(res.StatusCode).To(Equal(http.StatusGone))
+				Expect(b.String()).To(MatchJSON(`{
+					"error": "gone",
+					"error_description": "deployment can no longer be downloaded"
+				}`))
+
+				Expect(fakeS3.ExistsCalls.Count()).To(Equal(1))
+			})
+		})
+
+		Context("when raw bundle exists on S3", func() {
+			BeforeEach(func() {
+				fakeS3.ExistsReturn = true
+				fakeS3.PresignedURLReturn = "https://s3-us-west-2.amazonaws.com/deployments/abcd/raw-bundle.zip?abc=123"
+			})
+
+			It("redirects to a pre-signed download URL of the raw bundle in S3", func() {
+				doRequest()
+
+				Expect(fakeS3.PresignedURLCalls.Count()).To(Equal(1))
+				call := fakeS3.PresignedURLCalls.NthCall(1)
+				Expect(call).NotTo(BeNil())
+				Expect(call.Arguments[0]).To(Equal(s3client.BucketRegion))
+				Expect(call.Arguments[1]).To(Equal(s3client.BucketName))
+				Expect(call.Arguments[2]).To(Equal(bun.UploadedPath))
+
+				Expect(res.StatusCode).To(Equal(http.StatusFound))
+				Expect(res.Header.Get("Location")).To(Equal(fakeS3.PresignedURLReturn))
 			})
 		})
 	})

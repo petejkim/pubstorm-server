@@ -4,6 +4,7 @@ import (
 	"io"
 	"math"
 	"os"
+	"time"
 
 	"github.com/nitrous-io/rise-server/pkg/filetransfer"
 )
@@ -30,14 +31,26 @@ func init() {
 	}
 }
 
-func Upload(path string, body io.Reader, contentType, acl string) (err error) {
+func Upload(path string, body io.Reader, contentType, acl string) error {
 	return S3.Upload(BucketRegion, BucketName, path, body, contentType, acl)
 }
 
-func Download(path string, out io.WriterAt) (err error) {
+func Download(path string, out io.WriterAt) error {
 	return S3.Download(BucketRegion, BucketName, path, out)
 }
 
-func Delete(path ...string) (err error) {
+func Delete(path ...string) error {
 	return S3.Delete(BucketRegion, BucketName, path...)
+}
+
+func Copy(src, dest string) error {
+	return S3.Copy(BucketRegion, BucketName, src, dest)
+}
+
+func Exists(path string) (bool, error) {
+	return S3.Exists(BucketRegion, BucketName, path)
+}
+
+func PresignedURL(key string, expireTime time.Duration) (string, error) {
+	return S3.PresignedURL(BucketRegion, BucketName, key, expireTime)
 }

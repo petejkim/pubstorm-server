@@ -791,25 +791,27 @@ var _ = Describe("Deployer", func() {
 	})
 
 	Context("when `use_raw_bundle` is true", func() {
-		It("downloads raw bundle to deploy", func() {
-			// mock download
-			fakeS3.DownloadContent, err = ioutil.ReadFile("../../testhelper/fixtures/website.tar.gz")
-			Expect(err).To(BeNil())
+		Context("when deployment uses a raw bundle", func() {
+			It("downloads raw bundle (instead of trying to download an optimized bundle) to deploy", func() {
+				// mock download
+				fakeS3.DownloadContent, err = ioutil.ReadFile("../../testhelper/fixtures/website.tar.gz")
+				Expect(err).To(BeNil())
 
-			err = deployer.Work([]byte(fmt.Sprintf(`{
-				"deployment_id": %d,
-				"use_raw_bundle": true
-			}`, depl.ID)))
-			Expect(err).To(BeNil())
+				err = deployer.Work([]byte(fmt.Sprintf(`{
+					"deployment_id": %d,
+					"use_raw_bundle": true
+				}`, depl.ID)))
+				Expect(err).To(BeNil())
 
-			// it should download raw bundle from s3
-			Expect(fakeS3.DownloadCalls.Count()).To(Equal(1))
-			downloadCall := fakeS3.DownloadCalls.NthCall(1)
-			Expect(downloadCall).NotTo(BeNil())
-			Expect(downloadCall.Arguments[0]).To(Equal(s3client.BucketRegion))
-			Expect(downloadCall.Arguments[1]).To(Equal(s3client.BucketName))
-			Expect(downloadCall.Arguments[2]).To(Equal(bun.UploadedPath))
-			Expect(downloadCall.ReturnValues[0]).To(BeNil())
+				// it should download raw bundle from s3
+				Expect(fakeS3.DownloadCalls.Count()).To(Equal(1))
+				downloadCall := fakeS3.DownloadCalls.NthCall(1)
+				Expect(downloadCall).NotTo(BeNil())
+				Expect(downloadCall.Arguments[0]).To(Equal(s3client.BucketRegion))
+				Expect(downloadCall.Arguments[1]).To(Equal(s3client.BucketName))
+				Expect(downloadCall.Arguments[2]).To(Equal(bun.UploadedPath))
+				Expect(downloadCall.ReturnValues[0]).To(BeNil())
+			})
 		})
 	})
 

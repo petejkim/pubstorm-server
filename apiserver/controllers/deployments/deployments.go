@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"strconv"
 	"strings"
+	"time"
 
 	log "github.com/Sirupsen/logrus"
 	"github.com/gin-gonic/gin"
@@ -16,12 +17,22 @@ import (
 	"github.com/nitrous-io/rise-server/apiserver/dbconn"
 	"github.com/nitrous-io/rise-server/apiserver/models/deployment"
 	"github.com/nitrous-io/rise-server/apiserver/models/rawbundle"
+	"github.com/nitrous-io/rise-server/apiserver/models/template"
 	"github.com/nitrous-io/rise-server/pkg/hasher"
 	"github.com/nitrous-io/rise-server/pkg/job"
 	"github.com/nitrous-io/rise-server/shared/messages"
 	"github.com/nitrous-io/rise-server/shared/queues"
 	"github.com/nitrous-io/rise-server/shared/s3client"
 )
+
+const (
+	viaUnknown = iota
+	viaPayload
+	viaCachedBundle
+	viaTemplate
+)
+
+const presignExpiryDuration = 1 * time.Minute
 
 // Create deploys a project.
 func Create(c *gin.Context) {
@@ -50,8 +61,21 @@ func Create(c *gin.Context) {
 		depl.JsEnvVars = prevDepl.JsEnvVars
 	}
 
-	var archiveFormat string
+	var (
+		archiveFormat string
+		strategy      = viaUnknown
+	)
+
 	if strings.HasPrefix(c.Request.Header.Get("Content-Type"), "multipart/form-data; boundary=") {
+		strategy = viaPayload
+	} else if c.PostForm("bundle_checksum") != "" {
+		strategy = viaCachedBundle
+	} else if c.PostForm("template_id") != "" {
+		strategy = viaTemplate
+	}
+
+	switch strategy {
+	case viaPayload:
 		reader, err := c.Request.MultipartReader()
 		if err != nil {
 			c.JSON(http.StatusBadRequest, gin.H{
@@ -108,33 +132,35 @@ func Create(c *gin.Context) {
 					controllers.InternalServerError(c, err)
 					return
 				}
-				fileType := http.DetectContentType(partHead)
 
+				mimeType := http.DetectContentType(partHead)
 				var uploadKey string
-				if fileType == "application/zip" {
+				switch mimeType {
+				case "application/zip":
 					uploadKey = fmt.Sprintf("deployments/%s/raw-bundle.zip", depl.PrefixID())
 					archiveFormat = "zip"
-				} else if fileType == "application/x-gzip" {
+				case "application/x-gzip":
 					uploadKey = fmt.Sprintf("deployments/%s/raw-bundle.tar.gz", depl.PrefixID())
 					archiveFormat = "tar.gz"
-				} else {
+				default:
 					c.JSON(http.StatusBadRequest, gin.H{
 						"error":             "invalid_request",
-						"error_description": "payload has invalid file",
+						"error_description": "payload is in an unsupported format",
 					})
 					return
 				}
 
-				hashReader := hasher.NewReader(br)
-				if err := s3client.Upload(uploadKey, hashReader, "", "private"); err != nil {
+				hr := hasher.NewReader(br)
+				if err := s3client.Upload(uploadKey, hr, "", "private"); err != nil {
 					controllers.InternalServerError(c, err)
 					return
 				}
 
-				bun := &rawbundle.RawBundle{}
-				bun.ProjectID = proj.ID
-				bun.Checksum = hashReader.Checksum()
-				bun.UploadedPath = uploadKey
+				bun := &rawbundle.RawBundle{
+					ProjectID:    proj.ID,
+					Checksum:     hr.Checksum(),
+					UploadedPath: uploadKey,
+				}
 				if err := db.Create(bun).Error; err != nil {
 					controllers.InternalServerError(c, err)
 					return
@@ -144,7 +170,8 @@ func Create(c *gin.Context) {
 				break
 			}
 		}
-	} else {
+
+	case viaCachedBundle:
 		ver, err := proj.NextVersion(db)
 		if err != nil {
 			controllers.InternalServerError(c, err)
@@ -186,6 +213,81 @@ func Create(c *gin.Context) {
 
 		// Currently bundle from CLI is always tar.gz
 		archiveFormat = "tar.gz"
+
+	case viaTemplate:
+		templateID, err := strconv.ParseInt(c.PostForm("template_id"), 10, 64)
+		if err != nil {
+			c.JSON(422, gin.H{
+				"error": "invalid_params",
+				"errors": map[string]string{
+					"template_id": "is invalid",
+				},
+			})
+			return
+		}
+
+		tmpl := &template.Template{}
+		if err := db.First(tmpl, templateID).Error; err != nil {
+			c.JSON(422, gin.H{
+				"error": "invalid_params",
+				"errors": map[string]string{
+					"template_id": "is not that of a known template",
+				},
+			})
+			return
+		}
+
+		if strings.HasSuffix(tmpl.DownloadURL, ".tar.gz") {
+			archiveFormat = "tar.gz"
+		} else if strings.HasSuffix(tmpl.DownloadURL, ".zip") {
+			archiveFormat = "zip"
+		} else {
+			c.JSON(422, gin.H{
+				"error": "invalid_params",
+				"errors": map[string]string{
+					"template_id": "is no longer valid",
+				},
+			})
+			return
+		}
+
+		ver, err := proj.NextVersion(db)
+		if err != nil {
+			controllers.InternalServerError(c, err)
+			return
+		}
+
+		depl.TemplateID = &tmpl.ID
+		depl.Version = ver
+		if err := db.Create(depl).Error; err != nil {
+			controllers.InternalServerError(c, err)
+			return
+		}
+
+		bundlePath := "deployments/" + depl.PrefixID() + "/raw-bundle." + archiveFormat
+		if err := s3client.Copy(tmpl.DownloadURL, bundlePath); err != nil {
+			log.Printf("failed to make a copy of template %q to %q in S3, err: %v", tmpl.DownloadURL, bundlePath, err)
+			controllers.InternalServerError(c, err)
+			return
+		}
+
+		bun := &rawbundle.RawBundle{
+			ProjectID:    proj.ID,
+			UploadedPath: bundlePath,
+		}
+		if err := db.Create(bun).Error; err != nil {
+			controllers.InternalServerError(c, err)
+			return
+		}
+
+		depl.RawBundleID = &bun.ID
+
+	default:
+		c.JSON(http.StatusBadRequest, gin.H{
+			"error":             "invalid_request",
+			"error_description": "could not understand your request",
+		})
+		return
 	}
 
 	if err := depl.UpdateState(db, deployment.StateUploaded); err != nil {
@@ -286,6 +388,83 @@ func Show(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{
 		"deployment": depl.AsJSON(),
 	})
+}
+
+// Download allows users to download an (unoptimized) tarball of the files of a
+// deployment.
+func Download(c *gin.Context) {
+	deploymentID, err := strconv.ParseInt(c.Param("id"), 10, 64)
+	if err != nil {
+		c.JSON(http.StatusNotFound, gin.H{
+			"error":             "not_found",
+			"error_description": "deployment could not be found",
+		})
+		return
+	}
+
+	db, err := dbconn.DB()
+	if err != nil {
+		controllers.InternalServerError(c, err)
+		return
+	}
+
+	depl := &deployment.Deployment{}
+	if err := db.First(depl, deploymentID).Error; err != nil {
+		if err == gorm.RecordNotFound {
+			c.JSON(http.StatusNotFound, gin.H{
+				"error":             "not_found",
+				"error_description": "deployment could not be found",
+			})
+			return
+		}
+		controllers.InternalServerError(c, err)
+		return
+	}
+
+	if depl.RawBundleID == nil {
+		c.JSON(http.StatusNotFound, gin.H{
+			"error":             "not_found",
+			"error_description": "deployment cannot be downloaded",
+		})
+		return
+	}
+
+	bun := &rawbundle.RawBundle{}
+	if err := db.First(bun, *depl.RawBundleID).Error; err != nil {
+		if err == gorm.RecordNotFound {
+			c.JSON(http.StatusGone, gin.H{
+				"error":             "gone",
+				"error_description": "deployment can no longer be downloaded",
+			})
+			return
+		}
+		controllers.InternalServerError(c, err)
+		return
+	}
+
+	exists, err := s3client.Exists(bun.UploadedPath)
+	if err != nil {
+		log.Warnf("failed to check existence of %q on S3, err: %v", bun.UploadedPath, err)
+		controllers.InternalServerError(c, err)
+		return
+	}
+	if !exists {
+		log.Warnf("deployment raw bundle %q does not exist in S3", bun.UploadedPath)
+		c.JSON(http.StatusGone, gin.H{
+			"error":             "gone",
+			"error_description": "deployment can no longer be downloaded",
+		})
+		return
+	}
+
+	url, err := s3client.PresignedURL(bun.UploadedPath, presignExpiryDuration)
+	if err != nil {
+		log.Printf("error generating presigned URL to %q, err: %v", bun.UploadedPath, err)
+		controllers.InternalServerError(c, err)
+		return
+	}
+
+	c.Redirect(http.StatusFound, url)
 }
 
 // Rollback either rolls back a project to the previous deployment, or to a
