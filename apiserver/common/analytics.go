@@ -1,6 +1,8 @@
 package common
 
 import (
+	"net"
+	"net/http"
 	"os"
 
 	"github.com/nitrous-io/rise-server/pkg/tracker"
@@ -18,4 +20,19 @@ func Track(userID, event, anonymousID string, props, context map[string]interfac
 
 func Alias(userID, previousID string) error {
 	return Tracker.Alias(userID, previousID)
+}
+
+func GetIP(r *http.Request) string {
+	if ipProxy := r.Header.Get("X-FORWARDED-FOR"); len(ipProxy) > 0 {
+		return ipProxy
+	}
+	if ipProxy := r.Header.Get("x-forwarded-for"); len(ipProxy) > 0 {
+		return ipProxy
+	}
+	if ipProxy := r.Header.Get("X-Forwarded-For"); len(ipProxy) > 0 {
+		return ipProxy
+	}
+
+	ip, _, _ := net.SplitHostPort(r.RemoteAddr)
+	return ip
 }

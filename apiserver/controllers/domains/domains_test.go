@@ -346,7 +346,12 @@ var _ = Describe("Domains", func() {
 					Expect(props["projectName"]).To(Equal(proj.Name))
 					Expect(props["domain"]).To(Equal("www.foo-bar-express.com"))
 
-					Expect(trackCall.Arguments[4]).To(BeNil())
+					c := trackCall.Arguments[4]
+					context, ok := c.(map[string]interface{})
+					Expect(ok).To(BeTrue())
+					Expect(context["ip"]).ToNot(BeNil())
+					Expect(context["user_agent"]).ToNot(BeNil())
+
 					Expect(trackCall.ReturnValues[0]).To(BeNil())
 				})
 
@@ -559,7 +564,12 @@ var _ = Describe("Domains", func() {
 				Expect(props["projectName"]).To(Equal(proj.Name))
 				Expect(props["domain"]).To(Equal(domainName))
 
-				Expect(trackCall.Arguments[4]).To(BeNil())
+				c := trackCall.Arguments[4]
+				context, ok := c.(map[string]interface{})
+				Expect(ok).To(BeTrue())
+				Expect(context["ip"]).ToNot(BeNil())
+				Expect(context["user_agent"]).ToNot(BeNil())
+
 				Expect(trackCall.ReturnValues[0]).To(BeNil())
 			})
 

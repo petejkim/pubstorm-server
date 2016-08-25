@@ -218,7 +218,10 @@ func Create(c *gin.Context) {
 				"certIssuer":    ct.Issuer,
 				"certExpiresAt": ct.ExpiresAt,
 			}
-			context map[string]interface{}
+			context = map[string]interface{}{
+				"ip":         common.GetIP(c.Request),
+				"user_agent": c.Request.UserAgent(),
+			}
 		)
 		if err := common.Track(strconv.Itoa(int(u.ID)), event, "", props, context); err != nil {
 			log.Errorf("failed to track %q event for user ID %d, err: %v",
@@ -475,7 +478,10 @@ func LetsEncrypt(c *gin.Context) {
 				"certIssuer":    ct.Issuer,
 				"certExpiresAt": ct.ExpiresAt,
 			}
-			context map[string]interface{}
+			context = map[string]interface{}{
+				"ip":         common.GetIP(c.Request),
+				"user_agent": c.Request.UserAgent(),
+			}
 		)
 		if err := common.Track(strconv.Itoa(int(u.ID)), event, "", props, context); err != nil {
 			log.Errorf("failed to track %q event for user ID %d, err: %v",
@@ -610,7 +616,10 @@ func Destroy(c *gin.Context) {
 				"domain":      d.Name,
 				"certId":      crt.ID,
 			}
-			context map[string]interface{}
+			context = map[string]interface{}{
+				"ip":         common.GetIP(c.Request),
+				"user_agent": c.Request.UserAgent(),
+			}
 		)
 		if err := common.Track(strconv.Itoa(int(u.ID)), event, "", props, context); err != nil {
 			log.Errorf("failed to track %q event for user ID %d, err: %v",

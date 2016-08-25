@@ -270,7 +270,12 @@ var _ = Describe("OAuth", func() {
 				Expect(props["oauthClientId"]).To(Equal(oc.ID))
 				Expect(props["oauthClientName"]).To(Equal(oc.Name))
 
-				Expect(trackCall.Arguments[4]).To(BeNil())
+				c := trackCall.Arguments[4]
+				context, ok := c.(map[string]interface{})
+				Expect(ok).To(BeTrue())
+				Expect(context["ip"]).ToNot(BeNil())
+				Expect(context["user_agent"]).ToNot(BeNil())
+
 				Expect(trackCall.ReturnValues[0]).To(BeNil())
 			})
 		})
@@ -329,7 +334,13 @@ var _ = Describe("OAuth", func() {
 				Expect(trackCall.Arguments[1]).To(Equal("User Logged Out"))
 				Expect(trackCall.Arguments[2]).To(Equal(""))
 				Expect(trackCall.Arguments[3]).To(BeNil())
-				Expect(trackCall.Arguments[4]).To(BeNil())
+
+				c := trackCall.Arguments[4]
+				context, ok := c.(map[string]interface{})
+				Expect(ok).To(BeTrue())
+				Expect(context["ip"]).ToNot(BeNil())
+				Expect(context["user_agent"]).ToNot(BeNil())
+
 				Expect(trackCall.ReturnValues[0]).To(BeNil())
 			})
 		})

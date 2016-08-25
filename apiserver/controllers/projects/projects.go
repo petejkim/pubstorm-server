@@ -57,7 +57,10 @@ func Create(c *gin.Context) {
 			var (
 				event   = "Used Blacklisted Project Name"
 				props   = map[string]interface{}{"projectName": proj.Name}
-				context map[string]interface{}
+				context = map[string]interface{}{
+					"ip":         common.GetIP(c.Request),
+					"user_agent": c.Request.UserAgent(),
+				}
 			)
 			if err := common.Track(strconv.Itoa(int(u.ID)), event, "", props, context); err != nil {
 				log.Errorf("failed to track %q event for user ID %d, err: %v",
@@ -107,7 +110,10 @@ func Create(c *gin.Context) {
 		var (
 			event   = "Created Project"
 			props   = map[string]interface{}{"projectName": proj.Name}
-			context map[string]interface{}
+			context = map[string]interface{}{
+				"ip":         common.GetIP(c.Request),
+				"user_agent": c.Request.UserAgent(),
+			}
 		)
 		if err := common.Track(strconv.Itoa(int(u.ID)), event, "", props, context); err != nil {
 			log.Errorf("failed to track %q event for user ID %d, err: %v",
@@ -286,7 +292,10 @@ func Update(c *gin.Context) {
 				var (
 					event   = "Disabled Default Domain"
 					props   = map[string]interface{}{"projectName": proj.Name}
-					context map[string]interface{}
+					context = map[string]interface{}{
+						"ip":         common.GetIP(c.Request),
+						"user_agent": c.Request.UserAgent(),
+					}
 				)
 				if updatedProj.DefaultDomainEnabled {
 					event = "Enabled Default Domain"
@@ -301,7 +310,10 @@ func Update(c *gin.Context) {
 				var (
 					event   = "Disabled Force HTTPS"
 					props   = map[string]interface{}{"projectName": proj.Name}
-					context map[string]interface{}
+					context = map[string]interface{}{
+						"ip":         common.GetIP(c.Request),
+						"user_agent": c.Request.UserAgent(),
+					}
 				)
 				if updatedProj.ForceHTTPS {
 					event = "Enabled Force HTTPS"
@@ -395,7 +407,10 @@ func Destroy(c *gin.Context) {
 		var (
 			event   = "Deleted Project"
 			props   = map[string]interface{}{"projectName": proj.Name}
-			context map[string]interface{}
+			context = map[string]interface{}{
+				"ip":         common.GetIP(c.Request),
+				"user_agent": c.Request.UserAgent(),
+			}
 		)
 		if err := common.Track(strconv.Itoa(int(u.ID)), event, "", props, context); err != nil {
 			log.Errorf("failed to track %q event for user ID %d, err: %v",

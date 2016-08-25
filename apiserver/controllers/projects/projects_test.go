@@ -202,7 +202,12 @@ var _ = Describe("Projects", func() {
 				Expect(ok).To(BeTrue())
 				Expect(props["projectName"]).To(Equal("foo-bar-express"))
 
-				Expect(trackCall.Arguments[4]).To(BeNil())
+				c := trackCall.Arguments[4]
+				context, ok := c.(map[string]interface{})
+				Expect(ok).To(BeTrue())
+				Expect(context["ip"]).ToNot(BeNil())
+				Expect(context["user_agent"]).ToNot(BeNil())
+
 				Expect(trackCall.ReturnValues[0]).To(BeNil())
 			})
 		})
@@ -301,7 +306,12 @@ var _ = Describe("Projects", func() {
 				Expect(ok).To(BeTrue())
 				Expect(props["projectName"]).To(Equal("foo-bar-express"))
 
-				Expect(trackCall.Arguments[4]).To(BeNil())
+				c := trackCall.Arguments[4]
+				context, ok := c.(map[string]interface{})
+				Expect(ok).To(BeTrue())
+				Expect(context["ip"]).ToNot(BeNil())
+				Expect(context["user_agent"]).ToNot(BeNil())
+
 				Expect(trackCall.ReturnValues[0]).To(BeNil())
 			})
 		})
@@ -986,7 +996,12 @@ var _ = Describe("Projects", func() {
 			Expect(ok).To(BeTrue())
 			Expect(props["projectName"]).To(Equal(proj.Name))
 
-			Expect(trackCall.Arguments[4]).To(BeNil())
+			c := trackCall.Arguments[4]
+			context, ok := c.(map[string]interface{})
+			Expect(ok).To(BeTrue())
+			Expect(context["ip"]).ToNot(BeNil())
+			Expect(context["user_agent"]).ToNot(BeNil())
+
 			Expect(trackCall.ReturnValues[0]).To(BeNil())
 		})
 
