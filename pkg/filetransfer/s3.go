@@ -2,8 +2,11 @@ package filetransfer
 
 import (
 	"io"
+	"net/http"
+	"time"
 
 	"github.com/aws/aws-sdk-go/aws"
+	"github.com/aws/aws-sdk-go/aws/awserr"
 	"github.com/aws/aws-sdk-go/aws/session"
 	"github.com/aws/aws-sdk-go/service/s3"
 	"github.com/aws/aws-sdk-go/service/s3/s3manager"
@@ -131,4 +134,52 @@ func (s *S3) DeleteAll(region, bucket, prefix string) error {
 	}
 
 	return nil
+}
+
+func (s *S3) Copy(region, bucket, srcKey, destKey string) error {
+	svc := s3.New(session.New(&aws.Config{Region: aws.String(region)}))
+
+	_, err := svc.CopyObject(&s3.CopyObjectInput{
+		Bucket:     aws.String(bucket),
+		Key:        aws.String(destKey),
+		CopySource: aws.String(bucket + "/" + srcKey),
+		ACL:        aws.String("private"),
+	})
+
+	return err
+}
+
+func (s *S3) Exists(region, bucket, key string) (bool, error) {
+	svc := s3.New(session.New(&aws.Config{Region: aws.String(region)}))
+
+	_, err := svc.HeadObject(&s3.HeadObjectInput{
+		Bucket: aws.String(bucket),
+		Key:    aws.String(key),
+	})
+	if err != nil {
+		if e, ok := err.(awserr.RequestFailure); ok {
+			if e.StatusCode() == http.StatusNotFound {
+				return false, nil
+			}
+		}
+		return false, err
+	}
+
+	return true, nil
+}
+
+func (s *S3) PresignedURL(region, bucket, key string, expireTime time.Duration) (string, error) {
+	svc := s3.New(session.New(&aws.Config{Region: aws.String(region)}))
+
+	req, _ := svc.GetObjectRequest(&s3.GetObjectInput{
+		Bucket: aws.String(bucket),
+		Key:    aws.String(key),
+	})
+
+	url, err := req.Presign(expireTime)
+	if err != nil {
+		return "", err
+	}
+
+	return url, nil
 }

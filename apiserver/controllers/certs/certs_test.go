@@ -370,7 +370,12 @@ A6ao9QSL1ryillYV9Y4001C3jApzmMtBWoMp3NPzwU8nacAOzClJYUcSLkbAIEWV
 			Expect(props["certIssuer"]).To(Equal(ct.Issuer))
 			Expect(props["certExpiresAt"]).To(Equal(ct.ExpiresAt))
 
-			Expect(trackCall.Arguments[4]).To(BeNil())
+			c := trackCall.Arguments[4]
+			context, ok := c.(map[string]interface{})
+			Expect(ok).To(BeTrue())
+			Expect(context["ip"]).ToNot(BeNil())
+			Expect(context["user_agent"]).ToNot(BeNil())
+
 			Expect(trackCall.ReturnValues[0]).To(BeNil())
 		})
 
@@ -498,7 +503,12 @@ A6ao9QSL1ryillYV9Y4001C3jApzmMtBWoMp3NPzwU8nacAOzClJYUcSLkbAIEWV
 				Expect(props["certIssuer"]).To(Equal(ct.Issuer))
 				Expect(props["certExpiresAt"]).To(Equal(ct.ExpiresAt))
 
-				Expect(trackCall.Arguments[4]).To(BeNil())
+				c := trackCall.Arguments[4]
+				context, ok := c.(map[string]interface{})
+				Expect(ok).To(BeTrue())
+				Expect(context["ip"]).ToNot(BeNil())
+				Expect(context["user_agent"]).ToNot(BeNil())
+
 				Expect(trackCall.ReturnValues[0]).To(BeNil())
 			})
 		})
@@ -1012,7 +1022,12 @@ A6ao9QSL1ryillYV9Y4001C3jApzmMtBWoMp3NPzwU8nacAOzClJYUcSLkbAIEWV
 			Expect(props["certIssuer"]).To(Equal(ct.Issuer))
 			Expect(props["certExpiresAt"]).To(Equal(ct.ExpiresAt))
 
-			Expect(trackCall.Arguments[4]).To(BeNil())
+			c := trackCall.Arguments[4]
+			context, ok := c.(map[string]interface{})
+			Expect(ok).To(BeTrue())
+			Expect(context["ip"]).ToNot(BeNil())
+			Expect(context["user_agent"]).ToNot(BeNil())
+
 			Expect(trackCall.ReturnValues[0]).To(BeNil())
 		})
 
@@ -1412,7 +1427,12 @@ A6ao9QSL1ryillYV9Y4001C3jApzmMtBWoMp3NPzwU8nacAOzClJYUcSLkbAIEWV
 			Expect(props["domain"]).To(Equal("www.foo-bar-express.com"))
 			Expect(props["certId"]).To(Equal(ct.ID))
 
-			Expect(trackCall.Arguments[4]).To(BeNil())
+			c := trackCall.Arguments[4]
+			context, ok := c.(map[string]interface{})
+			Expect(ok).To(BeTrue())
+			Expect(context["ip"]).ToNot(BeNil())
+			Expect(context["user_agent"]).ToNot(BeNil())
+
 			Expect(trackCall.ReturnValues[0]).To(BeNil())
 		})
 

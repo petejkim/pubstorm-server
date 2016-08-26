@@ -160,7 +160,12 @@ var _ = Describe("Users", func() {
 				Expect(ok).To(BeTrue())
 				Expect(traits["email"]).To(Equal(u.Email))
 
-				Expect(identifyCall.Arguments[3]).To(BeNil())
+				ic := identifyCall.Arguments[3]
+				context, ok := ic.(map[string]interface{})
+				Expect(ok).To(BeTrue())
+				Expect(context["ip"]).ToNot(BeNil())
+				Expect(context["user_agent"]).ToNot(BeNil())
+
 				Expect(identifyCall.ReturnValues[0]).To(BeNil())
 
 				trackCall := fakeTracker.TrackCalls.NthCall(1)
@@ -175,7 +180,12 @@ var _ = Describe("Users", func() {
 				Expect(props["email"]).To(Equal(u.Email))
 				Expect(props["name"]).To(Equal(u.Name))
 
-				Expect(trackCall.Arguments[4]).To(BeNil())
+				c := trackCall.Arguments[4]
+				context, ok = c.(map[string]interface{})
+				Expect(ok).To(BeTrue())
+				Expect(context["ip"]).ToNot(BeNil())
+				Expect(context["user_agent"]).ToNot(BeNil())
+
 				Expect(trackCall.ReturnValues[0]).To(BeNil())
 
 				aliasCall := fakeTracker.AliasCalls.NthCall(1)
@@ -387,7 +397,13 @@ var _ = Describe("Users", func() {
 				Expect(trackCall.Arguments[1]).To(Equal("Confirmed Email"))
 				Expect(trackCall.Arguments[2]).To(Equal("anonyid"))
 				Expect(trackCall.Arguments[3]).To(BeNil())
-				Expect(trackCall.Arguments[4]).To(BeNil())
+
+				c := trackCall.Arguments[4]
+				context, ok := c.(map[string]interface{})
+				Expect(ok).To(BeTrue())
+				Expect(context["ip"]).ToNot(BeNil())
+				Expect(context["user_agent"]).ToNot(BeNil())
+
 				Expect(trackCall.ReturnValues[0]).To(BeNil())
 			})
 		})
