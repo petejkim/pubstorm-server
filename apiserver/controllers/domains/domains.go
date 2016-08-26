@@ -15,6 +15,7 @@ import (
 	"github.com/nitrous-io/rise-server/apiserver/models/acmecert"
 	"github.com/nitrous-io/rise-server/apiserver/models/cert"
 	"github.com/nitrous-io/rise-server/apiserver/models/domain"
+	"github.com/nitrous-io/rise-server/apiserver/models/project"
 	"github.com/nitrous-io/rise-server/pkg/job"
 	"github.com/nitrous-io/rise-server/pkg/pubsub"
 	"github.com/nitrous-io/rise-server/shared/exchanges"
@@ -40,6 +41,61 @@ func Index(c *gin.Context) {
 
 	c.JSON(http.StatusOK, gin.H{
 		"domains": domNames,
+	})
+}
+
+func DomainsByUser(c *gin.Context) {
+	u := controllers.CurrentUser(c)
+
+	db, err := dbconn.DB()
+	if err != nil {
+		controllers.InternalServerError(c, err)
+		return
+	}
+
+	var projs []*project.Project
+	if err := db.Model(project.Project{}).Where("user_id = ?", u.ID).Find(&projs).Error; err != nil {
+		controllers.InternalServerError(c, err)
+		return
+	}
+
+	var projIDs []uint
+	for _, proj := range projs {
+		projIDs = append(projIDs, proj.ID)
+	}
+
+	var doms []*domain.Domain
+	if err := db.Model(domain.Domain{}).Where("project_id IN (?)", projIDs).Order("project_id, created_at ASC").Find(&doms).Error; err != nil {
+		controllers.InternalServerError(c, err)
+		return
+	}
+
+	domainsByProj := make(map[uint][]*domain.Domain, 0)
+	for _, dom := range doms {
+		if domainsByProj[dom.ProjectID] == nil {
+			domainsByProj[dom.ProjectID] = make([]*domain.Domain, 0)
+		}
+		domainsByProj[dom.ProjectID] = append(domainsByProj[dom.ProjectID], dom)
+	}
+
+	result := make(map[string][]string, 0)
+	for _, proj := range projs {
+		if result[proj.Name] == nil {
+			result[proj.Name] = make([]string, 0)
+		}
+
+		if proj.DefaultDomainEnabled {
+			result[proj.Name] = append(result[proj.Name], proj.DefaultDomainName())
+		}
+
+		doms := domainsByProj[proj.ID]
+		for _, dom := range doms {
+			result[proj.Name] = append(result[proj.Name], dom.Name)
+		}
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"domains": result,
 	})
 }
 

@@ -50,6 +50,7 @@ func Draw(r *gin.Engine) {
 		authorized.GET("/user", users.Show)
 		authorized.PUT("/user", users.Update)
 		authorized.GET("/templates", templates.Index)
+		authorized.GET("/domains", domains.DomainsByUser)
 
 		{ // Routes that either project owners or collaborators can access
 			projCollab := authorized.Group("/projects/:project_name", middleware.RequireProjectCollab)
