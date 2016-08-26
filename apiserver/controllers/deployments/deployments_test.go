@@ -3,7 +3,6 @@ package deployments_test
 import (
 	"bytes"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"io"
 	"io/ioutil"
@@ -994,39 +993,8 @@ var _ = Describe("Deployments", func() {
 
 		doRequest := func() {
 			s = httptest.NewServer(server.New())
-			uri := fmt.Sprintf("%s/projects/foo-bar-express/deployments/%d/download", s.URL, depl.ID)
-
-			req, err := http.NewRequest("GET", uri, nil)
-			Expect(err).To(BeNil())
-
-			if headers != nil {
-				for k, v := range headers {
-					for _, h := range v {
-						req.Header.Add(k, h)
-					}
-				}
-			}
-
-			// Hack so that we don't follow redirects.
-			// In Go 1.7, we can use http.ErrUseLastResponse (see https://github.com/golang/go/commit/8f13080267d0ddbb50da9029339796841224116a).
-			redirectErr := errors.New("redirect received")
-			client := &http.Client{
-				CheckRedirect: func(req *http.Request, via []*http.Request) error {
-					if len(via) > 0 {
-						return redirectErr
-					}
-					return nil
-				},
-			}
-
-			res, err = client.Do(req)
-			if err != nil {
-				if e, ok := err.(*url.Error); ok {
-					Expect(e.Err).To(Equal(redirectErr))
-					return
-				}
-			}
-
+			url := fmt.Sprintf("%s/projects/foo-bar-express/deployments/%d/download", s.URL, depl.ID)
+			res, err = testhelper.MakeRequest("GET", url, nil, headers, nil)
 			Expect(err).To(BeNil())
 		}
 
@@ -1149,7 +1117,7 @@ var _ = Describe("Deployments", func() {
 				fakeS3.PresignedURLReturn = "https://s3-us-west-2.amazonaws.com/deployments/abcd/raw-bundle.zip?abc=123"
 			})
 
-			It("redirects to a pre-signed download URL of the raw bundle in S3", func() {
+			It("responds with a pre-signed download URL of the raw bundle in S3", func() {
 				doRequest()
 
 				Expect(fakeS3.PresignedURLCalls.Count()).To(Equal(1))
@@ -1159,8 +1127,13 @@ var _ = Describe("Deployments", func() {
 				Expect(call.Arguments[1]).To(Equal(s3client.BucketName))
 				Expect(call.Arguments[2]).To(Equal(bun.UploadedPath))
 
-				Expect(res.StatusCode).To(Equal(http.StatusFound))
-				Expect(res.Header.Get("Location")).To(Equal(fakeS3.PresignedURLReturn))
+				b := &bytes.Buffer{}
+				_, err = b.ReadFrom(res.Body)
+
+				Expect(res.StatusCode).To(Equal(http.StatusOK))
+				Expect(b.String()).To(MatchJSON(fmt.Sprintf(`{
+					"url": "%s"
+				}`, fakeS3.PresignedURLReturn)))
 			})
 		})
 	})

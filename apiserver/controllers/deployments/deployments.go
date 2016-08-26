@@ -464,7 +464,9 @@ func Download(c *gin.Context) {
 		return
 	}
 
-	c.Redirect(http.StatusFound, url)
+	c.JSON(http.StatusOK, gin.H{
+		"url": url,
+	})
 }
 
 // Rollback either rolls back a project to the previous deployment, or to a
