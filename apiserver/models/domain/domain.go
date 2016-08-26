@@ -3,6 +3,7 @@ package domain
 import (
 	"regexp"
 	"strings"
+	"time"
 
 	"github.com/jinzhu/gorm"
 	"github.com/nitrous-io/rise-server/shared"
@@ -69,8 +70,10 @@ func (d *Domain) Validate() map[string]string {
 // Returns a struct that can be converted to JSON
 func (d *Domain) AsJSON() interface{} {
 	return struct {
-		Name string `json:"name"`
+		Name      string    `json:"name"`
+		CreatedAt time.Time `json:"created_at"`
 	}{
 		d.Name,
+		d.CreatedAt,
 	}
 }
