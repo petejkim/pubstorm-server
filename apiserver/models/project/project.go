@@ -53,6 +53,15 @@ type Project struct {
 	LockedAt *time.Time
 }
 
+type JSON struct {
+	Name                 string     `json:"name"`
+	DefaultDomainEnabled bool       `json:"default_domain_enabled"`
+	ForceHTTPS           bool       `json:"force_https"`
+	SkipBuild            bool       `json:"skip_build"`
+	CreatedAt            time.Time  `json:"created_at"`
+	DeployedAt           *time.Time `json:"deployed_at,omitempty"`
+}
+
 // Validates Project, if there are invalid fields, it returns a map of
 // <field, errors> and returns nil if valid
 func (p *Project) Validate() map[string]string {
@@ -84,18 +93,12 @@ func (p *Project) Validate() map[string]string {
 
 // Returns a struct that can be converted to JSON
 func (p *Project) AsJSON() interface{} {
-	return struct {
-		Name                 string    `json:"name"`
-		DefaultDomainEnabled bool      `json:"default_domain_enabled"`
-		ForceHTTPS           bool      `json:"force_https"`
-		SkipBuild            bool      `json:"skip_build"`
-		CreatedAt            time.Time `json:"created_at"`
-	}{
-		p.Name,
-		p.DefaultDomainEnabled,
-		p.ForceHTTPS,
-		p.SkipBuild,
-		p.CreatedAt,
+	return JSON{
+		Name:                 p.Name,
+		DefaultDomainEnabled: p.DefaultDomainEnabled,
+		ForceHTTPS:           p.ForceHTTPS,
+		SkipBuild:            p.SkipBuild,
+		CreatedAt:            p.CreatedAt,
 	}
 }
 
@@ -317,4 +320,26 @@ func CanAddProject(db *gorm.DB, u *user.User) (bool, error) {
 	}
 
 	return count < MaxProjectPerUser, nil
+}
+
+type ProjectWithDeployedAt struct {
+	Project
+	DeployedAt *time.Time
+}
+
+// TableName return table name for database
+func (pd *ProjectWithDeployedAt) TableName() string {
+	return "projects"
+}
+
+// AsJSON return table name for database
+func (pd *ProjectWithDeployedAt) AsJSON() interface{} {
+	return JSON{
+		Name:                 pd.Name,
+		DefaultDomainEnabled: pd.DefaultDomainEnabled,
+		ForceHTTPS:           pd.ForceHTTPS,
+		SkipBuild:            pd.SkipBuild,
+		CreatedAt:            pd.CreatedAt,
+		DeployedAt:           pd.DeployedAt,
+	}
 }

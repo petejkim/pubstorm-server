@@ -149,9 +149,13 @@ func Index(c *gin.Context) {
 		return
 	}
 
-	projects := []*project.Project{}
-	if err := db.Order("name ASC").
-		Where("user_id = ?", u.ID).
+	projects := []*project.ProjectWithDeployedAt{}
+	if err := db.Select("projects.*, max(deployments.deployed_at) AS deployed_at").
+		Joins("LEFT JOIN deployments ON projects.id = deployments.project_id").
+		Group("projects.id").
+		Order("projects.name ASC").
+		Where("deployments.deleted_at IS NULL").
+		Where("projects.user_id = ?", u.ID).
 		Find(&projects).Error; err != nil {
 		controllers.InternalServerError(c, err)
 		return
@@ -162,11 +166,17 @@ func Index(c *gin.Context) {
 		projectsAsJson = append(projectsAsJson, proj.AsJSON())
 	}
 
-	sharedProjects := []*project.Project{}
-	if err := db.Order("projects.name ASC").
-		Joins("JOIN users ON users.id = collabs.user_id").
-		Joins("JOIN collabs ON collabs.project_id = projects.id").
+	sharedProjects := []*project.ProjectWithDeployedAt{}
+	if err := db.Select("projects.*, max(deployments.deployed_at) AS deployed_at").
+		Joins(`LEFT JOIN deployments ON projects.id = deployments.project_id
+			JOIN collabs ON collabs.project_id = projects.id
+			JOIN users ON users.id = collabs.user_id`).
+		Where("deployments.deleted_at IS NULL").
+		Where("collabs.deleted_at IS NULL").
+		Where("users.deleted_at IS NULL").
 		Where("collabs.user_id = ?", u.ID).
+		Order("projects.name ASC").
+		Group("projects.id").
 		Find(&sharedProjects).Error; err != nil {
 		controllers.InternalServerError(c, err)
 		return
