@@ -64,33 +64,41 @@ func DomainsByUser(c *gin.Context) {
 		projIDs = append(projIDs, proj.ID)
 	}
 
-	var doms []*domain.Domain
-	if err := db.Model(domain.Domain{}).Where("project_id IN (?)", projIDs).Order("project_id, created_at ASC").Find(&doms).Error; err != nil {
+	var doms []*domain.DomainWithProtocol
+	if err := db.Select("domains.*, count(certs.*) > 0 AS https").
+		Joins("LEFT JOIN certs ON domains.id = certs.domain_id").
+		Where("certs.deleted_at IS NULL").
+		Where("domains.project_id IN (?)", projIDs).Group("domains.id").
+		Order("domains.project_id, domains.created_at ASC").Find(&doms).Error; err != nil {
 		controllers.InternalServerError(c, err)
 		return
 	}
 
-	domainsByProj := make(map[uint][]*domain.Domain, 0)
+	domainsByProj := make(map[uint][]*domain.DomainWithProtocol, 0)
 	for _, dom := range doms {
 		if domainsByProj[dom.ProjectID] == nil {
-			domainsByProj[dom.ProjectID] = make([]*domain.Domain, 0)
+			domainsByProj[dom.ProjectID] = make([]*domain.DomainWithProtocol, 0)
 		}
 		domainsByProj[dom.ProjectID] = append(domainsByProj[dom.ProjectID], dom)
 	}
 
-	result := make(map[string][]string, 0)
+	result := make(map[string][]interface{}, 0)
 	for _, proj := range projs {
 		if result[proj.Name] == nil {
-			result[proj.Name] = make([]string, 0)
+			result[proj.Name] = make([]interface{}, 0)
 		}
 
 		if proj.DefaultDomainEnabled {
-			result[proj.Name] = append(result[proj.Name], proj.DefaultDomainName())
+			result[proj.Name] = append(result[proj.Name],
+				domain.JSON{
+					Name:  proj.DefaultDomainName(),
+					HTTPS: &proj.DefaultDomainEnabled,
+				})
 		}
 
 		doms := domainsByProj[proj.ID]
 		for _, dom := range doms {
-			result[proj.Name] = append(result[proj.Name], dom.Name)
+			result[proj.Name] = append(result[proj.Name], dom.AsJSON())
 		}
 	}
 

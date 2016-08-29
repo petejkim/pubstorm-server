@@ -696,15 +696,19 @@ var _ = Describe("Domains", func() {
 		}
 
 		BeforeEach(func() {
+			var doms []*domain.Domain
 			for _, dn := range []string{"www.foo-bar-express.com", "www.foobarexpress.com"} {
 				dom := &domain.Domain{
 					Name:      dn,
 					ProjectID: proj.ID,
 				}
 
+				doms = append(doms, dom)
 				err := db.Create(dom).Error
 				Expect(err).To(BeNil())
 			}
+
+			factories.Cert(db, doms[1])
 
 			proj2 = factories.Project(db, u, "baz-cloud")
 			proj3 = factories.Project(db, u, "qux-enterprise")
@@ -724,13 +728,25 @@ var _ = Describe("Domains", func() {
 			Expect(b.String()).To(MatchJSON(`{
 				"domains": {
 					"foo-bar-express": [
-						"` + proj.DefaultDomainName() + `",
-						"www.foo-bar-express.com",
-						"www.foobarexpress.com"
+						{
+							"https": true,
+							"name": "` + proj.DefaultDomainName() + `"
+						},
+						{
+							"https": false,
+							"name": "www.foo-bar-express.com"
+						},
+						{
+							"https": true,
+							"name": "www.foobarexpress.com"
+						}
 					],
 					"baz-cloud": [],
 					"qux-enterprise": [
-						"` + proj3.DefaultDomainName() + `"
+						{
+							"https": true,
+							"name": "` + proj3.DefaultDomainName() + `"
+						}
 					]
 				}
 			}`))
