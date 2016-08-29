@@ -106,6 +106,12 @@ func Create(c *gin.Context) {
 		return
 	}
 
+	// Re-fetch from db to get correct timestamps.
+	if err := db.First(proj, proj.ID).Error; err != nil {
+		controllers.InternalServerError(c, err)
+		return
+	}
+
 	{
 		var (
 			event   = "Created Project"
