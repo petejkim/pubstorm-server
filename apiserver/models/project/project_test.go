@@ -674,4 +674,132 @@ var _ = Describe("Project", func() {
 			})
 		})
 	})
+
+	Describe("ProjectsByUserID", func() {
+		var (
+			proj  *project.Project
+			proj2 *project.Project
+
+			u  *user.User
+			u2 *user.User
+		)
+
+		BeforeEach(func() {
+			u = factories.User(db)
+			u2 = factories.User(db)
+
+			proj = factories.Project(db, u)
+			proj2 = factories.Project(db, u2)
+		})
+
+		It("returns projects for the given user", func() {
+			projs, err := project.ProjectsByUserID(db, u.ID)
+			Expect(err).To(BeNil())
+
+			Expect(projs).To(HaveLen(1))
+			Expect(projs[0].ID).To(Equal(proj.ID))
+			Expect(projs[0].DeployedAt).To(BeNil())
+
+			projs, err = project.ProjectsByUserID(db, u2.ID)
+			Expect(err).To(BeNil())
+
+			Expect(projs).To(HaveLen(1))
+			Expect(projs[0].ID).To(Equal(proj2.ID))
+			Expect(projs[0].DeployedAt).To(BeNil())
+		})
+
+		Context("when some projects are deployed", func() {
+			var (
+				proj3 *project.Project
+				depl  *deployment.Deployment
+			)
+
+			BeforeEach(func() {
+				proj3 = factories.Project(db, u)
+
+				depl = factories.Deployment(db, proj, u, deployment.StateDeployed)
+				factories.Deployment(db, proj3, u, deployment.StatePendingDeploy)
+			})
+
+			It("returns projects with deployed time for the given user", func() {
+				projs, err := project.ProjectsByUserID(db, u.ID)
+				Expect(err).To(BeNil())
+
+				Expect(db.First(depl, depl.ID).Error).To(BeNil())
+
+				Expect(projs).To(HaveLen(2))
+				Expect(projs[0].ID).To(Equal(proj.ID))
+				Expect(projs[0].DeployedAt).To(Equal(depl.DeployedAt))
+
+				Expect(projs[1].ID).To(Equal(proj3.ID))
+				Expect(projs[1].DeployedAt).To(BeNil())
+			})
+		})
+	})
+
+	Describe("SharedProjectsByUserID", func() {
+		var (
+			proj  *project.Project
+			proj2 *project.Project
+
+			u  *user.User
+			u2 *user.User
+		)
+
+		BeforeEach(func() {
+			u = factories.User(db)
+			u2 = factories.User(db)
+
+			proj = factories.Project(db, u)
+			proj2 = factories.Project(db, u2)
+
+			Expect(proj.AddCollaborator(db, u2)).To(BeNil())
+			Expect(proj2.AddCollaborator(db, u)).To(BeNil())
+		})
+
+		It("returns shared projects for the given user", func() {
+			projs, err := project.SharedProjectsByUserID(db, u.ID)
+			Expect(err).To(BeNil())
+
+			Expect(projs).To(HaveLen(1))
+			Expect(projs[0].ID).To(Equal(proj2.ID))
+			Expect(projs[0].DeployedAt).To(BeNil())
+
+			projs, err = project.SharedProjectsByUserID(db, u2.ID)
+			Expect(err).To(BeNil())
+
+			Expect(projs).To(HaveLen(1))
+			Expect(projs[0].ID).To(Equal(proj.ID))
+			Expect(projs[0].DeployedAt).To(BeNil())
+		})
+
+		Context("when some projects are deployed", func() {
+			var (
+				proj3 *project.Project
+				depl  *deployment.Deployment
+			)
+
+			BeforeEach(func() {
+				proj3 = factories.Project(db, u2)
+				Expect(proj3.AddCollaborator(db, u)).To(BeNil())
+
+				depl = factories.Deployment(db, proj2, u, deployment.StateDeployed)
+				factories.Deployment(db, proj3, u, deployment.StatePendingDeploy)
+			})
+
+			It("returns shared projects with deployed time for the given user", func() {
+				projs, err := project.SharedProjectsByUserID(db, u.ID)
+				Expect(err).To(BeNil())
+
+				Expect(db.First(depl, depl.ID).Error).To(BeNil())
+
+				Expect(projs).To(HaveLen(2))
+				Expect(projs[0].ID).To(Equal(proj2.ID))
+				Expect(projs[0].DeployedAt).To(Equal(depl.DeployedAt))
+
+				Expect(projs[1].ID).To(Equal(proj3.ID))
+				Expect(projs[1].DeployedAt).To(BeNil())
+			})
+		})
+	})
 })

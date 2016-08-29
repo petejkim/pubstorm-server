@@ -322,6 +322,7 @@ func CanAddProject(db *gorm.DB, u *user.User) (bool, error) {
 	return count < MaxProjectPerUser, nil
 }
 
+// Project with deployed time
 type ProjectWithDeployedAt struct {
 	Project
 	DeployedAt *time.Time
@@ -342,4 +343,34 @@ func (pd *ProjectWithDeployedAt) AsJSON() interface{} {
 		CreatedAt:            pd.CreatedAt,
 		DeployedAt:           pd.DeployedAt,
 	}
+}
+
+func ProjectsByUserID(db *gorm.DB, userID uint) ([]*ProjectWithDeployedAt, error) {
+	projects := []*ProjectWithDeployedAt{}
+	err := db.Select("projects.*, max(deployments.deployed_at) AS deployed_at").
+		Joins("LEFT JOIN deployments ON projects.id = deployments.project_id").
+		Group("projects.id").
+		Order("projects.name ASC").
+		Where("deployments.deleted_at IS NULL").
+		Where("projects.user_id = ?", userID).
+		Find(&projects).Error
+
+	return projects, err
+}
+
+func SharedProjectsByUserID(db *gorm.DB, userID uint) ([]*ProjectWithDeployedAt, error) {
+	sharedProjects := []*ProjectWithDeployedAt{}
+	err := db.Select("projects.*, max(deployments.deployed_at) AS deployed_at").
+		Joins(`LEFT JOIN deployments ON projects.id = deployments.project_id
+			JOIN collabs ON collabs.project_id = projects.id
+			JOIN users ON users.id = collabs.user_id`).
+		Where("deployments.deleted_at IS NULL").
+		Where("collabs.deleted_at IS NULL").
+		Where("users.deleted_at IS NULL").
+		Where("collabs.user_id = ?", userID).
+		Order("projects.name ASC").
+		Group("projects.id").
+		Find(&sharedProjects).Error
+
+	return sharedProjects, err
 }
