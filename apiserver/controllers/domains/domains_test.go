@@ -682,4 +682,102 @@ var _ = Describe("Domains", func() {
 			return res
 		}, nil)
 	})
+
+	Describe("GET /domains", func() {
+		var (
+			proj2 *project.Project
+			proj3 *project.Project
+		)
+
+		doRequest := func() {
+			s = httptest.NewServer(server.New())
+			res, err = testhelper.MakeRequest("GET", s.URL+"/domains", nil, headers, nil)
+			Expect(err).To(BeNil())
+		}
+
+		BeforeEach(func() {
+			var doms []*domain.Domain
+			for _, dn := range []string{"www.foo-bar-express.com", "www.foobarexpress.com"} {
+				dom := &domain.Domain{
+					Name:      dn,
+					ProjectID: proj.ID,
+				}
+
+				doms = append(doms, dom)
+				err := db.Create(dom).Error
+				Expect(err).To(BeNil())
+			}
+
+			factories.Cert(db, doms[1])
+
+			proj2 = factories.Project(db, u, "baz-cloud")
+			proj3 = factories.Project(db, u, "qux-enterprise")
+
+			proj2.DefaultDomainEnabled = false
+			Expect(db.Save(proj2).Error).To(BeNil())
+		})
+
+		It("lists all domains for current user", func() {
+			doRequest()
+
+			b := &bytes.Buffer{}
+			_, err := b.ReadFrom(res.Body)
+			Expect(err).To(BeNil())
+
+			Expect(res.StatusCode).To(Equal(http.StatusOK))
+			Expect(b.String()).To(MatchJSON(`{
+				"domains": {
+					"foo-bar-express": [
+						{
+							"https": true,
+							"name": "` + proj.DefaultDomainName() + `"
+						},
+						{
+							"https": false,
+							"name": "www.foo-bar-express.com"
+						},
+						{
+							"https": true,
+							"name": "www.foobarexpress.com"
+						}
+					],
+					"baz-cloud": [],
+					"qux-enterprise": [
+						{
+							"https": true,
+							"name": "` + proj3.DefaultDomainName() + `"
+						}
+					]
+				}
+			}`))
+		})
+
+		Context("when a user does not have any projects", func() {
+			BeforeEach(func() {
+				Expect(db.Delete(proj).Error).To(BeNil())
+				Expect(db.Delete(proj2).Error).To(BeNil())
+				Expect(db.Delete(proj3).Error).To(BeNil())
+			})
+
+			It("returns empty json", func() {
+				doRequest()
+
+				b := &bytes.Buffer{}
+				_, err := b.ReadFrom(res.Body)
+				Expect(err).To(BeNil())
+
+				Expect(res.StatusCode).To(Equal(http.StatusOK))
+				Expect(b.String()).To(MatchJSON(`{
+					"domains": {}
+				}`))
+			})
+		})
+
+		sharedexamples.ItRequiresAuthentication(func() (*gorm.DB, *user.User, *http.Header) {
+			return db, u, &headers
+		}, func() *http.Response {
+			doRequest()
+			return res
+		}, nil)
+	})
 })

@@ -18,6 +18,12 @@ type Domain struct {
 	Name      string
 }
 
+// JSON specifies which fields of a domain will be marshaled to JSON.
+type JSON struct {
+	Name  string `json:"name"`
+	HTTPS *bool  `json:"https,omitempty"`
+}
+
 // Sanitizes domain, e.g. Prepends www if an apex domain is given
 // i.e. Prepends www to "abc.com", "abc.au", "abc.com.au", "abc.co.au"
 func (d *Domain) Sanitize() error {
@@ -68,9 +74,26 @@ func (d *Domain) Validate() map[string]string {
 
 // Returns a struct that can be converted to JSON
 func (d *Domain) AsJSON() interface{} {
-	return struct {
-		Name string `json:"name"`
-	}{
-		d.Name,
+	return JSON{
+		Name: d.Name,
+	}
+}
+
+// Domain with protocol
+type DomainWithProtocol struct {
+	Domain
+	HTTPS bool `sql:"column:https"`
+}
+
+// Returns table name
+func (dp *DomainWithProtocol) TableName() string {
+	return "domains"
+}
+
+// Returns a struct that can be converted to JSON
+func (dp *DomainWithProtocol) AsJSON() interface{} {
+	return JSON{
+		Name:  dp.Name,
+		HTTPS: &dp.HTTPS,
 	}
 }
