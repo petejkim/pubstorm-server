@@ -38,6 +38,8 @@ func Index(c *gin.Context) {
 		return
 	}
 
+	domainsAsJSON := []interface{}{}
+
 	c.JSON(http.StatusOK, gin.H{
 		"domains": domNames,
 	})
@@ -106,6 +108,12 @@ func Create(c *gin.Context) {
 			return
 		}
 
+		controllers.InternalServerError(c, err)
+		return
+	}
+
+	// Re-fetch from db to get correct timestamps.
+	if err := db.First(dom, dom.ID).Error; err != nil {
 		controllers.InternalServerError(c, err)
 		return
 	}

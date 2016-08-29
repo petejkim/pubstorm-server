@@ -314,12 +314,20 @@ var _ = Describe("Domains", func() {
 					_, err := b.ReadFrom(res.Body)
 					Expect(err).To(BeNil())
 
+					dom := &domain.Domain{}
+					err = db.Last(dom).Error
+					Expect(err).To(BeNil())
+
+					createdAtJSON, err := dom.CreatedAt.MarshalJSON()
+					Expect(err).To(BeNil())
+
 					Expect(res.StatusCode).To(Equal(http.StatusCreated))
-					Expect(b.String()).To(MatchJSON(`{
+					Expect(b.String()).To(MatchJSON(fmt.Sprintf(`{
 						"domain": {
-							"name": "www.foo-bar-express.com"
+							"name": "www.foo-bar-express.com",
+							"created_at": %s
 						}
-					}`))
+					}`, createdAtJSON)))
 				})
 			})
 
@@ -369,12 +377,20 @@ var _ = Describe("Domains", func() {
 						_, err := b.ReadFrom(res.Body)
 						Expect(err).To(BeNil())
 
+						dom := &domain.Domain{}
+						err = db.Last(dom).Error
+						Expect(err).To(BeNil())
+
+						createdAtJSON, err := dom.CreatedAt.MarshalJSON()
+						Expect(err).To(BeNil())
+
 						Expect(res.StatusCode).To(Equal(http.StatusCreated))
-						Expect(b.String()).To(MatchJSON(`{
+						Expect(b.String()).To(MatchJSON(fmt.Sprintf(`{
 							"domain": {
-								"name": "www.foo-bar-express.com"
+								"name": "www.foo-bar-express.com",
+								"created_at": %s
 							}
-						}`))
+						}`, createdAtJSON)))
 					})
 
 					It("creates a domain record in the DB", func() {
@@ -400,12 +416,20 @@ var _ = Describe("Domains", func() {
 						_, err := b.ReadFrom(res.Body)
 						Expect(err).To(BeNil())
 
+						dom := &domain.Domain{}
+						err = db.Last(dom).Error
+						Expect(err).To(BeNil())
+
+						createdAtJSON, err := dom.CreatedAt.MarshalJSON()
+						Expect(err).To(BeNil())
+
 						Expect(res.StatusCode).To(Equal(http.StatusCreated))
-						Expect(b.String()).To(MatchJSON(`{
+						Expect(b.String()).To(MatchJSON(fmt.Sprintf(`{
 							"domain": {
-								"name": "www.foo-bar-express.com"
+								"name": "www.foo-bar-express.com",
+								"created_at": %s
 							}
-						}`))
+						}`, createdAtJSON)))
 					})
 
 					It("creates a domain record in the DB", func() {
@@ -429,12 +453,16 @@ var _ = Describe("Domains", func() {
 						_, err := b.ReadFrom(res.Body)
 						Expect(err).To(BeNil())
 
+						createdAtJSON, err := dom.CreatedAt.MarshalJSON()
+						Expect(err).To(BeNil())
+
 						Expect(res.StatusCode).To(Equal(http.StatusCreated))
-						Expect(b.String()).To(MatchJSON(`{
+						Expect(b.String()).To(MatchJSON(fmt.Sprintf(`{
 							"domain": {
-								"name": "www.foo-bar-express.com"
+								"name": "www.foo-bar-express.com",
+								"created_at": %s
 							}
-						}`))
+						}`, createdAtJSON)))
 
 						Expect(dom.Name).To(Equal("www.foo-bar-express.com"))
 						Expect(dom.ProjectID).To(Equal(proj.ID))
