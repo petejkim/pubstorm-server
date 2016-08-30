@@ -6,6 +6,8 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/getsentry/raven-go"
+	"github.com/nitrous-io/rise-server/apiserver/common"
 	"github.com/nitrous-io/rise-server/deployer/deployer"
 	"github.com/nitrous-io/rise-server/pkg/mqconn"
 	"github.com/nitrous-io/rise-server/shared/queues"
@@ -15,6 +17,8 @@ import (
 )
 
 func main() {
+	raven.SetDSN(common.SentryURL)
+
 	run()
 	os.Exit(1)
 }
@@ -92,11 +96,19 @@ func run() {
 	for {
 		select {
 		case d := <-msgCh:
+			log.Infoln("Work started", string(d.Body))
 			err = deployer.Work(d.Body)
 
 			if err != nil {
 				// failure
 				log.Warnln("Work failed", err, string(d.Body))
+
+				if err != deployer.ErrProjectLocked {
+					raven.CaptureError(err, map[string]string{
+						"app":  "deployer",
+						"body": string(d.Body),
+					})
+				}
 
 				// It does not retry for timeout or record not found error or unarchive failed
 				// because it could retry for long time.

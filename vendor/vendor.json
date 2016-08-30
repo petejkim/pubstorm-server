@@ -140,6 +140,12 @@
 			"revisionTime": "2016-05-25T15:20:46Z"
 		},
 		{
+			"checksumSHA1": "GLQq6hvItfmA6NsR0Q9GoOKJK+s=",
+			"path": "github.com/getsentry/raven-go",
+			"revision": "c9d3cc542ad199f62c0264286be537f9bce6063c",
+			"revisionTime": "2016-08-05T00:17:29Z"
+		},
+		{
 			"path": "github.com/gin-gonic/gin",
 			"revision": "27f912f5b2c8ee7dd7655d479dee2fc4d41d32d7",
 			"revisionTime": "2016-01-30T01:34:20+01:00"

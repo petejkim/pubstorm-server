@@ -6,6 +6,8 @@ import (
 	"net/http"
 	"strings"
 
+	"github.com/getsentry/raven-go"
+	"github.com/nitrous-io/rise-server/apiserver/common"
 	"github.com/nitrous-io/rise-server/apiserver/models/oauthtoken"
 	"github.com/nitrous-io/rise-server/apiserver/models/project"
 	"github.com/nitrous-io/rise-server/apiserver/models/user"
@@ -20,6 +22,10 @@ const (
 	CurrentUserKey    = "current_user"
 	CurrentProjectKey = "current_project"
 )
+
+func init() {
+	raven.SetDSN(common.SentryURL)
+}
 
 func CurrentToken(c *gin.Context) *oauthtoken.OauthToken {
 	ti, exists := c.Get(CurrentTokenKey)
@@ -66,16 +72,24 @@ func InternalServerError(c *gin.Context, err error, msg ...string) {
 		errHash string
 	)
 
-	if err != nil {
-		if len(msg) > 0 {
-			errMsg = fmt.Sprintf("%s: %s", msg, err.Error())
-		} else {
-			errMsg = err.Error()
-		}
-		errHash = fmt.Sprintf("%x", sha1.Sum([]byte(errMsg)))
-	}
-
 	req := c.Request
+
+	if err != nil {
+		appErr := err
+		if len(msg) > 0 {
+			errMsg = fmt.Sprintf("%s: %s", msg[0], err.Error())
+		}
+		errMsg = appErr.Error()
+		errHash = fmt.Sprintf("%x", sha1.Sum([]byte(errMsg)))
+
+		raven.CaptureError(appErr, map[string]string{
+			"app":        "api-server",
+			"error_hash": errHash,
+			"method":     req.Method,
+			"url":        req.URL.String(),
+			"ip":         c.ClientIP(),
+		})
+	}
 
 	fields := log.Fields{
 		"req": fmt.Sprintf("%s %s", req.Method, req.URL.String()),
