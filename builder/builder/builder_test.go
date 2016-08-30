@@ -2,6 +2,7 @@ package builder_test
 
 import (
 	"archive/tar"
+	"archive/zip"
 	"bytes"
 	"compress/gzip"
 	"encoding/hex"
@@ -97,13 +98,14 @@ var _ = Describe("Builder", func() {
 		}
 	}
 
-	It("fetches the raw bundle from S3, optimize assets, compress and upload to S3 and publish a message to 'deploy' queue", func() {
+	It("fetches the raw tarball bundle from S3, optimize assets, compress and upload to S3 and publish a message to 'deploy' queue", func() {
 		// mock download
 		fakeS3.DownloadContent, err = ioutil.ReadFile("../../testhelper/fixtures/website.tar.gz")
 		Expect(err).To(BeNil())
 
 		err = builder.Work([]byte(fmt.Sprintf(`{
-			"deployment_id": %d
+			"deployment_id": %d,
+			"archive_format": "tar.gz"
 		}`, depl.ID)))
 		Expect(err).To(BeNil())
 
@@ -196,7 +198,122 @@ var _ = Describe("Builder", func() {
 			"deployment_id": %d,
 			"skip_webroot_upload": false,
 			"skip_invalidation": false,
-			"use_raw_bundle": false
+			"use_raw_bundle": false,
+			"archive_format": "tar.gz"
+		}`, depl.ID)))
+
+		// it should update deployment's state to deployed
+		err = db.First(depl, depl.ID).Error
+		Expect(err).To(BeNil())
+
+		Expect(depl.ErrorMessage).To(BeNil())
+		Expect(depl.State).To(Equal(deployment.StatePendingDeploy))
+
+		assertCleanTempFile(depl.PrefixID())
+
+		// make sure it does not leave project as locked
+		Expect(db.First(proj, proj.ID).Error).To(BeNil())
+		Expect(proj.LockedAt).To(BeNil())
+	})
+
+	It("fetches the raw zip bundle from S3, optimize assets, compress and upload to S3 and publish a message to 'deploy' queue", func() {
+		// mock download
+		fakeS3.DownloadContent, err = ioutil.ReadFile("../../testhelper/fixtures/website.zip")
+		Expect(err).To(BeNil())
+
+		err = builder.Work([]byte(fmt.Sprintf(`{
+			"deployment_id": %d,
+			"archive_format": "zip"
+		}`, depl.ID)))
+		Expect(err).To(BeNil())
+
+		// it should download raw bundle from s3
+		Expect(fakeS3.DownloadCalls.Count()).To(Equal(1))
+		downloadCall := fakeS3.DownloadCalls.NthCall(1)
+		Expect(downloadCall).NotTo(BeNil())
+		Expect(downloadCall.Arguments[0]).To(Equal(s3client.BucketRegion))
+		Expect(downloadCall.Arguments[1]).To(Equal(s3client.BucketName))
+		Expect(downloadCall.Arguments[2]).To(Equal(fmt.Sprintf("deployments/%s/raw-bundle.zip", depl.PrefixID())))
+		Expect(downloadCall.ReturnValues[0]).To(BeNil())
+
+		// it should upload optimized assets as a tar-gzipped file.
+		Expect(fakeS3.UploadCalls.Count()).To(Equal(1))
+
+		assertUpload(
+			1,
+			"deployments/"+depl.PrefixID()+"/optimized-bundle.zip",
+		)
+
+		// Verify all contents
+		uploadCall := fakeS3.UploadCalls.NthCall(1)
+		uploadedContent, ok := uploadCall.SideEffects["uploaded_content"].([]byte)
+		Expect(ok).To(BeTrue())
+
+		r, err := zip.NewReader(bytes.NewReader(uploadedContent), int64(len(uploadedContent)))
+		Expect(err).To(BeNil())
+
+		optimizedBundlePath := "../../testhelper/fixtures/optimized_website"
+		var optimizedFileNames []string
+		for _, file := range r.File {
+			rc, err := file.Open()
+			Expect(err).To(BeNil())
+			defer rc.Close()
+
+			if file.FileInfo().IsDir() {
+				continue
+			}
+
+			sourceContent, err := ioutil.ReadAll(rc)
+			Expect(err).To(BeNil())
+
+			if strings.HasPrefix(file.Name, "sitemap") {
+				if file.Name == "sitemap.xml" {
+					Expect(sourceContent).To(ContainSubstring(fmt.Sprintf("<loc>https://foo-bar.risecloud.dev")))
+					Expect(sourceContent).To(ContainSubstring(fmt.Sprintf("<loc>https://www.foo-bar.com")))
+					Expect(sourceContent).To(ContainSubstring(fmt.Sprintf("<loc>http://www.baz-qux.com")))
+				}
+
+				if file.Name == "sitemap/sitemap-foo-bar-risecloud-dev.xml" {
+					Expect(sourceContent).To(ContainSubstring(fmt.Sprintf("<loc>https://foo-bar.risecloud.dev/</loc>")))
+				}
+
+				if file.Name == "sitemap/sitemap-www-foo-bar-com.xml" {
+					Expect(sourceContent).To(ContainSubstring(fmt.Sprintf("<loc>https://www.foo-bar.com/</loc>")))
+				}
+
+				if file.Name == "sitemap/sitemap-www-baz-qux-com.xml" {
+					Expect(sourceContent).To(ContainSubstring(fmt.Sprintf("<loc>http://www.baz-qux.com/</loc>")))
+				}
+			} else {
+				targetContent, err := ioutil.ReadFile(filepath.Join(optimizedBundlePath, file.Name))
+				Expect(err).To(BeNil())
+				Expect(hex.EncodeToString(targetContent)).To(Equal(hex.EncodeToString(sourceContent)))
+			}
+
+			optimizedFileNames = append(optimizedFileNames, file.Name)
+		}
+
+		Expect(optimizedFileNames).To(ConsistOf([]string{
+			"images/rick-astley.jpg",
+			"images/astley.jpg",
+			"index.html",
+			"js/app.js",
+			"css/app.css",
+			"sitemap.xml",
+			"sitemap/sitemap-foo-bar-risecloud-dev.xml",
+			"sitemap/sitemap-www-foo-bar-com.xml",
+			"sitemap/sitemap-www-baz-qux-com.xml",
+		}))
+
+		// it should publish deploy message
+		d := testhelper.ConsumeQueue(mq, queues.Deploy)
+		Expect(d).NotTo(BeNil())
+		Expect(d.Body).To(MatchJSON(fmt.Sprintf(`{
+			"deployment_id": %d,
+			"skip_webroot_upload": false,
+			"skip_invalidation": false,
+			"use_raw_bundle": false,
+			"archive_format": "zip"
 		}`, depl.ID)))
 
 		// it should update deployment's state to deployed
@@ -239,7 +356,8 @@ var _ = Describe("Builder", func() {
 			Expect(err).To(BeNil())
 
 			err = builder.Work([]byte(fmt.Sprintf(`{
-				"deployment_id": %d
+				"deployment_id": %d,
+				"archive_format": "tar.gz"
 			}`, depl2.ID)))
 			Expect(err).To(BeNil())
 
@@ -265,7 +383,8 @@ var _ = Describe("Builder", func() {
 				Expect(err).To(BeNil())
 
 				err = builder.Work([]byte(fmt.Sprintf(`{
-					"deployment_id": %d
+					"deployment_id": %d,
+					"archive_format": "tar.gz"
 				}`, depl2.ID)))
 				Expect(err).To(BeNil())
 
@@ -281,8 +400,8 @@ var _ = Describe("Builder", func() {
 		})
 	})
 
-	Context("when the deployment is in an expected state", func() {
-		It("returns an error if the deployment is not in `pending_build` state", func() {
+	Context("when the deployment is not in the `pending_build` state", func() {
+		It("returns an error", func() {
 			depl.State = deployment.StateUploaded
 			Expect(db.Save(depl).Error).To(BeNil())
 
@@ -350,7 +469,8 @@ var _ = Describe("Builder", func() {
 			errCh := make(chan error)
 			go func() {
 				err = builder.Work([]byte(fmt.Sprintf(`{
-					"deployment_id": %d
+					"deployment_id": %d,
+					"archive_format": "tar.gz"
 				}`, depl.ID)))
 
 				if err != nil {
@@ -377,7 +497,8 @@ var _ = Describe("Builder", func() {
 
 		It("sets `UseRawBundle` to true in a deploy message", func() {
 			err = builder.Work([]byte(fmt.Sprintf(`{
-				"deployment_id": %d
+				"deployment_id": %d,
+				"archive_format": "tar.gz"
 			}`, depl.ID)))
 			Expect(err).To(BeNil())
 
@@ -388,7 +509,8 @@ var _ = Describe("Builder", func() {
 				"deployment_id": %d,
 				"skip_webroot_upload": false,
 				"skip_invalidation": false,
-				"use_raw_bundle": true
+				"use_raw_bundle": true,
+				"archive_format": "tar.gz"
 			}`, depl.ID)))
 
 			// it should update deployment's state to deployed
@@ -402,7 +524,8 @@ var _ = Describe("Builder", func() {
 
 		It("updates `error_message` in deployments table", func() {
 			err = builder.Work([]byte(fmt.Sprintf(`{
-				"deployment_id": %d
+				"deployment_id": %d,
+				"archive_format": "tar.gz"
 			}`, depl.ID)))
 			Expect(err).To(BeNil())
 
@@ -423,7 +546,8 @@ var _ = Describe("Builder", func() {
 
 		It("returns an error", func() {
 			err = builder.Work([]byte(fmt.Sprintf(`{
-				"deployment_id": %d
+				"deployment_id": %d,
+				"archive_format": "tar.gz"
 			}`, depl.ID)))
 			Expect(err).To(Equal(builder.ErrProjectLocked))
 

@@ -15,6 +15,7 @@ import (
 	"github.com/nitrous-io/rise-server/apiserver/models/acmecert"
 	"github.com/nitrous-io/rise-server/apiserver/models/cert"
 	"github.com/nitrous-io/rise-server/apiserver/models/domain"
+	"github.com/nitrous-io/rise-server/apiserver/models/project"
 	"github.com/nitrous-io/rise-server/pkg/job"
 	"github.com/nitrous-io/rise-server/pkg/pubsub"
 	"github.com/nitrous-io/rise-server/shared/exchanges"
@@ -40,6 +41,69 @@ func Index(c *gin.Context) {
 
 	c.JSON(http.StatusOK, gin.H{
 		"domains": domNames,
+	})
+}
+
+func DomainsByUser(c *gin.Context) {
+	u := controllers.CurrentUser(c)
+
+	db, err := dbconn.DB()
+	if err != nil {
+		controllers.InternalServerError(c, err)
+		return
+	}
+
+	var projs []*project.Project
+	if err := db.Model(project.Project{}).Where("user_id = ?", u.ID).Find(&projs).Error; err != nil {
+		controllers.InternalServerError(c, err)
+		return
+	}
+
+	var projIDs []uint
+	for _, proj := range projs {
+		projIDs = append(projIDs, proj.ID)
+	}
+
+	var doms []*domain.DomainWithProtocol
+	if err := db.Select("domains.*, count(certs.*) > 0 AS https").
+		Joins("LEFT JOIN certs ON domains.id = certs.domain_id").
+		Where("certs.deleted_at IS NULL").
+		Where("domains.project_id IN (?)", projIDs).Group("domains.id").
+		Order("domains.project_id, domains.created_at ASC").Find(&doms).Error; err != nil {
+		controllers.InternalServerError(c, err)
+		return
+	}
+
+	domainsByProj := make(map[uint][]*domain.DomainWithProtocol, 0)
+	for _, dom := range doms {
+		if domainsByProj[dom.ProjectID] == nil {
+			domainsByProj[dom.ProjectID] = make([]*domain.DomainWithProtocol, 0)
+		}
+		domainsByProj[dom.ProjectID] = append(domainsByProj[dom.ProjectID], dom)
+	}
+
+	result := make(map[string][]interface{}, 0)
+	for _, proj := range projs {
+		if result[proj.Name] == nil {
+			result[proj.Name] = make([]interface{}, 0)
+		}
+
+		if proj.DefaultDomainEnabled {
+			result[proj.Name] = append(result[proj.Name],
+				domain.JSON{
+					Name:  proj.DefaultDomainName(),
+					HTTPS: &proj.DefaultDomainEnabled,
+				})
+		}
+
+		doms := domainsByProj[proj.ID]
+		for _, dom := range doms {
+			result[proj.Name] = append(result[proj.Name], dom.AsJSON())
+		}
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"domains": result,
 	})
 }
 
@@ -136,7 +200,10 @@ func Create(c *gin.Context) {
 				"projectName": proj.Name,
 				"domain":      dom.Name,
 			}
-			context map[string]interface{}
+			context = map[string]interface{}{
+				"ip":         common.GetIP(c.Request),
+				"user_agent": c.Request.UserAgent(),
+			}
 		)
 		if err := common.Track(strconv.Itoa(int(u.ID)), event, "", props, context); err != nil {
 			log.Errorf("failed to track %q event for user ID %d, err: %v",
@@ -231,7 +298,10 @@ func Destroy(c *gin.Context) {
 				"projectName": proj.Name,
 				"domain":      d.Name,
 			}
-			context map[string]interface{}
+			context = map[string]interface{}{
+				"ip":         common.GetIP(c.Request),
+				"user_agent": c.Request.UserAgent(),
+			}
 		)
 		if err := common.Track(strconv.Itoa(int(u.ID)), event, "", props, context); err != nil {
 			log.Errorf("failed to track %q event for user ID %d, err: %v",

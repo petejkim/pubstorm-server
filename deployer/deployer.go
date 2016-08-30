@@ -93,13 +93,16 @@ func run() {
 		select {
 		case d := <-msgCh:
 			err = deployer.Work(d.Body)
+
 			if err != nil {
 				// failure
 				log.Warnln("Work failed", err, string(d.Body))
 
-				// It does not retry for timeout or record not found error
+				// It does not retry for timeout or record not found error or unarchive failed
 				// because it could retry for long time.
-				if err == deployer.ErrTimeout || err == deployer.ErrRecordNotFound {
+				if err == deployer.ErrTimeout ||
+					err == deployer.ErrRecordNotFound ||
+					err == deployer.ErrUnarchiveFailed {
 					if err := d.Ack(false); err != nil {
 						log.WithFields(log.Fields{"queue": queueName}).Warnln("Failed to Ack message:", err)
 					}

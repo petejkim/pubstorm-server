@@ -9,6 +9,7 @@ import (
 	"net/http/httptest"
 	"net/url"
 	"testing"
+	"time"
 
 	"github.com/jinzhu/gorm"
 	"github.com/nitrous-io/rise-server/apiserver/common"
@@ -202,7 +203,12 @@ var _ = Describe("Projects", func() {
 				Expect(ok).To(BeTrue())
 				Expect(props["projectName"]).To(Equal("foo-bar-express"))
 
-				Expect(trackCall.Arguments[4]).To(BeNil())
+				c := trackCall.Arguments[4]
+				context, ok := c.(map[string]interface{})
+				Expect(ok).To(BeTrue())
+				Expect(context["ip"]).ToNot(BeNil())
+				Expect(context["user_agent"]).ToNot(BeNil())
+
 				Expect(trackCall.ReturnValues[0]).To(BeNil())
 			})
 		})
@@ -218,15 +224,23 @@ var _ = Describe("Projects", func() {
 				_, err := b.ReadFrom(res.Body)
 				Expect(err).To(BeNil())
 
+				proj := &project.Project{}
+				err = db.Last(proj).Error
+				Expect(err).To(BeNil())
+
+				createdAtJSON, err := proj.CreatedAt.MarshalJSON()
+				Expect(err).To(BeNil())
+
 				Expect(res.StatusCode).To(Equal(http.StatusCreated))
-				Expect(b.String()).To(MatchJSON(`{
+				Expect(b.String()).To(MatchJSON(fmt.Sprintf(`{
 					"project": {
 						"name": "foo-bar-express",
 						"default_domain_enabled": true,
 						"force_https": false,
-						"skip_build": false
+						"skip_build": false,
+						"created_at": %s
 					}
-				}`))
+				}`, createdAtJSON)))
 			})
 		})
 
@@ -274,15 +288,23 @@ var _ = Describe("Projects", func() {
 				_, err := b.ReadFrom(res.Body)
 				Expect(err).To(BeNil())
 
+				proj := &project.Project{}
+				err = db.Last(proj).Error
+				Expect(err).To(BeNil())
+
+				createdAtJSON, err := proj.CreatedAt.MarshalJSON()
+				Expect(err).To(BeNil())
+
 				Expect(res.StatusCode).To(Equal(http.StatusCreated))
-				Expect(b.String()).To(MatchJSON(`{
+				Expect(b.String()).To(MatchJSON(fmt.Sprintf(`{
 					"project": {
 						"name": "foo-bar-express",
 						"default_domain_enabled": true,
 						"force_https": false,
-						"skip_build": false
+						"skip_build": false,
+						"created_at": %s
 					}
-				}`))
+				}`, createdAtJSON)))
 			})
 
 			It("creates a project record in the DB", func() {
@@ -301,7 +323,12 @@ var _ = Describe("Projects", func() {
 				Expect(ok).To(BeTrue())
 				Expect(props["projectName"]).To(Equal("foo-bar-express"))
 
-				Expect(trackCall.Arguments[4]).To(BeNil())
+				c := trackCall.Arguments[4]
+				context, ok := c.(map[string]interface{})
+				Expect(ok).To(BeTrue())
+				Expect(context["ip"]).ToNot(BeNil())
+				Expect(context["user_agent"]).ToNot(BeNil())
+
 				Expect(trackCall.ReturnValues[0]).To(BeNil())
 			})
 		})
@@ -341,15 +368,23 @@ var _ = Describe("Projects", func() {
 			_, err := b.ReadFrom(res.Body)
 			Expect(err).To(BeNil())
 
+			proj := &project.Project{}
+			err = db.Last(proj).Error
+			Expect(err).To(BeNil())
+
+			createdAtJSON, err := proj.CreatedAt.MarshalJSON()
+			Expect(err).To(BeNil())
+
 			Expect(res.StatusCode).To(Equal(http.StatusOK))
 			Expect(b.String()).To(MatchJSON(fmt.Sprintf(`{
 				"project": {
 					"name": "%s",
 					"default_domain_enabled": true,
 					"force_https": false,
-					"skip_build": false
+					"skip_build": false,
+					"created_at": %s
 				}
-			}`, proj.Name)))
+			}`, proj.Name, createdAtJSON)))
 		})
 
 		sharedexamples.ItRequiresAuthentication(func() (*gorm.DB, *user.User, *http.Header) {
@@ -402,6 +437,20 @@ var _ = Describe("Projects", func() {
 			_, err := b.ReadFrom(res.Body)
 			Expect(err).To(BeNil())
 
+			proj := &project.Project{}
+			err = db.Where("name = 'site-1'").First(proj).Error
+			Expect(err).To(BeNil())
+
+			createdAtJSON, err := proj.CreatedAt.MarshalJSON()
+			Expect(err).To(BeNil())
+
+			proj3 := &project.Project{}
+			err = db.Where("name = 'site-3'").First(proj3).Error
+			Expect(err).To(BeNil())
+
+			createdAt3JSON, err := proj3.CreatedAt.MarshalJSON()
+			Expect(err).To(BeNil())
+
 			Expect(res.StatusCode).To(Equal(http.StatusOK))
 			Expect(b.String()).To(MatchJSON(fmt.Sprintf(`{
 				"projects": [
@@ -409,17 +458,19 @@ var _ = Describe("Projects", func() {
 						"name": "%s",
 						"default_domain_enabled": true,
 						"force_https": false,
-						"skip_build": false
+						"skip_build": false,
+						"created_at": %s
 					},
 					{
 						"name": "%s",
 						"default_domain_enabled": true,
 						"force_https": false,
-						"skip_build": false
+						"skip_build": false,
+						"created_at": %s
 					}
 				],
 				"shared_projects": []
-			}`, proj.Name, proj3.Name)))
+			}`, proj.Name, createdAtJSON, proj3.Name, createdAt3JSON)))
 		})
 
 		Context("when user is a collaborator of other users' projects", func() {
@@ -450,6 +501,34 @@ var _ = Describe("Projects", func() {
 				_, err := b.ReadFrom(res.Body)
 				Expect(err).To(BeNil())
 
+				proj := &project.Project{}
+				err = db.Where("name = 'site-1'").First(proj).Error
+				Expect(err).To(BeNil())
+
+				createdAtJSON, err := proj.CreatedAt.MarshalJSON()
+				Expect(err).To(BeNil())
+
+				proj3 := &project.Project{}
+				err = db.Where("name = 'site-3'").First(proj3).Error
+				Expect(err).To(BeNil())
+
+				createdAt3JSON, err := proj3.CreatedAt.MarshalJSON()
+				Expect(err).To(BeNil())
+
+				proj4 := &project.Project{}
+				err = db.Where("name = 'site-4'").First(proj4).Error
+				Expect(err).To(BeNil())
+
+				createdAt4JSON, err := proj4.CreatedAt.MarshalJSON()
+				Expect(err).To(BeNil())
+
+				proj5 := &project.Project{}
+				err = db.Where("name = 'site-5'").First(proj5).Error
+				Expect(err).To(BeNil())
+
+				createdAt5JSON, err := proj5.CreatedAt.MarshalJSON()
+				Expect(err).To(BeNil())
+
 				Expect(res.StatusCode).To(Equal(http.StatusOK))
 				Expect(b.String()).To(MatchJSON(fmt.Sprintf(`{
 					"projects": [
@@ -457,13 +536,15 @@ var _ = Describe("Projects", func() {
 							"name": "%s",
 							"default_domain_enabled": true,
 							"force_https": false,
-							"skip_build": false
+							"skip_build": false,
+							"created_at": %s
 						},
 						{
 							"name": "%s",
 							"default_domain_enabled": true,
 							"force_https": false,
-							"skip_build": false
+							"skip_build": false,
+							"created_at": %s
 						}
 					],
 					"shared_projects": [
@@ -471,16 +552,18 @@ var _ = Describe("Projects", func() {
 							"name": "%s",
 							"default_domain_enabled": true,
 							"force_https": false,
-							"skip_build": false
+							"skip_build": false,
+							"created_at": %s
 						},
 						{
 							"name": "%s",
 							"default_domain_enabled": true,
 							"force_https": false,
-							"skip_build": false
+							"skip_build": false,
+							"created_at": %s
 						}
 					]
-				}`, proj.Name, proj3.Name, proj4.Name, proj5.Name)))
+				}`, proj.Name, createdAtJSON, proj3.Name, createdAt3JSON, proj4.Name, createdAt4JSON, proj5.Name, createdAt5JSON)))
 			})
 		})
 
@@ -561,9 +644,10 @@ var _ = Describe("Projects", func() {
 						"name": "%s",
 						"default_domain_enabled": false,
 						"force_https": false,
-						"skip_build": false
+						"skip_build": false,
+						"created_at": "%s"
 					}
-				}`, proj.Name)))
+				}`, proj.Name, proj.CreatedAt.Format(time.RFC3339Nano))))
 			})
 
 			Context("when there is an active deployment", func() {
@@ -642,9 +726,10 @@ var _ = Describe("Projects", func() {
 						"name": "%s",
 						"default_domain_enabled": true,
 						"force_https": false,
-						"skip_build": false
+						"skip_build": false,
+						"created_at": "%s"
 					}
-				}`, proj.Name)))
+				}`, proj.Name, proj.CreatedAt.Format(time.RFC3339Nano))))
 			})
 
 			Context("when there is an active deployment", func() {
@@ -707,9 +792,10 @@ var _ = Describe("Projects", func() {
 						"name": "%s",
 						"default_domain_enabled": true,
 						"force_https": true,
-						"skip_build": false
+						"skip_build": false,
+						"created_at": "%s"
 					}
-				}`, proj.Name)))
+				}`, proj.Name, proj.CreatedAt.Format(time.RFC3339Nano))))
 			})
 
 			Context("when there is an active deployment", func() {
@@ -763,9 +849,10 @@ var _ = Describe("Projects", func() {
 						"name": "%s",
 						"default_domain_enabled": true,
 						"force_https": false,
-						"skip_build": false
+						"skip_build": false,
+						"created_at": "%s"
 					}
-				}`, proj.Name)))
+				}`, proj.Name, proj.CreatedAt.Format(time.RFC3339Nano))))
 			})
 
 			Context("when there is an active deployment", func() {
@@ -819,9 +906,10 @@ var _ = Describe("Projects", func() {
 						"name": "%s",
 						"default_domain_enabled": true,
 						"force_https": false,
-						"skip_build": true
+						"skip_build": true,
+						"created_at": "%s"
 					}
-				}`, proj.Name)))
+				}`, proj.Name, proj.CreatedAt.Format(time.RFC3339Nano))))
 			})
 
 		})
@@ -986,7 +1074,12 @@ var _ = Describe("Projects", func() {
 			Expect(ok).To(BeTrue())
 			Expect(props["projectName"]).To(Equal(proj.Name))
 
-			Expect(trackCall.Arguments[4]).To(BeNil())
+			c := trackCall.Arguments[4]
+			context, ok := c.(map[string]interface{})
+			Expect(ok).To(BeTrue())
+			Expect(context["ip"]).ToNot(BeNil())
+			Expect(context["user_agent"]).ToNot(BeNil())
+
 			Expect(trackCall.ReturnValues[0]).To(BeNil())
 		})
 
