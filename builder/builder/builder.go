@@ -68,12 +68,12 @@ var (
 func Work(data []byte) error {
 	d := &messages.BuildJobData{}
 	if err := json.Unmarshal(data, d); err != nil {
-		return err
+		return fmt.Errorf("failed to unmarshal payload %s: %v", string(data), err)
 	}
 
 	db, err := dbconn.DB()
 	if err != nil {
-		return err
+		return fmt.Errorf("failed to obtain a db connection %s: %v", string(data), err)
 	}
 
 	depl := &deployment.Deployment{}
@@ -81,7 +81,7 @@ func Work(data []byte) error {
 		if err == gorm.RecordNotFound {
 			return ErrRecordNotFound
 		}
-		return err
+		return fmt.Errorf("failed to fetch a deployment %d: %v", d.DeploymentID, err)
 	}
 
 	proj := &project.Project{}
@@ -89,12 +89,12 @@ func Work(data []byte) error {
 		if err == gorm.RecordNotFound {
 			return ErrRecordNotFound
 		}
-		return err
+		return fmt.Errorf("failed to fetch a project %d: %v", depl.ProjectID, err)
 	}
 
 	acquired, err := proj.Lock(db)
 	if err != nil {
-		return err
+		return fmt.Errorf("failed to acquire a project lock: %v", err)
 	}
 
 	if !acquired {
@@ -138,7 +138,7 @@ func Work(data []byte) error {
 
 	f, err := ioutil.TempFile("", prefixID+"-raw-bundle."+archiveFormat)
 	if err != nil {
-		return err
+		return fmt.Errorf("failed to create a temp file: %v", err)
 	}
 	defer func() {
 		f.Close()
@@ -147,12 +147,12 @@ func Work(data []byte) error {
 
 	dirName, err := ioutil.TempDir("", prefixID)
 	if err != nil {
-		return err
+		return fmt.Errorf("failed to create a temp directory: %v", err)
 	}
 	defer os.RemoveAll(dirName)
 
 	if err := S3.Download(s3client.BucketRegion, s3client.BucketName, bundlePath, f); err != nil {
-		return err
+		return fmt.Errorf("failed to download the bundle %s from S3: %v", bundlePath, err)
 	}
 
 	if archiveFormat == "tar.gz" {
@@ -169,7 +169,7 @@ func Work(data []byte) error {
 				if err == io.EOF {
 					break
 				}
-				return err
+				return fmt.Errorf("failed to read the bundle file: %v", err)
 			}
 
 			if hdr.FileInfo().IsDir() {
@@ -178,19 +178,19 @@ func Work(data []byte) error {
 
 			folderPath := path.Dir(hdr.Name)
 			if err := os.MkdirAll(filepath.Join(dirName, folderPath), 0755); err != nil {
-				return err
+				return fmt.Errorf("failed to create a folder %s: %v", folderPath, err)
 			}
 
 			fileName := path.Clean(hdr.Name)
 			targetFileName := filepath.Join(dirName, fileName)
 			entry, err := os.Create(targetFileName)
 			if err != nil {
-				return err
+				return fmt.Errorf("failed to create a file %s: %v", targetFileName, err)
 			}
 			defer entry.Close()
 
 			if _, err := io.Copy(entry, tr); err != nil {
-				return err
+				return fmt.Errorf("failed to write to a file %s: %v", targetFileName, err)
 			}
 
 			entry.Close()
@@ -215,19 +215,19 @@ func Work(data []byte) error {
 
 			folderPath := path.Dir(file.Name)
 			if err := os.MkdirAll(filepath.Join(dirName, folderPath), 0755); err != nil {
-				return err
+				return fmt.Errorf("failed to create a folder %s: %v", folderPath, err)
 			}
 
 			fileName := path.Clean(file.Name)
 			targetFileName := filepath.Join(dirName, fileName)
 			entry, err := os.Create(targetFileName)
 			if err != nil {
-				return err
+				return fmt.Errorf("failed to create a file %s: %v", targetFileName, err)
 			}
 			defer entry.Close()
 
 			if _, err := io.Copy(entry, rc); err != nil {
-				return err
+				return fmt.Errorf("failed to write to a file %s: %v", targetFileName, err)
 			}
 
 			entry.Close()
@@ -236,7 +236,7 @@ func Work(data []byte) error {
 
 	optimizedBundleArchive, err := ioutil.TempFile("", "optimized-bundle."+archiveFormat)
 	if err != nil {
-		return err
+		return fmt.Errorf("failed to create a temp file: %v", err)
 	}
 	defer os.Remove(optimizedBundleArchive.Name())
 
@@ -250,7 +250,7 @@ func Work(data []byte) error {
 	// Optimize assets
 	domainNames, err := proj.DomainNamesWithProtocol(db)
 	if err != nil {
-		return err
+		return fmt.Errorf("failed to get domain names from project %s: %v", proj.Name, err)
 	}
 
 	output, err := runOptimizer(fmt.Sprintf("%s-%d", prefixID, time.Now().Unix()), dirName, domainNames)
@@ -270,41 +270,37 @@ func Work(data []byte) error {
 		}
 
 		if err := pack(optimizedBundleArchive, dirName, archiveFormat); err != nil {
-			return err
+			return fmt.Errorf("failed to compress optimize assets: %v", err)
 		}
 
 		if err := S3.Upload(s3client.BucketRegion, s3client.BucketName, "deployments/"+prefixID+"/optimized-bundle."+archiveFormat, optimizedBundleArchive, "", "private"); err != nil {
-			return err
+			return fmt.Errorf("failed to optimized bundle to S3: %v", err)
 		}
 
 	} else if err == ErrOptimizerTimeout {
-		if err := depl.UpdateState(db, deployment.StateBuildFailed); err != nil {
-			return err
-		}
-
 		nextState = deployment.StateBuildFailed
 		errorMessage := ErrOptimizerTimeout.Error()
 		depl.ErrorMessage = &errorMessage
 		deployJobMsg.UseRawBundle = true
 	} else {
-		return err
+		return fmt.Errorf("failed to optimize assets: %v", err)
 	}
 
 	if err := depl.UpdateState(db, nextState); err != nil {
-		return err
+		return fmt.Errorf("failed to update the deployment to be %s: %v", nextState, err)
 	}
 
 	j, err := job.NewWithJSON(queues.Deploy, &deployJobMsg)
 	if err != nil {
-		return err
+		return fmt.Errorf("failed to create a job: %v", err)
 	}
 
 	if err := j.Enqueue(); err != nil {
-		return err
+		return fmt.Errorf("failed to enqueue a job: %v", err)
 	}
 
 	if err := depl.UpdateState(db, deployment.StatePendingDeploy); err != nil {
-		return err
+		return fmt.Errorf("failed to update the deployment to be pending_deploy: %v", err)
 	}
 
 	return nil
