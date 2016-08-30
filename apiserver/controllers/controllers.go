@@ -68,7 +68,7 @@ func InternalServerError(c *gin.Context, err error, msg ...string) {
 
 	if err != nil {
 		if len(msg) > 0 {
-			errMsg = fmt.Sprintf("%s: %s", msg, err.Error())
+			errMsg = fmt.Sprintf("%s: %s", msg[0], err.Error())
 		} else {
 			errMsg = err.Error()
 		}
