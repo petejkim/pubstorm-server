@@ -60,14 +60,18 @@ func CurrentProject(c *gin.Context) *project.Project {
 	return p
 }
 
-func InternalServerError(c *gin.Context, err error) {
+func InternalServerError(c *gin.Context, err error, msg ...string) {
 	var (
 		errMsg  = "internal server error"
 		errHash string
 	)
 
 	if err != nil {
-		errMsg = err.Error()
+		if len(msg) > 0 {
+			errMsg = fmt.Sprintf("%s: %s", msg, err.Error())
+		} else {
+			errMsg = err.Error()
+		}
 		errHash = fmt.Sprintf("%x", sha1.Sum([]byte(errMsg)))
 	}
 
