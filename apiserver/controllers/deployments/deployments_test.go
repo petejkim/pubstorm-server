@@ -176,6 +176,10 @@ var _ = Describe("Deployments", func() {
 			doRequestWithMultipart("payload", "../../../testhelper/fixtures/website.zip")
 		}
 
+		doRequestWithSmallWebsite := func() {
+			doRequestWithMultipart("payload", "../../../testhelper/fixtures/small-website.tar.gz")
+		}
+
 		doRequestWithWrongPart := func() {
 			doRequestWithMultipart("upload", "../../../testhelper/fixtures/website.tar.gz")
 		}
@@ -259,6 +263,28 @@ var _ = Describe("Deployments", func() {
 
 					depl := &deployment.Deployment{}
 					Expect(db.Last(depl).Error).To(Equal(gorm.RecordNotFound))
+				})
+			})
+
+			Context("when the payload is smaller than 512 bytes", func() {
+				It("uploads without error", func() {
+					doRequestWithSmallWebsite()
+
+					depl := &deployment.Deployment{}
+					db.Last(depl)
+
+					Expect(fakeS3.UploadCalls.Count()).To(Equal(1))
+					call := fakeS3.UploadCalls.NthCall(1)
+					Expect(call).NotTo(BeNil())
+					Expect(call.Arguments[0]).To(Equal(s3client.BucketRegion))
+					Expect(call.Arguments[1]).To(Equal(s3client.BucketName))
+					Expect(call.Arguments[2]).To(Equal(fmt.Sprintf("deployments/%s-%d/raw-bundle.tar.gz", depl.Prefix, depl.ID)))
+					Expect(call.Arguments[4]).To(Equal(""))
+					Expect(call.Arguments[5]).To(Equal("private"))
+
+					b, err := ioutil.ReadFile("../../../testhelper/fixtures/small-website.tar.gz")
+					Expect(err).To(BeNil())
+					Expect(call.SideEffects["uploaded_content"]).To(Equal(b))
 				})
 			})
 
