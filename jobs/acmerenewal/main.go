@@ -147,7 +147,7 @@ func renew(db *gorm.DB, acmeCert *acmecert.AcmeCert) error {
 	}
 
 	if certResp.Certificate.Equal(x509Cert) {
-		log.WithFields(fields).Infof("Let's Encrypt returned an identifical cert for ACME cert ID %d, skipping", acmeCert.ID)
+		log.WithFields(fields).Infof("Let's Encrypt returned an identical cert for ACME cert ID %d, skipping", acmeCert.ID)
 		return nil
 	}
 

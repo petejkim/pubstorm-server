@@ -407,9 +407,10 @@ var _ = Describe("Projects", func() {
 			headers http.Header
 
 			anotherU *user.User
-			proj     *project.Project
-			proj2    *project.Project
-			proj3    *project.Project
+
+			proj  *project.Project
+			proj2 *project.Project
+			proj3 *project.Project
 		)
 
 		BeforeEach(func() {
@@ -564,6 +565,91 @@ var _ = Describe("Projects", func() {
 						}
 					]
 				}`, proj.Name, createdAtJSON, proj3.Name, createdAt3JSON, proj4.Name, createdAt4JSON, proj5.Name, createdAt5JSON)))
+			})
+		})
+
+		Context("when some projects have deployed and have collaborators", func() {
+			var (
+				depl  *deployment.Deployment
+				depl4 *deployment.Deployment
+				proj4 *project.Project
+			)
+
+			BeforeEach(func() {
+				u2 := factories.User(db)
+
+				proj4 = factories.Project(db, u2, "site-4")
+				err := proj4.AddCollaborator(db, u)
+				Expect(err).To(BeNil())
+
+				depl = factories.Deployment(db, proj, u, deployment.StateDeployed)
+				factories.Deployment(db, proj3, u, deployment.StatePendingDeploy)
+				depl4 = factories.Deployment(db, proj4, u2, deployment.StateDeployed)
+			})
+
+			It("responses with deployed at", func() {
+				doRequest()
+
+				b := &bytes.Buffer{}
+				_, err := b.ReadFrom(res.Body)
+				Expect(err).To(BeNil())
+
+				// project 1
+				Expect(db.First(proj, proj.ID).Error).To(BeNil())
+				createdAtJSON, err := proj.CreatedAt.MarshalJSON()
+				Expect(err).To(BeNil())
+
+				Expect(db.First(depl, depl.ID).Error).To(BeNil())
+				deployedAtJSON, err := depl.DeployedAt.MarshalJSON()
+				Expect(err).To(BeNil())
+
+				// project 3
+				Expect(db.First(proj3, proj3.ID).Error).To(BeNil())
+				createdAt3JSON, err := proj3.CreatedAt.MarshalJSON()
+				Expect(err).To(BeNil())
+
+				// project 4
+				Expect(db.First(proj4, proj4.ID).Error).To(BeNil())
+				createdAt4JSON, err := proj4.CreatedAt.MarshalJSON()
+				Expect(err).To(BeNil())
+
+				Expect(db.First(depl4, depl4.ID).Error).To(BeNil())
+				deployedAt4JSON, err := depl4.DeployedAt.MarshalJSON()
+				Expect(err).To(BeNil())
+
+				Expect(res.StatusCode).To(Equal(http.StatusOK))
+				Expect(b.String()).To(MatchJSON(fmt.Sprintf(`{
+					"projects": [
+						{
+							"name": "%s",
+							"default_domain_enabled": true,
+							"force_https": false,
+							"skip_build": false,
+							"created_at": %s,
+							"deployed_at": %s
+						},
+						{
+							"name": "%s",
+							"default_domain_enabled": true,
+							"force_https": false,
+							"skip_build": false,
+							"created_at": %s
+						}
+					],
+					"shared_projects": [
+						{
+							"name": "%s",
+							"default_domain_enabled": true,
+							"force_https": false,
+							"skip_build": false,
+							"created_at": %s,
+							"deployed_at": %s
+						}
+					]
+				}`, proj.Name, createdAtJSON, deployedAtJSON,
+					proj3.Name, createdAt3JSON,
+					proj4.Name, createdAt4JSON, deployedAt4JSON,
+				)))
 			})
 		})
 

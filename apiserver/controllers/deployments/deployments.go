@@ -126,10 +126,17 @@ func Create(c *gin.Context) {
 					return
 				}
 
+				// Why 512? https://golang.org/pkg/net/http/#DetectContentType
 				br := bufio.NewReader(part)
+				// It returns io.EOF when it reads fewer than specified number of bytes.
 				partHead, err := br.Peek(512)
-				if err != nil {
+				if err != nil && err != io.EOF {
 					controllers.InternalServerError(c, err, "deployments: failed to get header from payload")
+					return
+				}
+
+				if len(partHead) == 0 {
+					controllers.InternalServerError(c, err, "deployments: file header is invalid")
 					return
 				}
 
@@ -143,6 +150,7 @@ func Create(c *gin.Context) {
 					uploadKey = fmt.Sprintf("deployments/%s/raw-bundle.tar.gz", depl.PrefixID())
 					archiveFormat = "tar.gz"
 				default:
+					// By default, it returns "application/octet-stream"
 					c.JSON(http.StatusBadRequest, gin.H{
 						"error":             "invalid_request",
 						"error_description": "payload is in an unsupported format",
