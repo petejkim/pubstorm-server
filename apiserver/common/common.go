@@ -15,6 +15,7 @@ var (
 	GitHubAPIHost  = os.Getenv("GITHUB_API_HOST")
 	GitHubAPIToken = os.Getenv("GITHUB_API_TOKEN")
 	WebhookHost    = os.Getenv("WEBHOOK_HOST")
+	SentryURL      = os.Getenv("SENTRY_URL")
 )
 
 func init() {

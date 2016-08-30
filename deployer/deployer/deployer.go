@@ -36,6 +36,9 @@ import (
 )
 
 var (
+	S3 filetransfer.FileTransfer = filetransfer.NewS3(s3client.PartSize, s3client.MaxUploadParts)
+
+	ErrUnexpectedState = errors.New("deployment is in unexpected state")
 	ErrProjectLocked   = errors.New("project is locked")
 	ErrRecordNotFound  = errors.New("project or deployment is deleted")
 	ErrTimeout         = errors.New("failed to upload files due to timeout on uploading to s3")
@@ -69,12 +72,6 @@ func init() {
 
 	mimetypes.Register()
 }
-
-var (
-	S3 filetransfer.FileTransfer = filetransfer.NewS3(s3client.PartSize, s3client.MaxUploadParts)
-
-	errUnexpectedState = errors.New("deployment is in unexpected state")
-)
 
 func Work(data []byte) error {
 	d := &messages.DeployJobData{}
@@ -120,7 +117,7 @@ func Work(data []byte) error {
 
 	// Return error if the deployment is in a state that bundle is not uploaded or not prepared for deploying
 	if depl.State == deployment.StateUploaded || depl.State == deployment.StatePendingUpload {
-		return errUnexpectedState
+		return ErrUnexpectedState
 	}
 
 	prefixID := depl.PrefixID()
@@ -128,7 +125,7 @@ func Work(data []byte) error {
 	if !d.SkipWebrootUpload {
 		// Disallow re-deploying a deployed project.
 		if depl.State == deployment.StateDeployed {
-			return errUnexpectedState
+			return ErrUnexpectedState
 		}
 
 		archiveFormat := d.ArchiveFormat

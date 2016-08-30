@@ -52,7 +52,7 @@ func init() {
 var (
 	S3 filetransfer.FileTransfer = filetransfer.NewS3(s3client.PartSize, s3client.MaxUploadParts)
 
-	errUnexpectedState  = errors.New("deployment is in unexpected state")
+	ErrUnexpectedState  = errors.New("deployment is in unexpected state")
 	ErrProjectLocked    = errors.New("project is locked")
 	ErrOptimizerTimeout = errors.New("Timed out on optimizing assets. This might happen due to too large asset files. We will continue without optimizing your assets.")
 	ErrRecordNotFound   = errors.New("project or deployment is deleted")
@@ -108,7 +108,7 @@ func Work(data []byte) error {
 	}()
 
 	if depl.State != deployment.StatePendingBuild {
-		return errUnexpectedState
+		return ErrUnexpectedState
 	}
 
 	// There are 2 possible sources for the bundle (i.e. the files to be

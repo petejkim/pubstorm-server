@@ -6,6 +6,8 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/getsentry/raven-go"
+	"github.com/nitrous-io/rise-server/apiserver/common"
 	"github.com/nitrous-io/rise-server/builder/builder"
 	"github.com/nitrous-io/rise-server/pkg/mqconn"
 	"github.com/nitrous-io/rise-server/shared/queues"
@@ -15,6 +17,8 @@ import (
 )
 
 func main() {
+	raven.SetDSN(common.SentryURL)
+
 	run()
 	os.Exit(1)
 }
@@ -93,6 +97,13 @@ func run() {
 			if err != nil {
 				// failure
 				log.Warnln("Work failed", err, string(d.Body))
+
+				if err != builder.ErrProjectLocked {
+					raven.CaptureError(err, map[string]string{
+						"app":  "builder",
+						"body": string(d.Body),
+					})
+				}
 
 				if err == builder.ErrRecordNotFound || err == builder.ErrUnarchiveFailed {
 					if err := d.Ack(false); err != nil {
