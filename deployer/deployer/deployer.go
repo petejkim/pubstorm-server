@@ -79,12 +79,12 @@ var (
 func Work(data []byte) error {
 	d := &messages.DeployJobData{}
 	if err := json.Unmarshal(data, d); err != nil {
-		return err
+		return fmt.Errorf("failed to unmarshal payload %s: %v", string(data), err)
 	}
 
 	db, err := dbconn.DB()
 	if err != nil {
-		return err
+		return fmt.Errorf("failed to obtain a db connection %s: %v", string(data), err)
 	}
 
 	depl := &deployment.Deployment{}
@@ -92,7 +92,7 @@ func Work(data []byte) error {
 		if err == gorm.RecordNotFound {
 			return ErrRecordNotFound
 		}
-		return err
+		return fmt.Errorf("failed to fetch a deployment %d: %v", d.DeploymentID, err)
 	}
 
 	proj := &project.Project{}
@@ -100,12 +100,12 @@ func Work(data []byte) error {
 		if err == gorm.RecordNotFound {
 			return ErrRecordNotFound
 		}
-		return err
+		return fmt.Errorf("failed to fetch a project %d: %v", depl.ProjectID, err)
 	}
 
 	acquired, err := proj.Lock(db)
 	if err != nil {
-		return err
+		return fmt.Errorf("failed to acquire a project lock: %v", err)
 	}
 
 	if !acquired {
@@ -153,7 +153,7 @@ func Work(data []byte) error {
 
 		f, err := ioutil.TempFile("", prefixID+"-optimized-bundle."+archiveFormat)
 		if err != nil {
-			return err
+			return fmt.Errorf("failed to create a temp file: %v", err)
 		}
 		defer func() {
 			f.Close()
@@ -161,7 +161,7 @@ func Work(data []byte) error {
 		}()
 
 		if err := S3.Download(s3client.BucketRegion, s3client.BucketName, bundlePath, f); err != nil {
-			return err
+			return fmt.Errorf("failed to download the bundle %s from S3: %v", bundlePath, err)
 		}
 
 		// webroot is a publicly readable directory on S3.
@@ -315,7 +315,7 @@ func Work(data []byte) error {
 
 		var envvars map[string]string
 		if err := json.Unmarshal(depl.JsEnvVars, &envvars); err != nil {
-			return err
+			return fmt.Errorf("failed to unmarshal js environment variables %s: %v", string(depl.JsEnvVars), err)
 		}
 
 		if err := S3.Upload(s3client.BucketRegion,
@@ -324,7 +324,7 @@ func Work(data []byte) error {
 			bytes.NewBufferString(fmt.Sprintf(jsenvFormat, depl.JsEnvVars)),
 			"application/javascript",
 			"public-read"); err != nil {
-			return err
+			return fmt.Errorf("failed to upload jsenv.js to S3: %v", err)
 		}
 	}
 
@@ -342,12 +342,12 @@ func Work(data []byte) error {
 	})
 
 	if err != nil {
-		return err
+		return fmt.Errorf("failed to mashal meta.json: %v", err)
 	}
 
 	domainNames, err := proj.DomainNames(db)
 	if err != nil {
-		return err
+		return fmt.Errorf("failed to get domain names: %v", err)
 	}
 
 	// Upload metadata file for each domain.
@@ -355,7 +355,7 @@ func Work(data []byte) error {
 	for _, domain := range domainNames {
 		reader.Seek(0, 0)
 		if err := S3.Upload(s3client.BucketRegion, s3client.BucketName, "domains/"+domain+"/meta.json", reader, "application/json", "public-read"); err != nil {
-			return err
+			return fmt.Errorf("failed to upload meta.json to S3: %v", err)
 		}
 	}
 
@@ -364,11 +364,11 @@ func Work(data []byte) error {
 			Domains: domainNames,
 		})
 		if err != nil {
-			return err
+			return fmt.Errorf("failed to create a message for invalidate cache: %v", err)
 		}
 
 		if err := m.Publish(); err != nil {
-			return err
+			return fmt.Errorf("failed to publish invalidate cache message: %v", err)
 		}
 	}
 
@@ -379,18 +379,18 @@ func Work(data []byte) error {
 	defer tx.Rollback()
 
 	if err := depl.UpdateState(tx, deployment.StateDeployed); err != nil {
-		return err
+		return fmt.Errorf("failed to update the deployment to be deployed: %v", err)
 	}
 
 	if err := tx.Model(project.Project{}).Where("id = ?", proj.ID).Update("active_deployment_id", &depl.ID).Error; err != nil {
-		return err
+		return fmt.Errorf("failed to update active deployment: %v", err)
 	}
 
 	// If project has exceeded its max number of deployments (N), we soft delete
 	// deployments older than the last N deployments.
 	if proj.MaxDeploysKept > 0 {
 		if err := deployment.DeleteExceptLastN(tx, proj.ID, proj.MaxDeploysKept); err != nil {
-			return err
+			return fmt.Errorf("failed to purge old deployments: %v", err)
 		}
 	}
 
