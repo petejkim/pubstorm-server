@@ -53,6 +53,15 @@ type Project struct {
 	LockedAt *time.Time
 }
 
+type JSON struct {
+	Name                 string     `json:"name"`
+	DefaultDomainEnabled bool       `json:"default_domain_enabled"`
+	ForceHTTPS           bool       `json:"force_https"`
+	SkipBuild            bool       `json:"skip_build"`
+	CreatedAt            time.Time  `json:"created_at"`
+	DeployedAt           *time.Time `json:"deployed_at,omitempty"`
+}
+
 // Validates Project, if there are invalid fields, it returns a map of
 // <field, errors> and returns nil if valid
 func (p *Project) Validate() map[string]string {
@@ -84,18 +93,12 @@ func (p *Project) Validate() map[string]string {
 
 // Returns a struct that can be converted to JSON
 func (p *Project) AsJSON() interface{} {
-	return struct {
-		Name                 string    `json:"name"`
-		DefaultDomainEnabled bool      `json:"default_domain_enabled"`
-		ForceHTTPS           bool      `json:"force_https"`
-		SkipBuild            bool      `json:"skip_build"`
-		CreatedAt            time.Time `json:"created_at"`
-	}{
-		p.Name,
-		p.DefaultDomainEnabled,
-		p.ForceHTTPS,
-		p.SkipBuild,
-		p.CreatedAt,
+	return JSON{
+		Name:                 p.Name,
+		DefaultDomainEnabled: p.DefaultDomainEnabled,
+		ForceHTTPS:           p.ForceHTTPS,
+		SkipBuild:            p.SkipBuild,
+		CreatedAt:            p.CreatedAt,
 	}
 }
 
@@ -317,4 +320,57 @@ func CanAddProject(db *gorm.DB, u *user.User) (bool, error) {
 	}
 
 	return count < MaxProjectPerUser, nil
+}
+
+// Project with deployed time
+type ProjectWithDeployedAt struct {
+	Project
+	DeployedAt *time.Time
+}
+
+// TableName return table name for database
+func (pd *ProjectWithDeployedAt) TableName() string {
+	return "projects"
+}
+
+// AsJSON return table name for database
+func (pd *ProjectWithDeployedAt) AsJSON() interface{} {
+	return JSON{
+		Name:                 pd.Name,
+		DefaultDomainEnabled: pd.DefaultDomainEnabled,
+		ForceHTTPS:           pd.ForceHTTPS,
+		SkipBuild:            pd.SkipBuild,
+		CreatedAt:            pd.CreatedAt,
+		DeployedAt:           pd.DeployedAt,
+	}
+}
+
+func ProjectsByUserID(db *gorm.DB, userID uint) ([]*ProjectWithDeployedAt, error) {
+	projects := []*ProjectWithDeployedAt{}
+	err := db.Select("projects.*, max(deployments.deployed_at) AS deployed_at").
+		Joins("LEFT JOIN deployments ON projects.id = deployments.project_id").
+		Group("projects.id").
+		Order("projects.name ASC").
+		Where("deployments.deleted_at IS NULL").
+		Where("projects.user_id = ?", userID).
+		Find(&projects).Error
+
+	return projects, err
+}
+
+func SharedProjectsByUserID(db *gorm.DB, userID uint) ([]*ProjectWithDeployedAt, error) {
+	sharedProjects := []*ProjectWithDeployedAt{}
+	err := db.Select("projects.*, max(deployments.deployed_at) AS deployed_at").
+		Joins(`LEFT JOIN deployments ON projects.id = deployments.project_id
+			JOIN collabs ON collabs.project_id = projects.id
+			JOIN users ON users.id = collabs.user_id`).
+		Where("deployments.deleted_at IS NULL").
+		Where("collabs.deleted_at IS NULL").
+		Where("users.deleted_at IS NULL").
+		Where("collabs.user_id = ?", userID).
+		Order("projects.name ASC").
+		Group("projects.id").
+		Find(&sharedProjects).Error
+
+	return sharedProjects, err
 }

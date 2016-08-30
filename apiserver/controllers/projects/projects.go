@@ -149,10 +149,8 @@ func Index(c *gin.Context) {
 		return
 	}
 
-	projects := []*project.Project{}
-	if err := db.Order("name ASC").
-		Where("user_id = ?", u.ID).
-		Find(&projects).Error; err != nil {
+	projects, err := project.ProjectsByUserID(db, u.ID)
+	if err != nil {
 		controllers.InternalServerError(c, err)
 		return
 	}
@@ -162,12 +160,8 @@ func Index(c *gin.Context) {
 		projectsAsJson = append(projectsAsJson, proj.AsJSON())
 	}
 
-	sharedProjects := []*project.Project{}
-	if err := db.Order("projects.name ASC").
-		Joins("JOIN users ON users.id = collabs.user_id").
-		Joins("JOIN collabs ON collabs.project_id = projects.id").
-		Where("collabs.user_id = ?", u.ID).
-		Find(&sharedProjects).Error; err != nil {
+	sharedProjects, err := project.SharedProjectsByUserID(db, u.ID)
+	if err != nil {
 		controllers.InternalServerError(c, err)
 		return
 	}
