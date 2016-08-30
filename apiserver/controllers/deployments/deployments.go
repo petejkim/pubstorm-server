@@ -41,7 +41,7 @@ func Create(c *gin.Context) {
 
 	db, err := dbconn.DB()
 	if err != nil {
-		controllers.InternalServerError(c, err)
+		controllers.InternalServerError(c, err, "deployments: failed to get a db connection")
 		return
 	}
 
@@ -54,7 +54,7 @@ func Create(c *gin.Context) {
 	if proj.ActiveDeploymentID != nil {
 		var prevDepl deployment.Deployment
 		if err := db.Where("id = ?", proj.ActiveDeploymentID).First(&prevDepl).Error; err != nil {
-			controllers.InternalServerError(c, err)
+			controllers.InternalServerError(c, err, "deployments: failed to fetch a previous deployment")
 			return
 		}
 
@@ -116,20 +116,20 @@ func Create(c *gin.Context) {
 			if part.FormName() == "payload" {
 				ver, err := proj.NextVersion(db)
 				if err != nil {
-					controllers.InternalServerError(c, err)
+					controllers.InternalServerError(c, err, "deployments: failed to get next deployment version number")
 					return
 				}
 
 				depl.Version = ver
 				if err := db.Create(depl).Error; err != nil {
-					controllers.InternalServerError(c, err)
+					controllers.InternalServerError(c, err, "deployments: failed to create a deployment record in DB")
 					return
 				}
 
 				br := bufio.NewReader(part)
 				partHead, err := br.Peek(512)
 				if err != nil {
-					controllers.InternalServerError(c, err)
+					controllers.InternalServerError(c, err, "deployments: failed to get header from payload")
 					return
 				}
 
@@ -152,7 +152,7 @@ func Create(c *gin.Context) {
 
 				hr := hasher.NewReader(br)
 				if err := s3client.Upload(uploadKey, hr, "", "private"); err != nil {
-					controllers.InternalServerError(c, err)
+					controllers.InternalServerError(c, err, "deployments: failed to upload to S3")
 					return
 				}
 
@@ -162,7 +162,7 @@ func Create(c *gin.Context) {
 					UploadedPath: uploadKey,
 				}
 				if err := db.Create(bun).Error; err != nil {
-					controllers.InternalServerError(c, err)
+					controllers.InternalServerError(c, err, "deployments: failed to create a raw bundle record in DB")
 					return
 				}
 
@@ -174,13 +174,13 @@ func Create(c *gin.Context) {
 	case viaCachedBundle:
 		ver, err := proj.NextVersion(db)
 		if err != nil {
-			controllers.InternalServerError(c, err)
+			controllers.InternalServerError(c, err, "deployments: failed to get next deployment version number")
 			return
 		}
 
 		depl.Version = ver
 		if err := db.Create(depl).Error; err != nil {
-			controllers.InternalServerError(c, err)
+			controllers.InternalServerError(c, err, "deployments: failed to create a deployment record in DB")
 			return
 		}
 
@@ -206,7 +206,7 @@ func Create(c *gin.Context) {
 				})
 				return
 			}
-			controllers.InternalServerError(c, err)
+			controllers.InternalServerError(c, err, "deployments: failed to find a raw bundle")
 			return
 		}
 		depl.RawBundleID = &bun.ID
@@ -253,21 +253,20 @@ func Create(c *gin.Context) {
 
 		ver, err := proj.NextVersion(db)
 		if err != nil {
-			controllers.InternalServerError(c, err)
+			controllers.InternalServerError(c, err, "deployments: failed to get next deployment version number")
 			return
 		}
 
 		depl.TemplateID = &tmpl.ID
 		depl.Version = ver
 		if err := db.Create(depl).Error; err != nil {
-			controllers.InternalServerError(c, err)
+			controllers.InternalServerError(c, err, "deployments: failed to create a  deployment record in DB")
 			return
 		}
 
 		bundlePath := "deployments/" + depl.PrefixID() + "/raw-bundle." + archiveFormat
 		if err := s3client.Copy(tmpl.DownloadURL, bundlePath); err != nil {
-			log.Printf("failed to make a copy of template %q to %q in S3, err: %v", tmpl.DownloadURL, bundlePath, err)
-			controllers.InternalServerError(c, err)
+			controllers.InternalServerError(c, err, fmt.Sprintf("failed to make a copy of template %q to %q in S3", tmpl.DownloadURL, bundlePath))
 			return
 		}
 
@@ -276,7 +275,7 @@ func Create(c *gin.Context) {
 			UploadedPath: bundlePath,
 		}
 		if err := db.Create(bun).Error; err != nil {
-			controllers.InternalServerError(c, err)
+			controllers.InternalServerError(c, err, "deployments: failed to create a raw bundle record in DB")
 			return
 		}
 
@@ -291,7 +290,7 @@ func Create(c *gin.Context) {
 	}
 
 	if err := depl.UpdateState(db, deployment.StateUploaded); err != nil {
-		controllers.InternalServerError(c, err)
+		controllers.InternalServerError(c, err, "deployments: failed to update deployment state to be uploaded")
 		return
 	}
 
@@ -310,12 +309,12 @@ func Create(c *gin.Context) {
 	}
 
 	if err != nil {
-		controllers.InternalServerError(c, err)
+		controllers.InternalServerError(c, err, "deployments: failed to connect to job queue")
 		return
 	}
 
 	if err := j.Enqueue(); err != nil {
-		controllers.InternalServerError(c, err)
+		controllers.InternalServerError(c, err, "deployments: failed to enqueue a job")
 		return
 	}
 
@@ -325,7 +324,7 @@ func Create(c *gin.Context) {
 	}
 
 	if err := depl.UpdateState(db, newState); err != nil {
-		controllers.InternalServerError(c, err)
+		controllers.InternalServerError(c, err, "deployments: failed to update deployment state to be "+newState)
 		return
 	}
 
