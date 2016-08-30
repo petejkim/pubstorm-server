@@ -92,6 +92,7 @@ func run() {
 	for {
 		select {
 		case d := <-msgCh:
+			log.Infoln("Work started", string(d.Body))
 			err = deployer.Work(d.Body)
 
 			if err != nil {
