@@ -2,6 +2,9 @@ package main
 
 import (
 	"bytes"
+	"crypto/rand"
+	"crypto/x509"
+	"crypto/x509/pkix"
 	"encoding/pem"
 	"fmt"
 	"os"
@@ -37,6 +40,9 @@ const jobName = "renew-acme-certs"
 var (
 	fields          = log.Fields{"job": jobName}
 	expiryThreshold = 30 * 24 * time.Hour // Renew certs that have < 30 days left
+
+	numRenewed int
+	numFailed  int
 )
 
 func main() {
@@ -79,7 +85,7 @@ func main() {
 	wg.Wait()
 
 	log.WithFields(fields).WithField("event", "completed").
-		Infof("Attempted renewal of %d ACME certificates", len(acmeCerts))
+		Infof("Attempted renewal of %d ACME certificates, success: %d, failed: %d", len(acmeCerts), numRenewed, numFailed)
 }
 
 // findExpiringAcmeCerts returns AcmeCerts that expire before the deadline.
@@ -112,6 +118,9 @@ func renewer(db *gorm.DB, wg *sync.WaitGroup, jobs chan *acmecert.AcmeCert) {
 
 		if err := renew(db, cert); err != nil {
 			log.WithFields(fields).Errorf("failed to renew ACME cert ID %d, err: %v", cert.ID, err)
+			numFailed++
+		} else {
+			numRenewed++
 		}
 
 		wg.Done()
@@ -125,8 +134,13 @@ func renew(db *gorm.DB, acmeCert *acmecert.AcmeCert) error {
 		return fmt.Errorf("failed to decrypt ACME cert %d, err: %v", acmeCert.ID, err)
 	}
 
+	var dom domain.Domain
+	if err := db.First(&dom, acmeCert.DomainID).Error; err != nil {
+		return err
+	}
+
 	x509Cert := certChain[0]
-	log.WithFields(fields).Infof("ACME cert %d expires on %v", acmeCert.ID, x509Cert.NotAfter)
+	log.WithFields(fields).Infof("ACME cert %d for %q expires on %v", acmeCert.ID, dom.Name, x509Cert.NotAfter)
 
 	cli, err := letsencrypt.NewClient(common.AcmeURL)
 	if err != nil {
@@ -146,12 +160,47 @@ func renew(db *gorm.DB, acmeCert *acmecert.AcmeCert) error {
 		return nil
 	}
 
-	if certResp.Certificate.Equal(x509Cert) {
-		log.WithFields(fields).Infof("Let's Encrypt returned an identical cert for ACME cert ID %d, skipping", acmeCert.ID)
-		return nil
-	}
+	log.WithFields(fields).Infof("Returned cert expires on %v", certResp.Certificate.NotAfter)
 
-	log.WithFields(fields).Infof("Got renewed cert that expires on %v", certResp.Certificate.NotAfter)
+	if certResp.Certificate.Equal(x509Cert) {
+		log.WithFields(fields).Infof("Let's Encrypt returned an identical cert for ACME cert ID %d - requesting a new cert instead...", acmeCert.ID)
+
+		certKey, err := acmeCert.DecryptedPrivateKey(common.AesKey)
+		if err != nil {
+			return err
+		}
+
+		template := &x509.CertificateRequest{
+			SignatureAlgorithm: x509.SHA256WithRSA,
+			PublicKeyAlgorithm: x509.RSA,
+			PublicKey:          certKey.Public(),
+			Subject:            pkix.Name{CommonName: dom.Name},
+			DNSNames:           []string{dom.Name},
+		}
+		csrDER, err := x509.CreateCertificateRequest(rand.Reader, template, certKey)
+		if err != nil {
+			return err
+		}
+		csr, err := x509.ParseCertificateRequest(csrDER)
+		if err != nil {
+			return err
+		}
+
+		leKey, err := acmeCert.DecryptedLetsencryptKey(common.AesKey)
+		if err != nil {
+			return err
+		}
+
+		certResp, err = cli.NewCertificate(leKey, csr)
+		if err != nil {
+			log.WithFields(fields).Errorf("failed to get new certificate from Let's Encrypt, domain: %q, err: %v", dom.Name, err)
+			return err
+		}
+
+		log.WithFields(fields).Infof("Got new cert that expires on %v", certResp.Certificate.NotAfter)
+	} else {
+		log.WithFields(fields).Infof("Got renewed cert that expires on %v", certResp.Certificate.NotAfter)
+	}
 
 	// FIXME We should request for the issuer cert again (using
 	// cli.Bundle(certResp)), in case it has changed.
@@ -170,11 +219,6 @@ func renew(db *gorm.DB, acmeCert *acmecert.AcmeCert) error {
 	}
 
 	if err := acmeCert.SaveCert(db, bundledPEM, common.AesKey); err != nil {
-		return err
-	}
-
-	var dom domain.Domain
-	if err := db.First(&dom, acmeCert.DomainID).Error; err != nil {
 		return err
 	}
 
