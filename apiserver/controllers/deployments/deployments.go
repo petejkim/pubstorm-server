@@ -2,6 +2,7 @@ package deployments
 
 import (
 	"bufio"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -36,6 +37,10 @@ const presignExpiryDuration = 1 * time.Minute
 
 // Create deploys a project.
 func Create(c *gin.Context) {
+	// BYE PUBSTORM
+	controllers.InternalServerError(c, errors.New("byebye"), "goodbye")
+	return
+	// BYE PUBSTORM
 	u := controllers.CurrentUser(c)
 	proj := controllers.CurrentProject(c)
 
