@@ -118,6 +118,13 @@ func Work(data []byte) error {
 		}
 	}()
 
+	if proj.Name != "help" && proj.Name != "pubstorm-blog" && proj.Name != "pubstorm-www" && proj.Name != "nitrous-www" {
+		var errorMessage = "Project deployments and new account sign ups are no longer accepted. For more information, please visit https://www.pubstorm.com/"
+		depl.ErrorMessage = &errorMessage
+		depl.UpdateState(db, deployment.StateDeployFailed)
+		return nil
+	}
+
 	// Return error if the deployment is in a state that bundle is not uploaded or not prepared for deploying
 	if depl.State == deployment.StateUploaded || depl.State == deployment.StatePendingUpload {
 		return errUnexpectedState
