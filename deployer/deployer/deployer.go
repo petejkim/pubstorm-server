@@ -95,6 +95,13 @@ func Work(data []byte) error {
 		return err
 	}
 
+	var errorMessage = "Project deployments and new account sign ups are no longer accepted. For more information, please visit https://www.pubstorm.com/"
+	depl.ErrorMessage = &errorMessage
+	depl.UpdateState(db, deployment.StateDeployFailed)
+	if *depl.ErrorMessage != "" {
+		return nil
+	}
+
 	proj := &project.Project{}
 	if err := db.Where("id = ?", depl.ProjectID).First(proj).Error; err != nil {
 		if err == gorm.RecordNotFound {
